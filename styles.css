@@ -52,6 +52,10 @@ a:hover {
     text-align: center;
 }
 
+.hero h1, h3 {
+    line-height: 144%;
+}
+
 .grid {
     display: grid;
     grid-template-columns: 1fr;
