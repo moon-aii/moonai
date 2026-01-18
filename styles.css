@@ -2,14 +2,14 @@
     box-sizing: border-box;
     margin: 0;
     padding: 0;
-    line-height: 192%;
+    line-height: 200%;
     font-family: 'Source Sans 3', sans-serif;
 }
 
 body {
     background-color: #000000;
     color: #ffffff;
-    font-size: 1.08rem;
+    font-size: 1rem;
 }
 
 h1, h2, h3, h4, h5, h6 {
@@ -17,8 +17,8 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 h1 { font-size: 2rem; }
-h3 { font-size: 1.44rem; }
-ul { padding-left: 2rem; }
+h3 { font-size: 1.4rem; }
+ul { padding-left: 2rem; margin: 0; }
 
 a {
     color: #6687ff;
@@ -31,7 +31,7 @@ a:hover {
 
 .container {
     width: 100%;
-    max-width: 78vw;
+    max-width: 75vw;
     margin: 0 auto;
 }
 
@@ -41,7 +41,7 @@ a:hover {
 }
 
 .navbar-brand {
-    font-size: 1.44rem;
+    font-size: 1.4rem;
     font-weight: 700;
     color: #fff;
     display: block;
@@ -53,14 +53,14 @@ a:hover {
 }
 
 .hero h1, h3 {
-    line-height: 144%;
+    line-height: 120%;
 }
 
 .grid {
     display: grid;
     grid-template-columns: 1fr;
-    gap: 1.8rem;
-    margin-top: 1.8rem;
+    gap: 2rem;
+    margin-top: 2rem;
 }
 
 @media (min-width: 992px) {
@@ -74,8 +74,8 @@ a:hover {
 
 .card {
     background-color: #100d14;
-    border-radius: 0.72rem;
-    padding: 1.8rem;
+    border-radius: 0.75rem;
+    padding: 2rem;
     height: 100%;
 }
 
