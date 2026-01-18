@@ -1,0 +1,49 @@
+body {
+    background-color: #000000;
+    color: #ffffff;
+    font-family: "Segoe UI", sans-serif;
+    line-height: 180%;
+    font-size: 1rem;
+}
+
+h3 {
+    font-size: 1.44rem;
+}
+
+.navbar {
+    background-color: #100d14 !important;
+    align: center;
+}
+
+.hero {
+    padding: 30px 0;
+    text-align: center;
+}
+
+.hero h1 {
+    font-size: 1.92rem;
+    font-weight: 700;
+}
+
+.card {
+    background-color: #100d14;
+    border: none;
+    color: #ffffff;
+    border-radius: 0.72rem;
+}
+
+a {
+    color: #58a6ff;
+}
+
+a:hover {
+    color: #1f6feb;
+}
+
+footer {
+    border-top: none;
+    padding: 20px 0;
+    margin-top: 60px;
+    text-align: center;
+    color: #96929b;
+}
