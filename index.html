@@ -1,69 +1,158 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MoonAI</title>
-    <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;700&display=swap" rel="stylesheet">
-    <link href="styles.css?v=2" rel="stylesheet">
-</head>
-<body>
-    <nav class="navbar">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>MoonAI</title>
+        <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;700&display=swap" rel="stylesheet">
+        <link href="styles.css?v=3" rel="stylesheet">
+    </head>
+    <body>
+        <nav class="navbar">
+            <div class="container">
+                <a class="navbar-brand" href="#">MoonAI</a>
+            </div>
+        </nav>
+        <section class="hero container">
+            <h1>MoonAI</h1>
+            <h2>Predator–Prey Neuroevolution Simulation</h2>
+        </section>
         <div class="container">
-            <a class="navbar-brand" href="#">MoonAI</a>
+            <div class="grid">
+                <div class="card grid-3">
+                    <h2>Team & Supervisor</h2>
+                    <div class="psection">
+                        <h3>Team Members</h3>
+                        <ul>
+                            <li>Caner Aras</li>
+                            <li>Emir Irkılata</li>
+                            <li>Oğuzhan Özkaya</li>
+                        </ul>
+                        <h3>Supervisor</h3>
+                        <ul>
+                            <li>Ozan Zorlu</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="card grid-3">
+                    <h2>Repositories</h2>
+                    <ul class="psection">
+                        <li><a href="https://github.com/moon-aii/moonai" target="_blank">Source Code</a></li>
+                        <li><a href="https://github.com/moon-aii/moonai.github.io" target="_blank">Reports</a></li>
+                        <li><a href="https://github.com/moon-aii/moonai.github.io" target="_blank">Web Page</a></li>
+                    </ul>
+                </div>
+                <div class="card grid-3">
+                    <h2>Documents</h2>
+                    <ul class="psection">
+                        <li><a href="documents/ProjectProposal.pdf" target="_blank">Project Proposal Report</a></li>
+                        <li><a href="documents/ProjectSpecification.pdf" target="_blank">Project Specification Report</a></li>
+                        <li><a href="documents/AnalysisReport.pdf" target="_blank">Analysis Report</a></li>
+                        <li><a href="documents/HighLevelDesignReport.pdf" target="_blank">High-Level Design Report</a></li>
+                        <li><a href="documents/Poster.pdf" target="_blank">Poster</a></li>
+                    </ul>
+                </div>
+                <div class="card grid-full">
+                    <h2>Motivation</h2>
+                    <p class="psection">
+                    The complexity of modern artificial intelligence training often necessitates vast amounts of real-world data 
+                    and manually designed scenarios, which do not scale efficiently. This project addresses the need for 
+                    autonomous, self-generating training environments.
+                    </p>
+                </div>
+                <div class="card grid-2">
+                    <h2>Objective</h2>
+                    <p class="psection">
+                    MoonAI aims to develop a robust simulation environment designed to research and optimize 
+                    evolutionary algorithms. By decoupling training from real-world data dependencies, the project 
+                    investigates how genetic representations influence learning efficiency and adaptability 
+                    in dynamic, complex environments.
+                    </p>
+                </div>
+                <div class="card grid-2">
+                    <h2>Approach</h2>
+                    <p class="psection">
+                    The system employs a high-fidelity Predator-Prey simulation to generate evolutionary and 
+                    genetic data. This synthetic ecosystem serves as a dynamic benchmark for evaluating the 
+                    performance of evolutionary computation techniques in solving adaptive behavior modeling problems.
+                    </p>
+                </div>
+                <div class="card grid-full">
+                    <h2>Project Details</h2>
+                    <div class="psection">
+                        <h3>Evolutionary Core</h3>
+                        <p>
+                        MoonAI utilizes the NeuroEvolution of Augmenting Topologies (NEAT) algorithm to optimize agent behaviors. 
+                        By evolving both neural network weights and topological structures, the system enables the emergence 
+                        of complex behavioral strategies through mutation, crossover, and speciation across successive generations.
+                        </p>
+                    </div>
+                    <div class="psection">
+                        <h3>Simulation Environment</h3>
+                        <p>
+                        The simulation operates within a deterministic, time-stepped 2D world. This virtual ecosystem 
+                        imposes selective pressures on agents—predators and prey—with configurable attributes such as 
+                        speed, vision, stamina, and reproduction rates, facilitating systematic algorithmic evaluation.
+                        </p>
+                    </div>
+                    <div class="psection">
+                        <h3>Heterogeneous Architecture</h3>
+                        <p>
+                        To achieve high-performance execution, MoonAI employs a hybrid compute model. The CPU manages 
+                        high-level control logic and physics updates, while massive parallelization via NVIDIA CUDA 
+                        accelerates neural network inference and fitness evaluations for large agent populations.
+                        </p>
+                    </div>
+                    <div class="psection">
+                        <h3>Real-Time Analytics</h3>
+                        <p>
+                        Researchers can observe emergent behaviors through an SFML-based real-time visualization layer. 
+                        The system concurrently logs extensive telemetry, including population metrics and genome histories, 
+                        exporting structured data for rigorous offline analysis using Python-based tools.
+                        </p>
+                    </div>
+                </div>
+                <div class="card grid-full">
+                    <h2>Technologies Used</h2>
+                    <div class="psection">
+                        <h3>Core Languages</h3>
+                        <ul>
+                            <li>C++17</li>
+                            <li>Python</li>
+                        </ul>
+                    </div>
+                    <div class="psection">
+                        <h3>Simulation & Graphics</h3>
+                        <ul>
+                            <li>SFML (Simple and Fast Multimedia Library)</li>
+                        </ul>
+                    </div>
+                    <div class="psection">
+                        <h3>AI & Compute</h3>
+                        <ul>
+                            <li>NVIDIA CUDA (GPU Acceleration)</li>
+                            <li>NEAT Algorithm</li>
+                        </ul>
+                    </div>
+                    <div class="psection">
+                        <h3>Data Analysis</h3>
+                        <ul>
+                            <li>Pandas</li>
+                            <li>Matplotlib</li>
+                        </ul>
+                    </div>
+                    <div class="psection">
+                        <h3>Configuration & Tools</h3>
+                        <ul>
+                            <li>JSON / TOML / YAML</li>
+                            <li>Git & GitHub</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
         </div>
-    </nav>
-    <section class="hero container">
-        <h1>MoonAI</h1>
-        <h2>Predator–Prey Neuroevolution Simulation</h2>
-    </section>
-    <div class="container">
-        <div class="grid">
-            <div class="card">
-                <h2>Team & Supervisor</h2>
-                <h3>Team Members</h3>
-                <ul>
-                    <li>Caner Aras</li>
-                    <li>Emir Irkılata</li>
-                    <li>Oğuzhan Özkaya</li>
-                </ul>
-                <h3>Supervisor</h3>
-                <ul>
-                    <li>Ozan Zorlu</li>
-                </ul>
-            </div>
-            <div class="card">
-                <h2>Documents</h2>
-                <ul>
-                    <li><a href="documents/ProjectProposal.pdf" target="_blank">Project Proposal Report</a></li>
-                    <li><a href="documents/ProjectSpecification.pdf" target="_blank">Project Specification Report</a></li>
-                    <li><a href="documents/AnalysisReport.pdf" target="_blank">Analysis Report</a></li>
-                    <li><a href="documents/HighLevelDesignReport.pdf" target="_blank">High-Level Design Report</a></li>
-                    <li><a href="documents/Poster.pdf" target="_blank">Poster</a></li>
-                </ul>
-            </div>
-            <div class="card grid-full">
-                <h2>Project Overview</h2>
-                <p>
-                MoonAI models predator–prey dynamics using evolutionary algorithms and neural networks.
-                The system evolves both agent attributes (speed, vision, stamina, reproduction rate) and
-                behavioral strategies through the NEAT algorithm. The objective is to analyze how genetic
-                representations influence adaptability in complex environments and to evaluate the
-                performance of evolutionary computation techniques.
-                </p>
-            </div>
-            <div class="card grid-full">
-                <h2>Technologies Used</h2>
-                <ul>
-                    <li>C++ / SFML – Real-time simulation & visualization</li>
-                    <li>CUDA – GPU-accelerated evolutionary computation</li>
-                    <li>Python (Pandas, Matplotlib) – Data analysis & visualization</li>
-                </ul>
-            </div>
-        </div>
-    </div>
-    <footer>
-        MoonAI Project • CMPE 491
-    </footer>
-</body>
+        <footer>
+            MoonAI Project • CMPE 491
+        </footer>
+    </body>
 </html>

@@ -31,7 +31,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 h1 { font-size: var(--margin-big); }
-h2 { font-size: var(--font-size-heading); margin-bottom: 0.2rem; }
+h2 { font-size: var(--font-size-heading); }
 
 h3, h4, h5, h6 {
     font-size: var(--font-size-body);
@@ -48,9 +48,13 @@ a:hover {
     text-decoration: underline;
 }
 
+.psection {
+    margin-top: 0.3rem;
+}
+
 .container {
     width: 100%;
-    max-width: 60rem;
+    max-width: 72rem;
     margin: 0 auto;
     padding: 0 var(--margin-big);
 }
@@ -83,11 +87,17 @@ a:hover {
     gap: var(--margin-big);
 }
 
-@media (min-width: 992px) {
+@media (min-width: 72rem) {
     .grid {
-        grid-template-columns: repeat(2, 1fr);
+        grid-template-columns: repeat(6, 1fr);
     }
     .grid-full {
+        grid-column: span 6;
+    }
+    .grid-2 {
+        grid-column: span 3;
+    }
+    .grid-3 {
         grid-column: span 2;
     }
 }
