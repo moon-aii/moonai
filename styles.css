@@ -33,7 +33,7 @@ h1, h2, h3, h4, h5, h6 {
 h1 { font-size: var(--margin-big); }
 h2 { font-size: var(--font-size-heading); margin-bottom: 0.2rem; }
 
-h3, h3, h5, h6 {
+h3, h4, h5, h6 {
     font-size: var(--font-size-body);
 }
 
