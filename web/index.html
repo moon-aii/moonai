@@ -3,156 +3,431 @@
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>MoonAI</title>
-        <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;700&display=swap" rel="stylesheet">
-        <link href="styles.css?v=3" rel="stylesheet">
+        <meta name="description" content="MoonAI - A neuroevolution simulation platform using NEAT algorithm for predator-prey evolutionary research. CMPE 491/492 Senior Design Project at TED University.">
+        <meta name="keywords" content="NEAT, neuroevolution, evolutionary algorithms, predator-prey simulation, machine learning, CUDA, SFML">
+        <meta name="author" content="Caner Aras, Emir Irkılata, Oğuzhan Özkaya">
+        
+        <!-- Open Graph / Facebook -->
+        <meta property="og:type" content="website">
+        <meta property="og:url" content="https://moon-aii.github.io/">
+        <meta property="og:title" content="MoonAI - Predator-Prey Neuroevolution Simulation">
+        <meta property="og:description" content="A neuroevolution simulation platform using NEAT algorithm for evolutionary research.">
+        <meta property="og:site_name" content="MoonAI">
+        
+        <!-- Twitter -->
+        <meta property="twitter:card" content="summary_large_image">
+        <meta property="twitter:url" content="https://moon-aii.github.io/">
+        <meta property="twitter:title" content="MoonAI - Predator-Prey Neuroevolution Simulation">
+        <meta property="twitter:description" content="A neuroevolution simulation platform using NEAT algorithm for evolutionary research.">
+        
+        <!-- Theme Color -->
+        <meta name="theme-color" content="#100d14" media="(prefers-color-scheme: dark)">
+        <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+        
+        <title>MoonAI - Predator-Prey Neuroevolution Simulation</title>
+        
+        <!-- Favicon -->
+        <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🌙%3C/text%3E%3C/svg%3E">
+        <link rel="manifest" href="manifest.json">
+        
+        <!-- Fonts -->
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+        
+        <!-- Styles -->
+        <link href="styles.css?v=4" rel="stylesheet">
+        
+        <!-- Structured Data -->
+        <script type="application/ld+json">
+        {
+            "@context": "https://schema.org",
+            "@type": "ResearchProject",
+            "name": "MoonAI",
+            "description": "A neuroevolution simulation platform using NEAT algorithm for predator-prey evolutionary research",
+            "url": "https://moon-aii.github.io/",
+            "author": [
+                {
+                    "@type": "Person",
+                    "name": "Caner Aras"
+                },
+                {
+                    "@type": "Person",
+                    "name": "Emir Irkılata"
+                },
+                {
+                    "@type": "Person",
+                    "name": "Oğuzhan Özkaya"
+                }
+            ],
+            "supervisor": {
+                "@type": "Person",
+                "name": "Ayşenur Birtürk"
+            },
+            "affiliation": {
+                "@type": "Organization",
+                "name": "TED University",
+                "department": "Computer Engineering"
+            },
+            "about": [
+                "Neuroevolution",
+                "NEAT Algorithm",
+                "Predator-Prey Simulation",
+                "Evolutionary Computation"
+            ],
+            "programmingLanguage": ["C++17", "Python", "CUDA"],
+            "codeRepository": "https://github.com/moon-aii/moonai"
+        }
+        </script>
     </head>
     <body>
-        <nav class="navbar">
-            <div class="container">
-                <a class="navbar-brand" href="#">MoonAI</a>
+        <a href="#main-content" class="skip-link">Skip to main content</a>
+        
+        <nav class="navbar" id="navbar">
+            <div class="container nav-container">
+                <a class="navbar-brand" href="#" aria-label="MoonAI Home">
+                    <span class="brand-icon" aria-hidden="true">🌙</span>
+                    <span class="brand-text">MoonAI</span>
+                </a>
+                <div class="nav-links">
+                    <a href="#overview" class="nav-link">Overview</a>
+                    <a href="#details" class="nav-link">Details</a>
+                    <a href="#technologies" class="nav-link">Technologies</a>
+                    <a href="#documents" class="nav-link">Documents</a>
+                </div>
+                <button class="theme-toggle" id="theme-toggle" aria-label="Toggle dark mode">
+                    <span class="theme-icon light" aria-hidden="true">☀️</span>
+                    <span class="theme-icon dark" aria-hidden="true">🌙</span>
+                </button>
             </div>
         </nav>
-        <section class="hero container">
-            <h1>MoonAI</h1>
-            <h2>Predator–Prey Neuroevolution Simulation</h2>
-        </section>
-        <div class="container">
-            <div class="grid">
-                <div class="card grid-2">
-                    <h2>Team & Supervisor</h2>
-                    <div class="psection">
-                        <h3>Team Members</h3>
-                        <ul>
-                            <li>Caner Aras</li>
-                            <li>Emir Irkılata</li>
-                            <li>Oğuzhan Özkaya</li>
-                        </ul>
-                        <h3>Supervisor</h3>
-                        <ul>
-                            <li>Ayşenur Birtürk</li>
-                        </ul>
-                    </div>
-                </div>
-                <!-- <div class="card grid-3"> -->
-                <!--     <h2>Repositories</h2> -->
-                <!--     <ul class="psection"> -->
-                <!--         <li><a href="https://github.com/moon-aii/moonai" target="_blank">Source Code</a></li> -->
-                <!--         <li><a href="https://github.com/moon-aii/moonai.github.io" target="_blank">Reports</a></li> -->
-                <!--         <li><a href="https://github.com/moon-aii/moonai.github.io" target="_blank">Web Page</a></li> -->
-                <!--     </ul> -->
-                <!-- </div> -->
-                <div class="card grid-2">
-                    <h2>Documents</h2>
-                    <ul class="psection">
-                        <li><a href="documents/ProjectProposal.pdf" target="_blank">Project Proposal Report</a></li>
-                        <li><a href="documents/ProjectSpecification.pdf" target="_blank">Project Specification Report</a></li>
-                        <li><a href="documents/AnalysisReport.pdf" target="_blank">Analysis Report</a></li>
-                        <li><a href="documents/HighLevelDesignReport.pdf" target="_blank">High-Level Design Report</a></li>
-                        <li><a href="documents/Poster.pdf" target="_blank">Poster</a></li>
-                    </ul>
-                </div>
-                <div class="card grid-full">
-                    <h2>Motivation</h2>
-                    <p class="psection">
-                    The complexity of modern artificial intelligence training often necessitates vast amounts of real-world data 
-                    and manually designed scenarios, which do not scale efficiently. This project addresses the need for 
-                    autonomous, self-generating training environments.
+        
+        <main id="main-content">
+            <section class="hero container" id="overview">
+                <div class="hero-content">
+                    <div class="hero-badge">CMPE 491/492 Senior Design Project</div>
+                    <h1>MoonAI</h1>
+                    <p class="hero-subtitle">Predator–Prey Neuroevolution Simulation Platform</p>
+                    <p class="hero-description">
+                        A modular research platform for studying evolutionary algorithms and neural network evolution 
+                        through synthetic predator-prey dynamics using the NEAT algorithm.
                     </p>
-                </div>
-                <div class="card grid-2">
-                    <h2>Objective</h2>
-                    <p class="psection">
-                    MoonAI aims to develop a robust simulation environment designed to research and optimize 
-                    evolutionary algorithms. By decoupling training from real-world data dependencies, the project 
-                    investigates how genetic representations influence learning efficiency and adaptability 
-                    in dynamic, complex environments.
-                    </p>
-                </div>
-                <div class="card grid-2">
-                    <h2>Approach</h2>
-                    <p class="psection">
-                    The system employs a high-fidelity Predator-Prey simulation to generate evolutionary and 
-                    genetic data. This synthetic ecosystem serves as a dynamic benchmark for evaluating the 
-                    performance of evolutionary computation techniques in solving adaptive behavior modeling problems.
-                    </p>
-                </div>
-                <div class="card grid-full">
-                    <h2>Project Details</h2>
-                    <div class="psection">
-                        <h3>Evolutionary Core</h3>
-                        <p>
-                        MoonAI utilizes the NeuroEvolution of Augmenting Topologies (NEAT) algorithm to optimize agent behaviors. 
-                        By evolving both neural network weights and topological structures, the system enables the emergence 
-                        of complex behavioral strategies through mutation, crossover, and speciation across successive generations.
-                        </p>
-                    </div>
-                    <div class="psection">
-                        <h3>Simulation Environment</h3>
-                        <p>
-                        The simulation operates within a deterministic, time-stepped 2D world. This virtual ecosystem 
-                        imposes selective pressures on agents—predators and prey—with configurable attributes such as 
-                        speed, vision, stamina, and reproduction rates, facilitating systematic algorithmic evaluation.
-                        </p>
-                    </div>
-                    <div class="psection">
-                        <h3>Heterogeneous Architecture</h3>
-                        <p>
-                        To achieve high-performance execution, MoonAI employs a hybrid compute model. The CPU manages 
-                        high-level control logic and physics updates, while massive parallelization via NVIDIA CUDA 
-                        accelerates neural network inference and fitness evaluations for large agent populations.
-                        </p>
-                    </div>
-                    <div class="psection">
-                        <h3>Real-Time Analytics</h3>
-                        <p>
-                        Researchers can observe emergent behaviors through an SFML-based real-time visualization layer. 
-                        The system concurrently logs extensive telemetry, including population metrics and genome histories, 
-                        exporting structured data for rigorous offline analysis using Python-based tools.
-                        </p>
+                    <div class="hero-actions">
+                        <a href="https://github.com/moon-aii/moonai" class="btn btn-primary" target="_blank" rel="noopener noreferrer">
+                            <span>View Source</span>
+                            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path>
+                            </svg>
+                        </a>
+                        <a href="#quick-start" class="btn btn-secondary">Quick Start</a>
                     </div>
                 </div>
-                <div class="card grid-full">
-                    <h2>Technologies Used</h2>
-                    <div class="psection">
-                        <h3>Core Languages</h3>
-                        <ul>
-                            <li>C++17</li>
-                            <li>Python</li>
+            </section>
+            
+            <div class="container">
+                <div class="grid">
+                    <div class="card grid-full stats-card">
+                        <div class="stats-grid">
+                            <div class="stat-item">
+                                <span class="stat-value">C++17</span>
+                                <span class="stat-label">Core Language</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-value">NEAT</span>
+                                <span class="stat-label">Algorithm</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-value">CUDA</span>
+                                <span class="stat-label">GPU Acceleration</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-value">SFML</span>
+                                <span class="stat-label">Visualization</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="card grid-2" id="quick-start">
+                        <h2>Quick Start</h2>
+                        <div class="psection">
+                            <div class="code-block">
+                                <pre><code><span class="comment"># Clone the repository</span>
+git clone https://github.com/moon-aii/moonai.git
+cd moonai
+
+<span class="comment"># Build and run</span>
+just configure
+just build
+just run</code></pre>
+                            </div>
+                            <p class="note">
+                                <strong>Prerequisites:</strong> C++17 compiler, CMake 3.21+, vcpkg, CUDA Toolkit (optional)
+                            </p>
+                        </div>
+                    </div>
+                    
+                    <div class="card grid-2">
+                        <h2>Team & Supervisor</h2>
+                        <div class="psection">
+                            <h3>Team Members</h3>
+                            <ul class="team-list">
+                                <li>Caner Aras</li>
+                                <li>Emir Irkılata</li>
+                                <li>Oğuzhan Özkaya</li>
+                            </ul>
+                            <h3>Supervisor</h3>
+                            <ul>
+                                <li>Ayşenur Birtürk</li>
+                            </ul>
+                        </div>
+                    </div>
+                    
+                    <div class="card grid-2">
+                        <h2>Repositories</h2>
+                        <div class="psection">
+                            <ul class="repo-list">
+                                <li>
+                                    <a href="https://github.com/moon-aii/moonai" target="_blank" rel="noopener noreferrer" class="repo-link">
+                                        <span class="repo-name">moonai</span>
+                                        <span class="repo-desc">Main repository with source code, documentation, and analysis tools</span>
+                                    </a>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                    
+                    <div class="card grid-2" id="documents">
+                        <h2>Documents</h2>
+                        <ul class="doc-list psection">
+                            <li>
+                                <a href="documents/ProjectProposal.pdf" target="_blank" rel="noopener noreferrer">
+                                    <span class="doc-icon" aria-hidden="true">📄</span>
+                                    Project Proposal Report
+                                </a>
+                            </li>
+                            <li>
+                                <a href="documents/ProjectSpecification.pdf" target="_blank" rel="noopener noreferrer">
+                                    <span class="doc-icon" aria-hidden="true">📄</span>
+                                    Project Specification Report
+                                </a>
+                            </li>
+                            <li>
+                                <a href="documents/AnalysisReport.pdf" target="_blank" rel="noopener noreferrer">
+                                    <span class="doc-icon" aria-hidden="true">📄</span>
+                                    Analysis Report
+                                </a>
+                            </li>
+                            <li>
+                                <a href="documents/HighLevelDesignReport.pdf" target="_blank" rel="noopener noreferrer">
+                                    <span class="doc-icon" aria-hidden="true">📄</span>
+                                    High-Level Design Report
+                                </a>
+                            </li>
+                            <li>
+                                <a href="documents/Poster.pdf" target="_blank" rel="noopener noreferrer">
+                                    <span class="doc-icon" aria-hidden="true">🖼️</span>
+                                    Poster
+                                </a>
+                            </li>
                         </ul>
                     </div>
-                    <div class="psection">
-                        <h3>Simulation & Graphics</h3>
-                        <ul>
-                            <li>SFML (Simple and Fast Multimedia Library)</li>
-                        </ul>
+                    
+                    <div class="card grid-full">
+                        <h2>Motivation</h2>
+                        <div class="psection">
+                            <p>
+                                Modern artificial intelligence training often requires vast amounts of real-world data 
+                                and manually designed scenarios, which do not scale efficiently. MoonAI addresses this 
+                                limitation by providing autonomous, self-generating training environments for studying 
+                                evolutionary computation without external data dependencies.
+                            </p>
+                        </div>
                     </div>
-                    <div class="psection">
-                        <h3>AI & Compute</h3>
-                        <ul>
-                            <li>NVIDIA CUDA (GPU Acceleration)</li>
-                            <li>NEAT Algorithm</li>
-                        </ul>
+                    
+                    <div class="card grid-2">
+                        <h2>Objective</h2>
+                        <div class="psection">
+                            <p>
+                                Develop a robust simulation environment to research and optimize evolutionary algorithms. 
+                                By decoupling training from real-world data dependencies, we investigate how genetic 
+                                representations influence learning efficiency and adaptability in dynamic, complex environments.
+                            </p>
+                        </div>
                     </div>
-                    <div class="psection">
-                        <h3>Data Analysis</h3>
-                        <ul>
-                            <li>Pandas</li>
-                            <li>Matplotlib</li>
-                        </ul>
+                    
+                    <div class="card grid-2">
+                        <h2>Approach</h2>
+                        <div class="psection">
+                            <p>
+                                The system employs a high-fidelity predator-prey simulation to generate evolutionary and 
+                                genetic data. This synthetic ecosystem serves as a dynamic benchmark for evaluating 
+                                evolutionary computation techniques in adaptive behavior modeling.
+                            </p>
+                        </div>
                     </div>
-                    <div class="psection">
-                        <h3>Configuration & Tools</h3>
-                        <ul>
-                            <li>JSON / TOML / YAML</li>
-                            <li>Git & GitHub</li>
-                        </ul>
+                    
+                    <div class="card grid-full" id="details">
+                        <h2>Project Details</h2>
+                        <div class="details-grid psection">
+                            <div class="detail-item">
+                                <h3>Evolutionary Core</h3>
+                                <p>
+                                    MoonAI implements the NeuroEvolution of Augmenting Topologies (NEAT) algorithm to 
+                                    optimize agent behaviors. By evolving both neural network weights and topological 
+                                    structures, the system enables emergence of complex behavioral strategies through 
+                                    mutation, crossover, and speciation across successive generations.
+                                </p>
+                            </div>
+                            <div class="detail-item">
+                                <h3>Simulation Environment</h3>
+                                <p>
+                                    The simulation operates within a deterministic, time-stepped 2D world. This virtual 
+                                    ecosystem imposes selective pressures on agents—predators and prey—with configurable 
+                                    attributes including speed, vision, stamina, and reproduction rates, facilitating 
+                                    systematic algorithmic evaluation.
+                                </p>
+                            </div>
+                            <div class="detail-item">
+                                <h3>Heterogeneous Architecture</h3>
+                                <p>
+                                    To achieve high-performance execution, MoonAI employs a hybrid compute model. The CPU 
+                                    manages high-level control logic and physics updates, while massive parallelization via 
+                                    NVIDIA CUDA accelerates neural network inference and fitness evaluations for large 
+                                    agent populations.
+                                </p>
+                            </div>
+                            <div class="detail-item">
+                                <h3>Real-Time Analytics</h3>
+                                <p>
+                                    Researchers observe emergent behaviors through an SFML-based real-time visualization 
+                                    layer. The system concurrently logs extensive telemetry, including population metrics 
+                                    and genome histories, exporting structured data for rigorous offline analysis using 
+                                    Python-based tools.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="card grid-full" id="technologies">
+                        <h2>Technologies Used</h2>
+                        <div class="tech-grid psection">
+                            <div class="tech-category">
+                                <h3>Core Languages</h3>
+                                <ul class="tech-list">
+                                    <li><span class="tech-tag">C++17</span></li>
+                                    <li><span class="tech-tag">Python 3.10+</span></li>
+                                </ul>
+                            </div>
+                            <div class="tech-category">
+                                <h3>Simulation & Graphics</h3>
+                                <ul class="tech-list">
+                                    <li><span class="tech-tag">SFML 3.x</span></li>
+                                </ul>
+                            </div>
+                            <div class="tech-category">
+                                <h3>AI & Compute</h3>
+                                <ul class="tech-list">
+                                    <li><span class="tech-tag">NVIDIA CUDA 11.0+</span></li>
+                                    <li><span class="tech-tag">NEAT Algorithm</span></li>
+                                </ul>
+                            </div>
+                            <div class="tech-category">
+                                <h3>Data Analysis</h3>
+                                <ul class="tech-list">
+                                    <li><span class="tech-tag">Pandas</span></li>
+                                    <li><span class="tech-tag">Matplotlib</span></li>
+                                    <li><span class="tech-tag">NetworkX</span></li>
+                                </ul>
+                            </div>
+                            <div class="tech-category">
+                                <h3>Configuration & Tools</h3>
+                                <ul class="tech-list">
+                                    <li><span class="tech-tag">JSON</span></li>
+                                    <li><span class="tech-tag">CMake 3.21+</span></li>
+                                    <li><span class="tech-tag">Git</span></li>
+                                    <li><span class="tech-tag">just</span></li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="card grid-full faq-card">
+                        <h2>Frequently Asked Questions</h2>
+                        <div class="faq-list psection">
+                            <details class="faq-item">
+                                <summary>What is NEAT and why was it chosen?</summary>
+                                <p>
+                                    NEAT (NeuroEvolution of Augmenting Topologies) is a genetic algorithm for evolving 
+                                    artificial neural networks. It was chosen because it simultaneously evolves both the 
+                                    topology and weights of networks, allowing complex structures to emerge from simple 
+                                    beginnings without requiring manual architecture design.
+                                </p>
+                            </details>
+                            <details class="faq-item">
+                                <summary>Is CUDA required to run the simulation?</summary>
+                                <p>
+                                    No, CUDA is optional. The simulation includes a CPU fallback path that activates 
+                                    automatically when CUDA is unavailable. While GPU acceleration significantly improves 
+                                    performance for large populations, the simulation runs correctly on CPU-only systems.
+                                </p>
+                            </details>
+                            <details class="faq-item">
+                                <summary>What output data does the simulation generate?</summary>
+                                <p>
+                                    The simulation exports comprehensive metrics including per-generation statistics 
+                                    (population counts, fitness scores, species diversity), genome structures, and optional 
+                                    per-tick agent trajectories. All data is saved in CSV and JSON formats for analysis 
+                                    with the provided Python scripts.
+                                </p>
+                            </details>
+                            <details class="faq-item">
+                                <summary>How can I configure experiment parameters?</summary>
+                                <p>
+                                    All parameters are defined in JSON configuration files. The default configuration 
+                                    includes 40+ adjustable fields covering population sizes, mutation rates, NEAT 
+                                    parameters, and visualization settings. Custom configs can be specified at runtime 
+                                    without recompilation.
+                                </p>
+                            </details>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
+        </main>
+        
+        <button class="back-to-top" id="back-to-top" aria-label="Back to top">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M18 15l-6-6-6 6"/>
+            </svg>
+        </button>
+        
         <footer>
-            MoonAI Project • CMPE 491
+            <div class="container footer-content">
+                <div class="footer-main">
+                    <div class="footer-brand">
+                        <span class="brand-icon" aria-hidden="true">🌙</span>
+                        <span>MoonAI</span>
+                    </div>
+                    <p class="footer-affiliation">
+                        CMPE 491/492 Senior Design Project<br>
+                        TED University, Department of Computer Engineering
+                    </p>
+                </div>
+                <div class="footer-links">
+                    <a href="https://github.com/moon-aii/moonai" target="_blank" rel="noopener noreferrer" aria-label="GitHub Repository">
+                        <svg class="icon" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+                        </svg>
+                    </a>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <div class="container">
+                    <p>&copy; 2025 MoonAI Project Team. All rights reserved.</p>
+                </div>
+            </div>
         </footer>
+        
+        <script src="script.js"></script>
     </body>
 </html>
