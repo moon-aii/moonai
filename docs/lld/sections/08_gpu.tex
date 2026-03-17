@@ -47,6 +47,7 @@ Each agent $i$ is packed contiguously.  Figure~\ref{fig:csr} illustrates the lay
 \begin{figure}[H]
 \centering
 \small
+\resizebox{\textwidth}{!}{%
 \begin{tabular}{|c|c|c|c|c|c|c|}
 \hline
 \multicolumn{3}{|c|}{Agent 0} & \multicolumn{4}{c|}{Agent 1} \\
@@ -57,7 +58,8 @@ $n_0, n_1, \ldots$ & $e_0, e_1, \ldots$ & $w_0, w_1, \ldots$
 \texttt{node\_types} & \texttt{eval\_order} & \texttt{conn\_w}
 & \texttt{node\_types} & \texttt{eval\_order} & \texttt{conn\_w} & \\
 \hline
-\end{tabular}
+\end{tabular}%
+}
 \caption{CSR flat layout: agents packed consecutively, offsets stored in
 \texttt{GpuNetDesc}.}
 \label{fig:csr}
