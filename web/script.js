@@ -12,6 +12,12 @@
     
     const STORAGE_KEY = 'moonai-theme';
     
+    // Scroll velocity tracking
+    let lastScrollY = 0;
+    let scrollVelocity = 0;
+    let velocityTimeout = null;
+    const FAST_SCROLL_THRESHOLD = 800; // pixels per second
+    
     function getInitialTheme() {
         const stored = localStorage.getItem(STORAGE_KEY);
         if (stored) {
@@ -105,6 +111,23 @@
         }
     }
     
+    function updateScrollVelocity() {
+        const currentScrollY = window.scrollY;
+        const delta = Math.abs(currentScrollY - lastScrollY);
+        scrollVelocity = delta;
+        lastScrollY = currentScrollY;
+        
+        // Reset velocity after a short delay
+        clearTimeout(velocityTimeout);
+        velocityTimeout = setTimeout(() => {
+            scrollVelocity = 0;
+        }, 100);
+    }
+    
+    function isFastScrolling() {
+        return scrollVelocity > FAST_SCROLL_THRESHOLD;
+    }
+    
     function observeCards() {
         if (prefersReducedMotion || !('IntersectionObserver' in window)) {
             return;
@@ -113,22 +136,33 @@
         const cards = document.querySelectorAll('.card');
         
         const observer = new IntersectionObserver((entries) => {
+            // Skip animations if user is scrolling fast
+            if (isFastScrolling()) {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        // Show immediately without animation
+                        entry.target.classList.add('card-visible');
+                        observer.unobserve(entry.target);
+                    }
+                });
+                return;
+            }
+            
             entries.forEach(entry => {
                 if (entry.isIntersecting) {
-                    entry.target.style.opacity = '1';
-                    entry.target.style.transform = 'translateY(0)';
+                    // Use CSS class instead of inline styles for better performance
+                    entry.target.classList.add('card-visible');
                     observer.unobserve(entry.target);
                 }
             });
         }, {
-            threshold: 0.1,
-            rootMargin: '0px 0px -50px 0px'
+            threshold: 0.3, // Increased from 0.1 to 0.3 for less frequent triggers
+            rootMargin: '0px 0px -20px 0px' // Reduced margin
         });
         
-        cards.forEach((card, index) => {
-            card.style.opacity = '0';
-            card.style.transform = 'translateY(20px)';
-            card.style.transition = `opacity 0.5s ease ${index * 0.05}s, transform 0.5s ease ${index * 0.05}s`;
+        cards.forEach((card) => {
+            // Start with animation class, no staggered delays
+            card.classList.add('card-animate');
             observer.observe(card);
         });
     }
@@ -161,6 +195,9 @@
                 });
                 ticking = true;
             }
+            
+            // Track scroll velocity separately (not in rAF)
+            updateScrollVelocity();
         }
         
         window.addEventListener('scroll', onScroll, { passive: true });
@@ -169,7 +206,10 @@
         updateBackToTop();
         updateActiveNavLink();
         
-        setTimeout(observeCards, 100);
+        // Initialize card observer after a short delay to not block initial render
+        requestIdleCallback ? 
+            requestIdleCallback(observeCards, { timeout: 500 }) :
+            setTimeout(observeCards, 100);
     }
     
     if (document.readyState === 'loading') {
