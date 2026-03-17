@@ -1,8 +1,9 @@
 \documentclass[12pt,a4paper]{article}
 
-% ── Encoding & fonts ────────────────────────────────────────────────────────
-\usepackage[T1]{fontenc}
-\usepackage[utf8]{inputenc}
+% ── Fonts (XeLaTeX) ──────────────────────────────────────────────────────────
+\usepackage{fontspec}
+\setmainfont{Times New Roman}
+\setmonofont{Courier New}
 \usepackage[expansion=false]{microtype}
 
 % ── Page layout ─────────────────────────────────────────────────────────────
@@ -12,7 +13,7 @@
 % ── Graphics & color ────────────────────────────────────────────────────────
 \usepackage{graphicx}
 \usepackage[table,xcdraw]{xcolor}
-\graphicspath{{img/}}
+\graphicspath{{img/}{img/generated/}}
 
 % ── Tables ──────────────────────────────────────────────────────────────────
 \usepackage{booktabs}
@@ -45,7 +46,7 @@
 \usepackage{titlesec}
 \titleformat{\section}{\large\bfseries}{}{0em}{\thesection\quad}
 \titleformat{\subsection}{\normalsize\bfseries}{}{0em}{\thesubsection\quad}
-\titleformat{\subsubsection}{\normalsize\itshape\bfseries}{}{0em}{\thesubsubsection\quad}
+\titleformat{\subsubsection}{\normalsize\bfseries}{}{0em}{\thesubsubsection\quad}
 
 % ── List formatting ──────────────────────────────────────────────────────────
 \usepackage{enumitem}
@@ -63,6 +64,7 @@
 
 % ── Header / footer ──────────────────────────────────────────────────────────
 \usepackage{fancyhdr}
+\setlength{\headheight}{14pt}
 \pagestyle{fancy}
 \fancyhf{}
 \lhead{\small MoonAI — Low-Level Design Report}
@@ -76,7 +78,9 @@
 % ── Title page ────────────────────────────────────────────────────────────────
 \begin{titlepage}
   \centering
-  \vspace*{2cm}
+  \vspace*{1cm}
+  \includegraphics[width=4cm]{img/tedu_logo}
+  \vspace{1cm}
   {\Huge\bfseries MoonAI\par}
   \vspace{0.4cm}
   {\Large Low-Level Design Report\par}
@@ -94,9 +98,6 @@
   \vspace{1.2cm}
   {\large Spring 2026\par}
   \vfill
-  \rule{\textwidth}{0.4pt}
-  \vspace{0.3cm}
-  {\small Document version 1.0 — Prepared in accordance with IEEE~Std~1016-2009}
 \end{titlepage}
 
 % ── Table of contents ─────────────────────────────────────────────────────────
