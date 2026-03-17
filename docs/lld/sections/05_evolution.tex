@@ -53,25 +53,25 @@ Encodes a variable-topology neural network as gene lists.
 \begin{table}[H]
 \centering\small
 \caption{\texttt{Genome} interface}
-\begin{tabularx}{\textwidth}{@{}llX@{}}
+\begin{tabularx}{\textwidth}{@{}lX@{}}
 \toprule
-\textbf{Method} & \textbf{Return} & \textbf{Description} \\
+\textbf{Method} & \textbf{Description} \\
 \midrule
-\texttt{Genome(num\_inputs, num\_outputs)} & — & Create minimal genome (inputs + bias + outputs; no hidden) \\
-\texttt{add\_node(node)} & \texttt{void} & Append \texttt{NodeGene} \\
-\texttt{add\_connection(conn)} & \texttt{void} & Append \texttt{ConnectionGene} \\
-\texttt{has\_connection(from, to)} & \texttt{bool} & Check structural connectivity \\
-\texttt{has\_node(id)} & \texttt{bool} & Membership test \\
-\texttt{max\_node\_id()} & \texttt{uint32\_t} & Largest node id in genome \\
-\texttt{nodes()} & \texttt{const/mutable ref} & Gene list accessors \\
-\texttt{connections()} & \texttt{const/mutable ref} & Gene list accessors \\
-\texttt{fitness() / set\_fitness(f)} & \texttt{float} & Raw fitness from evaluation \\
-\texttt{adjusted\_fitness() / set\_adjusted\_fitness(f)} & \texttt{float} & Shared fitness (divided by species size) \\
-\texttt{num\_inputs(), num\_outputs()} & \texttt{int} & Topology constants \\
-\texttt{complexity()} & \texttt{int} & \texttt{nodes\_.size() + enabled\_connection\_count} \\
-\texttt{compatibility\_distance(a,b,c1,c2,c3)} & \texttt{float} & Static; compatibility metric (see below) \\
-\texttt{to\_json()} & \texttt{string} & Serialize to JSON string \\
-\texttt{from\_json(str)} & \texttt{Genome} & Static factory from JSON string \\
+\texttt{Genome(num\_inputs, num\_outputs)} & Create minimal genome (inputs + bias + outputs; no hidden) \\
+\texttt{add\_node(node)} & Append \texttt{NodeGene} \\
+\texttt{add\_connection(conn)} & Append \texttt{ConnectionGene} \\
+\texttt{has\_connection(from, to)} & Check structural connectivity \\
+\texttt{has\_node(id)} & Membership test \\
+\texttt{max\_node\_id()} & Largest node id in genome \\
+\texttt{nodes()} & Gene list accessors \\
+\texttt{connections()} & Gene list accessors \\
+\texttt{fitness() / set\_fitness(f)} & Raw fitness from evaluation \\
+\texttt{adjusted\_fitness() / set\_adjusted\_fitness(f)} & Shared fitness (divided by species size) \\
+\texttt{num\_inputs(), num\_outputs()} & Topology constants \\
+\texttt{complexity()} & \texttt{nodes\_.size() + enabled\_connection\_count} \\
+\texttt{compatibility\_distance(a,b,c1,c2,c3)} & Static; compatibility metric (see below) \\
+\texttt{to\_json()} & Serialize to JSON string \\
+\texttt{from\_json(str)} & Static factory from JSON string \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -153,19 +153,19 @@ enum class ActivationFn { Sigmoid, Tanh, ReLU };
 \begin{table}[H]
 \centering\small
 \caption{\texttt{NeuralNetwork} interface}
-\begin{tabularx}{\textwidth}{@{}llX@{}}
+\begin{tabularx}{\textwidth}{@{}lX@{}}
 \toprule
-\textbf{Method} & \textbf{Return} & \textbf{Description} \\
+\textbf{Method} & \textbf{Description} \\
 \midrule
-\texttt{NeuralNetwork(genome, activation\_fn)} & — & Construct; run build algorithm \\
-\texttt{activate(inputs)} & \texttt{vector<float>} & Forward pass; returns output activations \\
-\texttt{num\_nodes(), num\_connections()} & \texttt{int const} & Topology counts \\
-\texttt{num\_inputs(), num\_outputs()} & \texttt{int const} & I/O sizes \\
-\texttt{raw\_nodes()} & \texttt{const vector<Node>\&} & All node descriptors \\
-\texttt{eval\_order()} & \texttt{const vector<uint32\_t>\&} & Activation sequence (for GPU packing) \\
-\texttt{incoming()} & \texttt{const vector<vector<pair<int,float>>>\&} & Precomputed adjacency \\
-\texttt{node\_index\_map()} & \texttt{const unordered\_map<uint32\_t,int>\&} & node\_id → value index \\
-\texttt{last\_activations()} & \texttt{const vector<float>\&} & Activations from most recent \texttt{activate()} call \\
+\texttt{NeuralNetwork(genome, activation\_fn)} & Construct; run build algorithm \\
+\texttt{activate(inputs)} & Forward pass; returns output activations \\
+\texttt{num\_nodes(), num\_connections()} & Topology counts \\
+\texttt{num\_inputs(), num\_outputs()} & I/O sizes \\
+\texttt{raw\_nodes()} & All node descriptors \\
+\texttt{eval\_order()} & Activation sequence (for GPU packing) \\
+\texttt{incoming()} & Precomputed adjacency \\
+\texttt{node\_index\_map()} & node\_id → value index \\
+\texttt{last\_activations()} & Activations from most recent \texttt{activate()} call \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -179,18 +179,18 @@ fitness for fair reproduction allocation.
 \begin{table}[H]
 \centering\small
 \caption{\texttt{Species} private members}
-\begin{tabularx}{\textwidth}{@{}llX@{}}
+\begin{tabularx}{\textwidth}{@{}lX@{}}
 \toprule
-\textbf{Member} & \textbf{Type} & \textbf{Description} \\
+\textbf{Member} & \textbf{Description} \\
 \midrule
-\texttt{id\_}                           & \texttt{int}            & Unique species id \\
-\texttt{representative\_}               & \texttt{Genome}         & Reference genome for compatibility tests \\
-\texttt{members\_}                      & \texttt{vector<Genome*>}& Non-owning pointers into \texttt{EvolutionManager::population\_} \\
-\texttt{average\_fitness\_}             & \texttt{float}          & Mean raw fitness of members \\
-\texttt{total\_adjusted\_fitness\_}     & \texttt{float}          & Sum of adjusted fitnesses \\
-\texttt{best\_fitness\_ever\_}          & \texttt{float}          & Highest fitness seen since species creation \\
-\texttt{generations\_without\_improvement\_} & \texttt{int}       & Incremented each generation max fitness does not improve \\
-\texttt{fitness\_history\_}             & \texttt{deque<float>}   & Rolling history of average fitness \\
+\texttt{id\_}                           & Unique species id \\
+\texttt{representative\_}               & Reference genome for compatibility tests \\
+\texttt{members\_}                      & Non-owning pointers into \texttt{EvolutionManager::population\_} \\
+\texttt{average\_fitness\_}             & Mean raw fitness of members \\
+\texttt{total\_adjusted\_fitness\_}     & Sum of adjusted fitnesses \\
+\texttt{best\_fitness\_ever\_}          & Highest fitness seen since species creation \\
+\texttt{generations\_without\_improvement\_} & Incremented each generation max fitness does not improve \\
+\texttt{fitness\_history\_}             & Rolling history of average fitness \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -222,16 +222,16 @@ crossover alignment.
 \begin{table}[H]
 \centering\small
 \caption{\texttt{InnovationTracker} interface}
-\begin{tabularx}{\textwidth}{@{}llX@{}}
+\begin{tabularx}{\textwidth}{@{}lX@{}}
 \toprule
-\textbf{Method} & \textbf{Return} & \textbf{Description} \\
+\textbf{Method} & \textbf{Description} \\
 \midrule
-\texttt{init\_from\_population(population)} & \texttt{void} & Scan all genomes; set counters to max innovation / node ids found \\
-\texttt{get\_innovation(in, out)} & \texttt{uint32\_t} & Look up or create innovation for edge (in→out) within this generation \\
-\texttt{next\_node\_id()} & \texttt{uint32\_t} & Return and increment the global node counter \\
-\texttt{reset\_generation()} & \texttt{void} & Clear \texttt{generation\_innovations\_} (called at start of \texttt{evolve()}) \\
-\texttt{innovation\_count(), node\_count()} & \texttt{uint32\_t const} & Current counter values \\
-\texttt{set\_counters(innov, node)} & \texttt{void} & Restore from checkpoint \\
+\texttt{init\_from\_population(population)} & Scan all genomes; set counters to max innovation / node ids found \\
+\texttt{get\_innovation(in, out)} & Look up or create innovation for edge (in→out) within this generation \\
+\texttt{next\_node\_id()} & Return and increment the global node counter \\
+\texttt{reset\_generation()} & Clear \texttt{generation\_innovations\_} (called at start of \texttt{evolve()}) \\
+\texttt{innovation\_count(), node\_count()} & Current counter values \\
+\texttt{set\_counters(innov, node)} & Restore from checkpoint \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -300,21 +300,21 @@ the evaluate → compute\_fitness → evolve cycle.
 \begin{table}[H]
 \centering\small
 \caption{\texttt{EvolutionManager} private members}
-\begin{tabularx}{\textwidth}{@{}llX@{}}
+\begin{tabularx}{\textwidth}{@{}lX@{}}
 \toprule
-\textbf{Member} & \textbf{Type} & \textbf{Description} \\
+\textbf{Member} & \textbf{Description} \\
 \midrule
-\texttt{config\_}     & \texttt{SimulationConfig}                    & Run parameters \\
-\texttt{rng\_}        & \texttt{Random\&}                            & Shared RNG (owned by main) \\
-\texttt{tracker\_}    & \texttt{InnovationTracker}                   & Innovation numbering \\
-\texttt{population\_} & \texttt{vector<Genome>}                      & Full population by value \\
-\texttt{species\_}    & \texttt{vector<Species>}                     & Current species list \\
-\texttt{networks\_}   & \texttt{vector<unique\_ptr<NeuralNetwork>>}  & One NN per genome \\
-\texttt{generation\_} & \texttt{int}                                 & Current generation index \\
-\texttt{num\_inputs\_, num\_outputs\_} & \texttt{int}             & Determined at \texttt{initialize()} \\
-\texttt{use\_gpu\_}   & \texttt{bool}                                & GPU inference enabled \\
-\texttt{gpu\_batch\_} & \texttt{unique\_ptr<GpuBatch>}               & Device memory (CUDA build only) \\
-\texttt{tick\_callback\_} & \texttt{TickCallback}                    & Optional per-tick hook \\
+\texttt{config\_}     & Run parameters \\
+\texttt{rng\_}        & Shared RNG (owned by main) \\
+\texttt{tracker\_}    & Innovation numbering \\
+\texttt{population\_} & Full population by value \\
+\texttt{species\_}    & Current species list \\
+\texttt{networks\_}   & One NN per genome \\
+\texttt{generation\_} & Current generation index \\
+\texttt{num\_inputs\_, num\_outputs\_} & Determined at \texttt{initialize()} \\
+\texttt{use\_gpu\_}   & GPU inference enabled \\
+\texttt{gpu\_batch\_} & Device memory (CUDA build only) \\
+\texttt{tick\_callback\_} & Optional per-tick hook \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -322,25 +322,25 @@ the evaluate → compute\_fitness → evolve cycle.
 \begin{table}[H]
 \centering\small
 \caption{\texttt{EvolutionManager} public interface}
-\begin{tabularx}{\textwidth}{@{}llX@{}}
+\begin{tabularx}{\textwidth}{@{}lX@{}}
 \toprule
-\textbf{Method} & \textbf{Return} & \textbf{Description} \\
+\textbf{Method} & \textbf{Description} \\
 \midrule
-\texttt{EvolutionManager(config, rng)} & — & Store config and RNG reference \\
-\texttt{initialize(num\_inputs, num\_outputs)} & \texttt{void} & Create minimal genomes; build networks \\
-\texttt{evaluate\_generation(sim)} & \texttt{void} & Run one generation (see below) \\
-\texttt{evolve()} & \texttt{void} & Speciate → remove stagnant → reproduce \\
-\texttt{compute\_fitness(sim)} & \texttt{void} & Write fitness into each genome (see below) \\
-\texttt{population()} & \texttt{const/mutable ref} & Access genome vector \\
-\texttt{generation()} & \texttt{int const} & Current generation number \\
-\texttt{species()} & \texttt{const vector<Species>\&} & Current species list \\
-\texttt{networks()} & \texttt{const vector<unique\_ptr<NN>>\&} & Built network list \\
-\texttt{set\_tick\_callback(cb)} & \texttt{void} & Install \texttt{TickCallback} \\
-\texttt{clear\_tick\_callback()} & \texttt{void} & Remove callback \\
-\texttt{enable\_gpu(flag)} & \texttt{void} & Toggle GPU inference path \\
-\texttt{gpu\_enabled()} & \texttt{bool const} & Query current GPU state \\
-\texttt{save\_checkpoint(path, rng)} & \texttt{void} & Serialize to JSON (see below) \\
-\texttt{load\_checkpoint(path, rng)} & \texttt{bool} & Restore from checkpoint; false if not found \\
+\texttt{EvolutionManager(config, rng)} & Store config and RNG reference \\
+\texttt{initialize(num\_inputs, num\_outputs)} & Create minimal genomes; build networks \\
+\texttt{evaluate\_generation(sim)} & Run one generation (see below) \\
+\texttt{evolve()} & Speciate → remove stagnant → reproduce \\
+\texttt{compute\_fitness(sim)} & Write fitness into each genome (see below) \\
+\texttt{population()} & Access genome vector \\
+\texttt{generation()} & Current generation number \\
+\texttt{species()} & Current species list \\
+\texttt{networks()} & Built network list \\
+\texttt{set\_tick\_callback(cb)} & Install \texttt{TickCallback} \\
+\texttt{clear\_tick\_callback()} & Remove callback \\
+\texttt{enable\_gpu(flag)} & Toggle GPU inference path \\
+\texttt{gpu\_enabled()} & Query current GPU state \\
+\texttt{save\_checkpoint(path, rng)} & Serialize to JSON (see below) \\
+\texttt{load\_checkpoint(path, rng)} & Restore from checkpoint; false if not found \\
 \bottomrule
 \end{tabularx}
 \end{table}

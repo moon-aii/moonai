@@ -24,18 +24,18 @@ packed device arrays.
 \begin{table}[H]
 \centering\small
 \caption{\texttt{GpuNetDesc} fields}
-\begin{tabularx}{\textwidth}{@{}llX@{}}
+\begin{tabularx}{\textwidth}{@{}lX@{}}
 \toprule
-\textbf{Field} & \textbf{Type} & \textbf{Description} \\
+\textbf{Field} & \textbf{Description} \\
 \midrule
-\texttt{num\_nodes}  & \texttt{int} & Total node count for this agent \\
-\texttt{num\_eval}   & \texttt{int} & Length of the evaluation-order slice \\
-\texttt{num\_inputs} & \texttt{int} & Number of input nodes \\
-\texttt{num\_outputs}& \texttt{int} & Number of output nodes \\
-\texttt{node\_off}   & \texttt{int} & Start index in \texttt{d\_node\_types[]} \\
-\texttt{eval\_off}   & \texttt{int} & Start index in \texttt{d\_eval\_order[]} \\
-\texttt{conn\_off}   & \texttt{int} & Start index in \texttt{d\_conn\_ptr[]} / \texttt{d\_conn\_w[]} \\
-\texttt{out\_off}    & \texttt{int} & Start index in \texttt{d\_out\_indices[]} \\
+\texttt{num\_nodes}  & Total node count for this agent \\
+\texttt{num\_eval}   & Length of the evaluation-order slice \\
+\texttt{num\_inputs} & Number of input nodes \\
+\texttt{num\_outputs}& Number of output nodes \\
+\texttt{node\_off}   & Start index in \texttt{d\_node\_types[]} \\
+\texttt{eval\_off}   & Start index in \texttt{d\_eval\_order[]} \\
+\texttt{conn\_off}   & Start index in \texttt{d\_conn\_ptr[]} / \texttt{d\_conn\_w[]} \\
+\texttt{out\_off}    & Start index in \texttt{d\_out\_indices[]} \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -73,16 +73,16 @@ $\texttt{MAX\_NODES}^2$ weight matrix would waste up to 10× VRAM compared with 
 \begin{table}[H]
 \centering\small
 \caption{\texttt{GpuAgentStats} fields (per-agent stats for fitness evaluation on device)}
-\begin{tabularx}{\textwidth}{@{}llX@{}}
+\begin{tabularx}{\textwidth}{@{}lX@{}}
 \toprule
-\textbf{Field} & \textbf{Type} & \textbf{Description} \\
+\textbf{Field} & \textbf{Description} \\
 \midrule
-\texttt{age\_ratio}      & \texttt{float} & \texttt{age / generation\_ticks} \\
-\texttt{kills\_or\_food} & \texttt{float} & Kill count (predator) or food eaten (prey) \\
-\texttt{energy\_ratio}   & \texttt{float} & \texttt{energy / initial\_energy} \\
-\texttt{alive\_bonus}    & \texttt{float} & 1.0 if still alive at generation end, else 0.0 \\
-\texttt{dist\_ratio}     & \texttt{float} & \texttt{distance\_traveled / max\_possible\_dist} \\
-\texttt{complexity}      & \texttt{float} & \texttt{Genome::complexity()} as float \\
+\texttt{age\_ratio}      & \texttt{age / generation\_ticks} \\
+\texttt{kills\_or\_food} & Kill count (predator) or food eaten (prey) \\
+\texttt{energy\_ratio}   & \texttt{energy / initial\_energy} \\
+\texttt{alive\_bonus}    & 1.0 if still alive at generation end, else 0.0 \\
+\texttt{dist\_ratio}     & \texttt{distance\_traveled / max\_possible\_dist} \\
+\texttt{complexity}      & \texttt{Genome::complexity()} as float \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -112,19 +112,19 @@ Host-side staging buffer assembled by \texttt{EvolutionManager} before
 \begin{table}[H]
 \centering\small
 \caption{\texttt{GpuNetworkData} fields}
-\begin{tabularx}{\textwidth}{@{}llX@{}}
+\begin{tabularx}{\textwidth}{@{}lX@{}}
 \toprule
-\textbf{Field} & \textbf{Type} & \textbf{Description} \\
+\textbf{Field} & \textbf{Description} \\
 \midrule
-\texttt{descs}           & \texttt{vector<GpuNetDesc>} & One descriptor per agent \\
-\texttt{node\_types}     & \texttt{vector<uint8\_t>}   & Packed node type bytes (all agents) \\
-\texttt{eval\_order}     & \texttt{vector<int>}        & Topological order indices (all agents) \\
-\texttt{conn\_ptr}       & \texttt{vector<int>}        & CSR row pointer (start of each node's connections) \\
-\texttt{in\_count}       & \texttt{vector<int>}        & Number of incoming connections per node \\
-\texttt{conn\_from}      & \texttt{vector<int>}        & Source local-index for each connection \\
-\texttt{conn\_w}         & \texttt{vector<float>}      & Weight for each connection \\
-\texttt{out\_indices}    & \texttt{vector<int>}        & Local indices of output nodes \\
-\texttt{activation\_fn\_id} & \texttt{int}             & 0=Sigmoid, 1=Tanh, 2=ReLU \\
+\texttt{descs}           & One descriptor per agent \\
+\texttt{node\_types}     & Packed node type bytes (all agents) \\
+\texttt{eval\_order}     & Topological order indices (all agents) \\
+\texttt{conn\_ptr}       & CSR row pointer (start of each node's connections) \\
+\texttt{in\_count}       & Number of incoming connections per node \\
+\texttt{conn\_from}      & Source local-index for each connection \\
+\texttt{conn\_w}         & Weight for each connection \\
+\texttt{out\_indices}    & Local indices of output nodes \\
+\texttt{activation\_fn\_id} & 0=Sigmoid, 1=Tanh, 2=ReLU \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -143,26 +143,26 @@ GpuBatch(int num_agents, int num_inputs, int num_outputs);
 \begin{table}[H]
 \centering\small
 \caption{\texttt{GpuBatch} public interface}
-\begin{tabularx}{\textwidth}{@{}llX@{}}
+\begin{tabularx}{\textwidth}{@{}lX@{}}
 \toprule
-\textbf{Method} & \textbf{Return} & \textbf{Description} \\
+\textbf{Method} & \textbf{Description} \\
 \midrule
-\texttt{upload\_network\_data(data)} & \texttt{void} &
+\texttt{upload\_network\_data(data)} &
   \texttt{cudaMemcpy} all fields of \texttt{GpuNetworkData} to device arrays.
   Called once per generation (topology changes with \texttt{evolve()}). \\
-\texttt{pack\_inputs(flat\_inputs)} & \texttt{void} &
+\texttt{pack\_inputs(flat\_inputs)} &
   Copy flat $N_{\mathit{agents}} \times N_{\mathit{inputs}}$ input matrix to
   \texttt{d\_inputs\_}. \\
-\texttt{unpack\_outputs(flat\_out)} & \texttt{void const} &
+\texttt{unpack\_outputs(flat\_out)} &
   Copy $N_{\mathit{agents}} \times N_{\mathit{outputs}}$ result from
   \texttt{d\_outputs\_} to host. \\
-\texttt{pack\_agent\_stats(stats)} & \texttt{void} &
+\texttt{pack\_agent\_stats(stats)} &
   Upload \texttt{vector<GpuAgentStats>} to \texttt{d\_stats\_}. \\
-\texttt{unpack\_fitness(fitness\_out)} & \texttt{void const} &
+\texttt{unpack\_fitness(fitness\_out)} &
   Download fitness results from \texttt{d\_fitness\_}. \\
-\texttt{d\_descs(), d\_node\_vals(), \ldots} & device ptr & Raw device pointer accessors (passed to kernel launch) \\
-\texttt{num\_agents(), num\_inputs(), num\_outputs()} & \texttt{int const} & Dimension queries \\
-\texttt{activation\_fn\_id()} & \texttt{int const} & Activation function id for kernel \\
+\texttt{d\_descs(), d\_node\_vals(), \ldots} & Raw device pointer accessors (passed to kernel launch) \\
+\texttt{num\_agents(), num\_inputs(), num\_outputs()} & Dimension queries \\
+\texttt{activation\_fn\_id()} & Activation function id for kernel \\
 \bottomrule
 \end{tabularx}
 \end{table}

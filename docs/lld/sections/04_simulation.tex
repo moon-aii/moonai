@@ -54,28 +54,28 @@ accounting.
 \begin{table}[H]
 \centering\small
 \caption{\texttt{Agent} public interface}
-\begin{tabularx}{\textwidth}{@{}llX@{}}
+\begin{tabularx}{\textwidth}{@{}lX@{}}
 \toprule
-\textbf{Method} & \textbf{Qualifiers} & \textbf{Description} \\
+\textbf{Method} & \textbf{Description} \\
 \midrule
-\texttt{Agent(id,type,position,speed,vision,energy)} & — & Construct with initial state \\
-\texttt{virtual update(dt: float)} & \texttt{= 0} & Per-tick update hook (implemented by subclass) \\
-\texttt{apply\_movement(direction: Vec2, dt: float)} & — & Move by \texttt{direction * speed * dt}; accumulate \texttt{distance\_traveled\_} \\
+\texttt{Agent(id,type,position,speed,vision,energy)} & Construct with initial state \\
+\texttt{virtual update(dt: float)} & Per-tick update hook (implemented by subclass) \\
+\texttt{apply\_movement(direction: Vec2, dt: float)} & Move by \texttt{direction * speed * dt}; accumulate \texttt{distance\_traveled\_} \\
 \midrule
-\texttt{id(), type(), position(), velocity()} & \texttt{const} & State accessors \\
-\texttt{speed(), vision\_range(), energy()} & \texttt{const} & Parameter accessors \\
-\texttt{age(), alive(), fitness()} & \texttt{const} & Lifecycle accessors \\
-\texttt{kills(), food\_eaten(), distance\_traveled()} & \texttt{const} & Fitness-input accessors \\
-\texttt{is\_dead()} & \texttt{const} & \texttt{true} when not alive \\
+\texttt{id(), type(), position(), velocity()} & State accessors (const) \\
+\texttt{speed(), vision\_range(), energy()} & Parameter accessors (const) \\
+\texttt{age(), alive(), fitness()} & Lifecycle accessors (const) \\
+\texttt{kills(), food\_eaten(), distance\_traveled()} & Fitness-input accessors (const) \\
+\texttt{is\_dead()} & \texttt{true} when not alive (const) \\
 \midrule
-\texttt{set\_position(pos: Vec2)} & — & Teleport (used by boundary enforcement) \\
-\texttt{set\_alive(alive: bool)} & — & Mark dead on kill or starvation \\
-\texttt{add\_fitness(amount: float)} & — & Accumulate fitness \\
-\texttt{add\_energy(amount: float)} & — & Add energy (food, kill) \\
-\texttt{drain\_energy(amount: float)} & — & Subtract energy (per-tick drain) \\
-\texttt{increment\_age()} & — & Called once per tick by \texttt{SimulationManager} \\
-\texttt{add\_kill()} & — & Increment kill counter \\
-\texttt{add\_food()} & — & Increment food counter \\
+\texttt{set\_position(pos: Vec2)} & Teleport (used by boundary enforcement) \\
+\texttt{set\_alive(alive: bool)} & Mark dead on kill or starvation \\
+\texttt{add\_fitness(amount: float)} & Accumulate fitness \\
+\texttt{add\_energy(amount: float)} & Add energy (food, kill) \\
+\texttt{drain\_energy(amount: float)} & Subtract energy (per-tick drain) \\
+\texttt{increment\_age()} & Called once per tick by \texttt{SimulationManager} \\
+\texttt{add\_kill()} & Increment kill counter \\
+\texttt{add\_food()} & Increment food counter \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -130,20 +130,21 @@ Owns the world boundaries and the food array.  All geometry is expressed in pixe
 \begin{table}[H]
 \centering\small
 \caption{\texttt{Environment} interface}
-\begin{tabularx}{\textwidth}{@{}lllX@{}}
+\begin{tabularx}{\textwidth}{@{}lX@{}}
 \toprule
-\textbf{Method} & \textbf{Param types} & \textbf{Return} & \textbf{Description} \\
+\textbf{Method} & \textbf{Description} \\
 \midrule
-\texttt{Environment(config)} & \texttt{const SimulationConfig\&} & — & Store dimensions and mode \\
-\texttt{width(), height()} & — & \texttt{int} & World size in pixels \\
-\texttt{boundary\_mode()} & — & \texttt{BoundaryMode} & Clamp or Wrap \\
-\texttt{apply\_boundary(pos)} & \texttt{Vec2} & \texttt{Vec2} &
+\texttt{Environment(config: const SimulationConfig\&)} & Store dimensions and mode \\
+\texttt{width() → int} & World size in pixels \\
+\texttt{height() → int} & World size in pixels \\
+\texttt{boundary\_mode() → BoundaryMode} & Clamp or Wrap \\
+\texttt{apply\_boundary(pos: Vec2) → Vec2} &
   Clamp: $x \leftarrow \text{clamp}(x, 0, w)$;
   Wrap: $x \leftarrow \text{fmod}(x+w, w)$ \\
-\texttt{initialize\_food(rng, count)} & \texttt{Random\&, int} & \texttt{void} & Scatter \emph{count} food items uniformly \\
-\texttt{tick\_food(rng, rate)} & \texttt{Random\&, float} & \texttt{void} & Each inactive food respawns with probability \emph{rate} \\
-\texttt{try\_eat\_food(position, range)} & \texttt{Vec2, float} & \texttt{bool} & Find nearest active food within \emph{range}; deactivate and return \texttt{true} \\
-\texttt{food()} & — & \texttt{const vector<Food>\&} & Immutable food list for rendering/sensors \\
+\texttt{initialize\_food(rng: Random\&, count: int)} & Scatter \emph{count} food items uniformly \\
+\texttt{tick\_food(rng: Random\&, rate: float)} & Each inactive food respawns with probability \emph{rate} \\
+\texttt{try\_eat\_food(position: Vec2, range: float) → bool} & Find nearest active food within \emph{range}; deactivate and return \texttt{true} \\
+\texttt{food() → const vector<Food>\&} & Immutable food list for rendering/sensors \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -160,25 +161,25 @@ as input to each agent's neural network.
 \begin{table}[H]
 \centering\small
 \caption{\texttt{SensorInput} fields}
-\begin{tabularx}{\textwidth}{@{}llX@{}}
+\begin{tabularx}{\textwidth}{@{}lX@{}}
 \toprule
-\textbf{Field} & \textbf{Normalized range} & \textbf{Physical meaning} \\
+\textbf{Field} & \textbf{Description} \\
 \midrule
-\texttt{nearest\_predator\_dist}    & $[-1, 1]$ & $-1$ = not visible; else $1 - d/\mathit{range}$ \\
-\texttt{nearest\_predator\_angle}   & $[-1, 1]$ & $\mathit{atan2}(\Delta y, \Delta x)/\pi$ \\
-\texttt{nearest\_prey\_dist}        & $[-1, 1]$ & Same encoding as predator dist \\
-\texttt{nearest\_prey\_angle}       & $[-1, 1]$ & Same encoding as predator angle \\
-\texttt{nearest\_food\_dist}        & $[-1, 1]$ & For prey agents; $-1$ if none visible \\
-\texttt{nearest\_food\_angle}       & $[-1, 1]$ & Direction to nearest food \\
-\texttt{energy\_level}              & $[0, 1]$ & \texttt{energy / initial\_energy} \\
-\texttt{speed\_x}                   & $[-1, 1]$ & Current velocity x / max speed \\
-\texttt{speed\_y}                   & $[-1, 1]$ & Current velocity y / max speed \\
-\texttt{local\_predator\_density}   & $[0, 1]$ & Fraction of cells in vision range containing predators \\
-\texttt{local\_prey\_density}       & $[0, 1]$ & Fraction of cells in vision range containing prey \\
-\texttt{wall\_left}                 & $[0, 1]$ & Distance to left boundary / world width (Clamp mode) \\
-\texttt{wall\_right}                & $[0, 1]$ & Distance to right boundary / world width \\
-\texttt{wall\_top}                  & $[0, 1]$ & Distance to top boundary / world height \\
-\texttt{wall\_bottom}               & $[0, 1]$ & Distance to bottom boundary / world height \\
+\texttt{nearest\_predator\_dist}    & $[-1, 1]$; $-1$ = not visible; else $1 - d/\mathit{range}$ \\
+\texttt{nearest\_predator\_angle}   & $[-1, 1]$; $\mathit{atan2}(\Delta y, \Delta x)/\pi$ \\
+\texttt{nearest\_prey\_dist}        & $[-1, 1]$; same encoding as predator dist \\
+\texttt{nearest\_prey\_angle}       & $[-1, 1]$; same encoding as predator angle \\
+\texttt{nearest\_food\_dist}        & $[-1, 1]$; for prey agents; $-1$ if none visible \\
+\texttt{nearest\_food\_angle}       & $[-1, 1]$; direction to nearest food \\
+\texttt{energy\_level}              & $[0, 1]$; \texttt{energy / initial\_energy} \\
+\texttt{speed\_x}                   & $[-1, 1]$; current velocity x / max speed \\
+\texttt{speed\_y}                   & $[-1, 1]$; current velocity y / max speed \\
+\texttt{local\_predator\_density}   & $[0, 1]$; fraction of cells in vision range containing predators \\
+\texttt{local\_prey\_density}       & $[0, 1]$; fraction of cells in vision range containing prey \\
+\texttt{wall\_left}                 & $[0, 1]$; distance to left boundary / world width (Clamp mode) \\
+\texttt{wall\_right}                & $[0, 1]$; distance to right boundary / world width \\
+\texttt{wall\_top}                  & $[0, 1]$; distance to top boundary / world height \\
+\texttt{wall\_bottom}               & $[0, 1]$; distance to bottom boundary / world height \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -226,14 +227,14 @@ ensuring a query of radius \texttt{vision\_range} covers at most a 5×5 patch of
 \begin{table}[H]
 \centering\small
 \caption{\texttt{SpatialGrid} public interface}
-\begin{tabularx}{\textwidth}{@{}llX@{}}
+\begin{tabularx}{\textwidth}{@{}lX@{}}
 \toprule
-\textbf{Method} & \textbf{Return} & \textbf{Description} \\
+\textbf{Method} & \textbf{Description} \\
 \midrule
-\texttt{clear()} & \texttt{void} & Erase all entries (called each tick before rebuild) \\
-\texttt{insert(id, position)} & \texttt{void} & Place agent in appropriate cell \\
-\texttt{query(position)} & \texttt{vector<AgentId>} & Return all agents in the cell containing \emph{position} plus 8 neighbors \\
-\texttt{query\_radius(position, radius)} & \texttt{vector<AgentId>} & Filter \texttt{query()} results by Euclidean distance \\
+\texttt{clear()} & Erase all entries (called each tick before rebuild) \\
+\texttt{insert(id, position)} & Place agent in appropriate cell \\
+\texttt{query(position) → vector<AgentId>} & Return all agents in the cell containing \emph{position} plus 8 neighbors \\
+\texttt{query\_radius(position, radius) → vector<AgentId>} & Filter \texttt{query()} results by Euclidean distance \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -250,21 +251,21 @@ Orchestrates the per-tick simulation loop.
 \begin{table}[H]
 \centering\small
 \caption{\texttt{SimulationManager} public interface}
-\begin{tabularx}{\textwidth}{@{}llX@{}}
+\begin{tabularx}{\textwidth}{@{}lX@{}}
 \toprule
-\textbf{Method} & \textbf{Return} & \textbf{Description} \\
+\textbf{Method} & \textbf{Description} \\
 \midrule
-\texttt{SimulationManager(config)} & — & Construct; create \texttt{Environment} and grids \\
-\texttt{initialize()} & \texttt{void} & Spawn agents at random positions; scatter food \\
-\texttt{tick(dt: float)} & \texttt{void} & One simulation step (see below) \\
-\texttt{reset()} & \texttt{void} & Re-initialize agents and food for new generation \\
-\texttt{current\_tick()} & \texttt{int const} & Ticks elapsed since last reset \\
-\texttt{agents()} & \texttt{const vector<unique\_ptr<Agent>>\&} & All agents (alive and dead) \\
-\texttt{environment()} & \texttt{const Environment\&} & World environment \\
-\texttt{alive\_predators()} & \texttt{int const} & Cached count of live predators \\
-\texttt{alive\_prey()} & \texttt{int const} & Cached count of live prey \\
-\texttt{get\_sensors(agent\_index)} & \texttt{SensorInput} & Build sensor vector for one agent \\
-\texttt{apply\_action(agent\_index, direction, dt)} & \texttt{void} & Set velocity and call \texttt{apply\_movement()} \\
+\texttt{SimulationManager(config)} & Construct; create \texttt{Environment} and grids \\
+\texttt{initialize()} & Spawn agents at random positions; scatter food \\
+\texttt{tick(dt: float)} & One simulation step (see below) \\
+\texttt{reset()} & Re-initialize agents and food for new generation \\
+\texttt{current\_tick() → int} & Ticks elapsed since last reset (const) \\
+\texttt{agents() → const vector<unique\_ptr<Agent>>\&} & All agents (alive and dead) \\
+\texttt{environment() → const Environment\&} & World environment \\
+\texttt{alive\_predators() → int} & Cached count of live predators (const) \\
+\texttt{alive\_prey() → int} & Cached count of live prey (const) \\
+\texttt{get\_sensors(agent\_index) → SensorInput} & Build sensor vector for one agent \\
+\texttt{apply\_action(agent\_index, direction, dt)} & Set velocity and call \texttt{apply\_movement()} \\
 \bottomrule
 \end{tabularx}
 \end{table}

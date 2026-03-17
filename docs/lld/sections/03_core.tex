@@ -148,21 +148,21 @@ Returned by \texttt{validate\_config()} to report all validation failures in one
 \begin{table}[H]
 \centering\small
 \caption{\texttt{CLIArgs} fields}
-\begin{tabularx}{\textwidth}{@{}llX@{}}
+\begin{tabularx}{\textwidth}{@{}lX@{}}
 \toprule
-\textbf{Field} & \textbf{Type} & \textbf{CLI flag / meaning} \\
+\textbf{Field} & \textbf{CLI flag / meaning} \\
 \midrule
-\texttt{config\_path}               & \texttt{string}    & \texttt{--config <path>} \\
-\texttt{seed\_override}             & \texttt{uint64\_t} & \texttt{--seed <n>} (overrides config) \\
-\texttt{headless}                   & \texttt{bool}      & \texttt{--headless} — suppress SFML window \\
-\texttt{verbose}                    & \texttt{bool}      & \texttt{--verbose} — debug-level spdlog output \\
-\texttt{help}                       & \texttt{bool}      & \texttt{--help} \\
-\texttt{no\_gpu}                    & \texttt{bool}      & \texttt{--no-gpu} — force CPU inference \\
-\texttt{max\_generations\_override} & \texttt{int}       & \texttt{--generations <n>} \\
-\texttt{resume\_path}               & \texttt{string}    & \texttt{--resume <dir>} — load checkpoint \\
-\texttt{checkpoint\_interval}       & \texttt{int}       & \texttt{--checkpoint <n>} \\
-\texttt{compare\_a}                 & \texttt{string}    & \texttt{--compare-a <dir>} (future use) \\
-\texttt{compare\_b}                 & \texttt{string}    & \texttt{--compare-b <dir>} (future use) \\
+\texttt{config\_path}               & \texttt{--config <path>} \\
+\texttt{seed\_override}             & \texttt{--seed <n>} (overrides config) \\
+\texttt{headless}                   & \texttt{--headless} — suppress SFML window \\
+\texttt{verbose}                    & \texttt{--verbose} — debug-level spdlog output \\
+\texttt{help}                       & \texttt{--help} \\
+\texttt{no\_gpu}                    & \texttt{--no-gpu} — force CPU inference \\
+\texttt{max\_generations\_override} & \texttt{--generations <n>} \\
+\texttt{resume\_path}               & \texttt{--resume <dir>} — load checkpoint \\
+\texttt{checkpoint\_interval}       & \texttt{--checkpoint <n>} \\
+\texttt{compare\_a}                 & \texttt{--compare-a <dir>} (future use) \\
+\texttt{compare\_b}                 & \texttt{--compare-b <dir>} (future use) \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -200,20 +200,20 @@ A single instance per simulation ensures reproducible runs from any given seed.
 \begin{table}[H]
 \centering\small
 \caption{\texttt{Random} interface}
-\begin{tabularx}{\textwidth}{@{}llX@{}}
+\begin{tabularx}{\textwidth}{@{}lX@{}}
 \toprule
-\textbf{Method} & \textbf{Return} & \textbf{Description} \\
+\textbf{Method} & \textbf{Description} \\
 \midrule
-\texttt{Random(seed: uint64\_t)} & — & Construct; seed the MT19937-64 engine \\
-\texttt{next\_int(min, max)} & \texttt{int} & Uniform integer in $[\mathit{min}, \mathit{max}]$ \\
-\texttt{next\_float(min, max)} & \texttt{float} & Uniform float in $[\mathit{min}, \mathit{max}]$ \\
-\texttt{next\_gaussian(mean, stddev)} & \texttt{float} & Normal distribution sample \\
-\texttt{next\_bool(probability)} & \texttt{bool} & True with given probability $p\in[0,1]$ \\
-\texttt{weighted\_select(weights)} & \texttt{int} & Index proportional to weight values \\
-\texttt{shuffle<T>(vec)} & \texttt{void} & Fisher-Yates in-place shuffle \\
-\texttt{sample\_indices(total, count)} & \texttt{vector<int>} & Sample \emph{count} distinct indices from $[0,\mathit{total})$ \\
-\texttt{seed()} \texttt{const} & \texttt{uint64\_t} & Return the construction seed \\
-\texttt{engine()} & \texttt{mt19937\_64\&} & Direct access for seeding from checkpoints \\
+\texttt{Random(seed: uint64\_t)} & Construct; seed the MT19937-64 engine \\
+\texttt{next\_int(min, max)} & Uniform integer in $[\mathit{min}, \mathit{max}]$ \\
+\texttt{next\_float(min, max)} & Uniform float in $[\mathit{min}, \mathit{max}]$ \\
+\texttt{next\_gaussian(mean, stddev)} & Normal distribution sample \\
+\texttt{next\_bool(probability)} & True with given probability $p\in[0,1]$ \\
+\texttt{weighted\_select(weights)} & Index proportional to weight values \\
+\texttt{shuffle<T>(vec)} & Fisher-Yates in-place shuffle \\
+\texttt{sample\_indices(total, count)} & Sample \emph{count} distinct indices from $[0,\mathit{total})$ \\
+\texttt{seed()} \texttt{const} & Return the construction seed \\
+\texttt{engine()} & Direct access for seeding from checkpoints \\
 \bottomrule
 \end{tabularx}
 \end{table}

@@ -20,17 +20,17 @@ Plain value type returned by \texttt{MetricsCollector::collect()}.
 \begin{table}[H]
 \centering\small
 \caption{\texttt{GenerationMetrics} fields}
-\begin{tabularx}{\textwidth}{@{}llX@{}}
+\begin{tabularx}{\textwidth}{@{}lX@{}}
 \toprule
-\textbf{Field} & \textbf{Type} & \textbf{Description} \\
+\textbf{Field} & \textbf{Description} \\
 \midrule
-\texttt{generation}          & \texttt{int}   & Generation index \\
-\texttt{predator\_count}     & \texttt{int}   & Alive predators at end of generation \\
-\texttt{prey\_count}         & \texttt{int}   & Alive prey at end of generation \\
-\texttt{best\_fitness}       & \texttt{float} & Maximum genome fitness in population \\
-\texttt{avg\_fitness}        & \texttt{float} & Mean genome fitness in population \\
-\texttt{num\_species}        & \texttt{int}   & Active species count \\
-\texttt{avg\_genome\_complexity} & \texttt{float} & Mean \texttt{Genome::complexity()} across population \\
+\texttt{generation}          & Generation index \\
+\texttt{predator\_count}     & Alive predators at end of generation \\
+\texttt{prey\_count}         & Alive prey at end of generation \\
+\texttt{best\_fitness}       & Maximum genome fitness in population \\
+\texttt{avg\_fitness}        & Mean genome fitness in population \\
+\texttt{num\_species}        & Active species count \\
+\texttt{avg\_genome\_complexity} & Mean \texttt{Genome::complexity()} across population \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -41,16 +41,14 @@ Plain value type returned by \texttt{MetricsCollector::collect()}.
 \begin{table}[H]
 \centering\small
 \caption{\texttt{MetricsCollector} interface}
-\begin{tabularx}{\textwidth}{@{}llX@{}}
+\begin{tabularx}{\textwidth}{@{}lX@{}}
 \toprule
-\textbf{Method} & \textbf{Return} & \textbf{Description} \\
+\textbf{Method} & \textbf{Description} \\
 \midrule
 \texttt{collect(generation, population, pred\_count, prey\_count)} &
-  \texttt{GenerationMetrics} &
   Iterate \texttt{population} to find max/avg fitness and avg complexity;
   append to \texttt{history\_}; return metrics struct. \\
 \texttt{history()} &
-  \texttt{const vector<GenerationMetrics>\&} &
   All metrics collected since construction. \\
 \bottomrule
 \end{tabularx}
@@ -66,19 +64,19 @@ Writes all run output to \texttt{output/[YYYYMMDD\_HHMMSS\_seedN]/}.
 \begin{table}[H]
 \centering\small
 \caption{\texttt{Logger} interface}
-\begin{tabularx}{\textwidth}{@{}llX@{}}
+\begin{tabularx}{\textwidth}{@{}lX@{}}
 \toprule
-\textbf{Method} & \textbf{Return} & \textbf{Description} \\
+\textbf{Method} & \textbf{Description} \\
 \midrule
-\texttt{Logger(output\_dir, seed)} & — & Store base dir and seed; do not open files yet \\
-\texttt{initialize(config)} & \texttt{bool} & Create run directory; open all files; write headers; save \texttt{config.json} \\
-\texttt{log\_generation(...)} & \texttt{void} & Append one row to \texttt{stats.csv} \\
-\texttt{log\_best\_genome(generation, genome)} & \texttt{void} & Append JSON entry to \texttt{genomes.json} \\
-\texttt{log\_species(generation, species)} & \texttt{void} & Append rows to \texttt{species.csv} \\
-\texttt{log\_tick(generation, tick, agents)} & \texttt{void} & Append rows to \texttt{ticks\_buffer\_}; auto-flush every 500 rows \\
-\texttt{flush\_ticks()} & \texttt{void} & Write \texttt{ticks\_buffer\_} to \texttt{ticks.csv} and reset buffer \\
-\texttt{flush()} & \texttt{void} & Flush all open file streams \\
-\texttt{run\_dir()} & \texttt{const string\&} & Path to the created run directory \\
+\texttt{Logger(output\_dir, seed)} & Store base dir and seed; do not open files yet \\
+\texttt{initialize(config)} & Create run directory; open all files; write headers; save \texttt{config.json} \\
+\texttt{log\_generation(...)} & Append one row to \texttt{stats.csv} \\
+\texttt{log\_best\_genome(generation, genome)} & Append JSON entry to \texttt{genomes.json} \\
+\texttt{log\_species(generation, species)} & Append rows to \texttt{species.csv} \\
+\texttt{log\_tick(generation, tick, agents)} & Append rows to \texttt{ticks\_buffer\_}; auto-flush every 500 rows \\
+\texttt{flush\_ticks()} & Write \texttt{ticks\_buffer\_} to \texttt{ticks.csv} and reset buffer \\
+\texttt{flush()} & Flush all open file streams \\
+\texttt{run\_dir()} & Path to the created run directory \\
 \bottomrule
 \end{tabularx}
 \end{table}
