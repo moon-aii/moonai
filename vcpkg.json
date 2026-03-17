@@ -1,6 +1,7 @@
 {
   "name": "moonai",
   "version-string": "0.1.0",
+  "builtin-baseline": "b42b19a62b63514ed9fa2a81e07ce75e613c83c0",
   "description": "Predator-prey simulation for evolutionary algorithm research",
   "dependencies": [
     "sfml",

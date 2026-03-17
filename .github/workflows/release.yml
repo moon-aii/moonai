@@ -42,7 +42,7 @@ jobs:
       - name: Set up vcpkg
         uses: lukka/run-vcpkg@v11
         with:
-          vcpkgGitCommitId: "c82f74667287d3dc386bce81e44964370c91a289"
+          vcpkgGitCommitId: "b42b19a62b63514ed9fa2a81e07ce75e613c83c0"
 
       - name: Export GitHub Actions cache variables
         uses: actions/github-script@v7
