@@ -5,6 +5,8 @@
 \setmainfont{Times New Roman}
 \setmonofont{Courier New}
 \usepackage[expansion=false]{microtype}
+\usepackage[english]{babel}
+\addto\captionsenglish{\renewcommand{\contentsname}{Table of Contents}}
 
 % ── Page layout ─────────────────────────────────────────────────────────────
 \usepackage[top=2.5cm, bottom=2.5cm, left=2.5cm, right=2.5cm]{geometry}
@@ -44,7 +46,8 @@
 
 % ── Section formatting ───────────────────────────────────────────────────────
 \usepackage{titlesec}
-\titleformat{\section}{\large\bfseries}{}{0em}{\thesection\quad}
+\titleformat{\section}{\large\bfseries}{\thesection}{0em}{\quad}
+\titleformat*{\section}{\large\bfseries}
 \titleformat{\subsection}{\normalsize\bfseries}{}{0em}{\thesubsection\quad}
 \titleformat{\subsubsection}{\normalsize\bfseries}{}{0em}{\thesubsubsection\quad}
 
@@ -56,7 +59,7 @@
 \usepackage{float}
 
 % ── Hyperlinks ────────────────────────────────────────────────────────────────
-\usepackage[colorlinks=true, linkcolor=blue!60!black, citecolor=green!50!black,
+\usepackage[colorlinks=true, linkcolor=black, citecolor=green!50!black,
             urlcolor=blue!70!black, bookmarksopen=true]{hyperref}
 
 % ── Math ─────────────────────────────────────────────────────────────────────
@@ -79,23 +82,26 @@
 \begin{titlepage}
   \centering
   \vspace*{1cm}
-  \includegraphics[width=4cm]{img/tedu_logo}
-  \vspace{1cm}
+  \includegraphics[width=5cm]{img/tedu_logo}\par
+  \vspace{0.5cm}
+  {\Large\bfseries TED UNIVERSITY\par}
+  \vspace{0.2cm}
+  {\large Department of Computer Engineering\par}
+  \vspace{1.5cm}
   {\Huge\bfseries MoonAI\par}
   \vspace{0.4cm}
   {\Large Low-Level Design Report\par}
-  \vspace{0.8cm}
-  \rule{\textwidth}{1pt}
-  \vspace{0.4cm}
-  {\large CMPE 492 — Senior Project II\par}
-  {\large TED University, Department of Computer Engineering\par}
-  \vspace{1.2cm}
+  \vspace{1.5cm}
   {\large
-    \textbf{Team:} Caner Aras \quad Emir Irkılata \quad Oğuzhan Özkaya\par
-    \vspace{0.3cm}
+    \textbf{Team:}\par
+    \vspace{0.2em}%
+    Caner Aras \quad Emir Irkılata \quad Oğuzhan Özkaya\par
+    \vspace{0.5cm}
     \textbf{Supervisor:} Ayşenur Birtürk\par
   }
-  \vspace{1.2cm}
+  \vspace{1.5cm}
+  {\large CMPE 492 — Senior Project II\par}
+  \vspace{0.5cm}
   {\large Spring 2026\par}
   \vfill
 \end{titlepage}
