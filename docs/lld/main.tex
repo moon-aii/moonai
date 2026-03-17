@@ -75,10 +75,15 @@
 \cfoot{\thepage}
 \renewcommand{\headrulewidth}{0.4pt}
 
+% ── Line spacing ─────────────────────────────────────────────────────────────
+\usepackage{setspace}
+\onehalfspacing
+
 % ─────────────────────────────────────────────────────────────────────────────
 \begin{document}
 
 % ── Title page ────────────────────────────────────────────────────────────────
+\begin{singlespace}
 \begin{titlepage}
   \centering
   \vspace*{1cm}
@@ -105,9 +110,12 @@
   {\large Spring 2026\par}
   \vfill
 \end{titlepage}
+\end{singlespace}
 
 % ── Table of contents ─────────────────────────────────────────────────────────
+\begin{singlespace}
 \tableofcontents
+\end{singlespace}
 \newpage
 
 % ── Sections ──────────────────────────────────────────────────────────────────
