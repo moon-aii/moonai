@@ -367,7 +367,7 @@ Each run writes to `output/[YYYYMMDD_HHMMSS_seedN]/`:
 | **Emir Irkılata** | Developer |
 | **Oğuzhan Özkaya** | Developer |
 
-**Supervisor:** Ozan Zorlu
+**Supervisor:** Ayşenur Birtürk
 **Jury Members:** Deniz Canturk, Mehmet Evren Coskun
 
 ## License
