@@ -27,7 +27,7 @@ TEST(ConfigTest, LoadNonexistentFileReturnsDefaults) {
 }
 
 TEST(ConfigTest, LoadValidConfig) {
-    std::string path = "/tmp/moonai_test_config.json";
+    std::string path = (std::filesystem::temp_directory_path() / "moonai_test_config.json").string();
     {
         std::ofstream f(path);
         f << R"({"grid_width": 1024, "prey_count": 200, "boundary_mode": "clamp"})";
@@ -44,7 +44,7 @@ TEST(ConfigTest, LoadValidConfig) {
 }
 
 TEST(ConfigTest, LoadInvalidJsonReturnsDefaults) {
-    std::string path = "/tmp/moonai_test_bad.json";
+    std::string path = (std::filesystem::temp_directory_path() / "moonai_test_bad.json").string();
     {
         std::ofstream f(path);
         f << "not valid json {{{";
@@ -62,7 +62,7 @@ TEST(ConfigTest, SaveAndReload) {
     original.seed = 42;
     original.boundary_mode = BoundaryMode::Clamp;
 
-    std::string path = "/tmp/moonai_test_save.json";
+    std::string path = (std::filesystem::temp_directory_path() / "moonai_test_save.json").string();
     save_config(original, path);
 
     auto loaded = load_config(path);
