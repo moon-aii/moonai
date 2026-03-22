@@ -63,6 +63,7 @@ SimulationConfig load_config(const std::string& filepath) {
     json_get(j, "weight_mutation_power", config.weight_mutation_power);
     json_get(j, "add_node_rate", config.add_node_rate);
     json_get(j, "add_connection_rate", config.add_connection_rate);
+    json_get(j, "delete_connection_rate", config.delete_connection_rate);
     json_get(j, "max_hidden_nodes", config.max_hidden_nodes);
     json_get(j, "generation_ticks", config.generation_ticks);
     json_get(j, "max_generations", config.max_generations);
@@ -112,6 +113,7 @@ void save_config(const SimulationConfig& config, const std::string& filepath) {
     j["weight_mutation_power"] = config.weight_mutation_power;
     j["add_node_rate"] = config.add_node_rate;
     j["add_connection_rate"] = config.add_connection_rate;
+    j["delete_connection_rate"] = config.delete_connection_rate;
     j["max_hidden_nodes"] = config.max_hidden_nodes;
     j["generation_ticks"] = config.generation_ticks;
     j["max_generations"] = config.max_generations;
@@ -183,6 +185,8 @@ std::vector<ConfigError> validate_config(const SimulationConfig& config) {
           "add_node_rate", "must be in [0, 1]");
     check(config.add_connection_rate >= 0.0f && config.add_connection_rate <= 1.0f,
           "add_connection_rate", "must be in [0, 1]");
+    check(config.delete_connection_rate >= 0.0f && config.delete_connection_rate <= 1.0f,
+          "delete_connection_rate", "must be in [0, 1]");
     check(config.weight_mutation_power > 0.0f, "weight_mutation_power", "must be > 0");
     check(config.generation_ticks >= 10, "generation_ticks", "must be >= 10");
     check(config.max_generations >= 0, "max_generations", "must be >= 0 (0 = infinite)");

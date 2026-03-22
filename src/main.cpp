@@ -264,6 +264,7 @@ int main(int argc, char* argv[]) {
             if (tick % config.tick_log_interval == 0) {
                 logger.log_tick(generation, tick, sim.agents());
             }
+            logger.log_events(generation, tick, sim.last_events());
         });
     }
     int max_gen = (args.max_generations_override != 0) ? args.max_generations_override
@@ -276,6 +277,9 @@ int main(int argc, char* argv[]) {
 
         // Reset simulation for this generation
         simulation.reset();
+
+        // Assign species IDs to agents for visualization coloring
+        evolution.assign_species_ids(simulation);
 
         if (headless || visualization.is_fast_forward()) {
             // ── Headless / fast-forward mode: run generation at max speed ──
@@ -326,8 +330,11 @@ int main(int argc, char* argv[]) {
                     ++tick;
 
                     // Per-tick logging (visual path)
-                    if (config.tick_log_enabled && tick % config.tick_log_interval == 0) {
-                        logger.log_tick(generation, tick, simulation.agents());
+                    if (config.tick_log_enabled) {
+                        if (tick % config.tick_log_interval == 0) {
+                            logger.log_tick(generation, tick, simulation.agents());
+                        }
+                        logger.log_events(generation, tick, simulation.last_events());
                     }
 
                     if (simulation.alive_prey() == 0 || simulation.alive_predators() == 0) break;

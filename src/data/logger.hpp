@@ -13,6 +13,7 @@ namespace moonai {
 class Agent;
 class Genome;
 class Species;
+struct SimEvent;
 
 class Logger {
 public:
@@ -27,6 +28,8 @@ public:
     void log_species(int generation, const std::vector<Species>& species);
     void log_tick(int generation, int tick,
                   const std::vector<std::unique_ptr<Agent>>& agents);
+    void log_events(int generation, int tick,
+                    const std::vector<SimEvent>& events);
     void flush_ticks();
     void flush();
 
@@ -42,6 +45,9 @@ private:
     std::ofstream ticks_file_;
     std::string   ticks_buffer_;
     int           ticks_buffered_ = 0;
+    std::ofstream events_file_;
+    std::string   events_buffer_;
+    int           events_buffered_ = 0;
     bool genomes_first_entry_ = true;
 
     static constexpr int TICK_FLUSH_EVERY = 500;

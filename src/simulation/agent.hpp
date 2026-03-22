@@ -30,8 +30,10 @@ public:
     int kills() const { return kills_; }
     int food_eaten() const { return food_eaten_; }
     float distance_traveled() const { return distance_traveled_; }
+    int species_id() const { return species_id_; }
 
     void set_position(Vec2 pos) { position_ = pos; }
+    void set_species_id(int id) { species_id_ = id; }
     void set_alive(bool alive) { alive_ = alive; }
     void add_fitness(float amount) { fitness_ += amount; }
     void add_energy(float amount) { energy_ += amount; }
@@ -56,6 +58,7 @@ protected:
     int kills_ = 0;
     int food_eaten_ = 0;
     float distance_traveled_ = 0.0f;
+    int species_id_ = -1;
 };
 
 } // namespace moonai

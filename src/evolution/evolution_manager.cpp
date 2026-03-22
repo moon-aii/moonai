@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <numeric>
 #include <cmath>
+#include <unordered_map>
 #include <chrono>
 #include <fstream>
 #include <sstream>
@@ -697,6 +698,24 @@ bool EvolutionManager::load_checkpoint(const std::string& path, Random& rng) {
 const Genome* EvolutionManager::genome_at(int idx) const {
     if (idx < 0 || idx >= static_cast<int>(population_.size())) return nullptr;
     return &population_[idx];
+}
+
+void EvolutionManager::assign_species_ids(SimulationManager& sim) const {
+    const auto& agents = sim.agents();
+    // Build genome pointer → species ID map
+    std::unordered_map<const Genome*, int> genome_species;
+    for (const auto& s : species_) {
+        for (const auto* g : s.members()) {
+            genome_species[g] = s.id();
+        }
+    }
+    // Population index matches agent index
+    for (size_t i = 0; i < population_.size() && i < agents.size(); ++i) {
+        auto it = genome_species.find(&population_[i]);
+        if (it != genome_species.end()) {
+            agents[i]->set_species_id(it->second);
+        }
+    }
 }
 
 } // namespace moonai

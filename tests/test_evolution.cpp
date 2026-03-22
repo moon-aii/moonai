@@ -409,3 +409,64 @@ TEST(EvolutionManagerTest, EvolveProducesNewGeneration) {
     // Population size should be preserved
     EXPECT_EQ(static_cast<int>(evo.population().size()), 15);
 }
+
+// ── Delete Connection Tests ─────────────────────────────────────────────
+
+TEST(MutationTest, DeleteConnectionReducesCount) {
+    Genome g(2, 1);
+    g.add_connection({0, 3, 1.0f, true, 0});
+    g.add_connection({1, 3, 0.5f, true, 1});
+    g.add_connection({2, 3, 0.3f, true, 2});  // bias
+
+    EXPECT_EQ(g.connections().size(), 3u);
+
+    Random rng(42);
+    Mutation::delete_connection(g, rng);
+
+    EXPECT_EQ(g.connections().size(), 2u);
+}
+
+TEST(MutationTest, DeleteConnectionKeepsAtLeastOne) {
+    Genome g(2, 1);
+    g.add_connection({0, 3, 1.0f, true, 0});
+
+    EXPECT_EQ(g.connections().size(), 1u);
+
+    Random rng(42);
+    Mutation::delete_connection(g, rng);
+
+    // Should not delete the last connection
+    EXPECT_EQ(g.connections().size(), 1u);
+}
+
+TEST(MutationTest, DeleteConnectionProducesValidNetwork) {
+    Genome g(3, 2);
+    InnovationTracker tracker;
+    Random rng(42);
+
+    // Fully connect
+    for (const auto& in_node : g.nodes()) {
+        if (in_node.type != NodeType::Input && in_node.type != NodeType::Bias) continue;
+        for (const auto& out_node : g.nodes()) {
+            if (out_node.type != NodeType::Output) continue;
+            g.add_connection({in_node.id, out_node.id,
+                              rng.next_float(-1.0f, 1.0f), true,
+                              tracker.get_innovation(in_node.id, out_node.id)});
+        }
+    }
+
+    size_t initial_conns = g.connections().size();
+
+    // Delete several connections
+    for (int i = 0; i < 3; ++i) {
+        Mutation::delete_connection(g, rng);
+    }
+
+    EXPECT_LT(g.connections().size(), initial_conns);
+    EXPECT_GE(g.connections().size(), 1u);
+
+    // Should still produce a valid network
+    NeuralNetwork nn(g);
+    auto outputs = nn.activate({1.0f, 0.5f, -1.0f});
+    EXPECT_EQ(outputs.size(), 2u);
+}

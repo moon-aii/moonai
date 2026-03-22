@@ -2,7 +2,7 @@
 
 A step-by-step guide to fully implementing MoonAI. Each phase builds on the previous one. Phases are designed to produce a testable, working system at each stage.
 
-> **Status as of 2026-03-17:** Phases 1–7 complete or nearly complete. Phase 5 (GPU) fully implemented: CSR-packed kernels, RAII device memory, runtime CPU fallback. Phase 8 (Experimentation) is the current focus.
+> **Status as of 2026-03-22:** Phases 1–7 complete. Phase 5 (GPU) fully implemented: CSR-packed kernels, RAII device memory, runtime CPU fallback. Phase 8 (Experimentation) partially complete: experiment matrix defined, 60+ runs executed, plots and summary generated. Remaining: final report and presentation.
 
 ---
 
@@ -76,7 +76,7 @@ A step-by-step guide to fully implementing MoonAI. Each phase builds on the prev
 
 ---
 
-## Phase 3: NEAT Evolution Core ✅ Mostly Complete
+## Phase 3: NEAT Evolution Core ✅ Complete
 
 **Goal:** Full NEAT algorithm implementation. Agents evolve neural networks that control their behavior.
 
@@ -102,7 +102,7 @@ A step-by-step guide to fully implementing MoonAI. Each phase builds on the prev
 - [x] **Add connection**: connect two previously unconnected nodes
 - [x] **Add node**: split an existing connection with a new hidden node
 - [x] **Toggle connection**: enable/disable a connection
-- [ ] **Delete connection** (optional): remove a connection entirely
+- [x] **Delete connection**: remove a connection entirely *(configurable `delete_connection_rate`, keeps ≥1 connection)*
 - [x] Ensure all mutations maintain valid network structure (no dangling nodes)
 - [x] Write tests: mutated genomes produce valid networks that can be evaluated
 
@@ -225,7 +225,7 @@ A step-by-step guide to fully implementing MoonAI. Each phase builds on the prev
 
 ---
 
-## Phase 6: Data Collection and Analysis ✅ Mostly Complete
+## Phase 6: Data Collection and Analysis ✅ Complete
 
 **Goal:** Research-grade data logging and Python analysis pipeline.
 
@@ -237,7 +237,7 @@ A step-by-step guide to fully implementing MoonAI. Each phase builds on the prev
 
 ### 6.2 Per-Tick Logging (Optional, High-Volume)
 - [x] Agent trajectories: position, velocity, energy per tick (configurable: every N ticks) *(`tick_log_enabled`, `tick_log_interval` config fields; writes `ticks.csv`)*
-- [ ] Interaction events: kills, near-misses, food consumption
+- [x] Interaction events: kills and food consumption logged to `events.csv` *(buffered writes; near-misses excluded for performance)*
 - [x] Buffer writes and flush periodically to avoid I/O bottleneck *(buffered with flush every 500 rows)*
 
 ### 6.3 Python Analysis Suite
@@ -286,7 +286,7 @@ A step-by-step guide to fully implementing MoonAI. Each phase builds on the prev
 - [ ] Review and clean up TODO markers in code
 
 ### 7.4 Cross-Platform Testing
-- [x] Full test suite passes on Linux (GCC + Clang) *(89/89 tests)*
+- [x] Full test suite passes on Linux (GCC + Clang) *(94/94 tests)*
 - [ ] Full test suite passes on Windows (MSVC) *(not verified)*
 - [ ] CUDA path tested on both platforms *(stub only)*
 - [x] Verify determinism: same seed produces identical output *(tested on Linux)*
@@ -295,26 +295,26 @@ A step-by-step guide to fully implementing MoonAI. Each phase builds on the prev
 
 ---
 
-## Phase 8: Experimentation and Report 🔴 Current Focus
+## Phase 8: Experimentation and Report 🟡 In Progress
 
 **Goal:** Run experiments, collect results, write the final report.
 
 ### 8.1 Experiment Design
-- [ ] Define experiment matrix:
+- [x] Define experiment matrix (8 conditions in `config/experiments/`):
   - Vary mutation rates (0.1, 0.3, 0.5)
-  - Vary population sizes (100, 200, 500)
-  - Vary neural network input configurations
-  - Compare with/without speciation
-  - Compare fitness function variants
-- [ ] Each experiment: 5+ runs with different seeds for statistical significance
+  - Vary population sizes (small: 25+75, large: 100+300)
+  - Compare with/without speciation (`compatibility_threshold: 100`)
+  - Compare activation functions (sigmoid vs tanh)
+  - Compare crossover rates (0.25 vs 0.75)
+- [x] Each experiment: 5 runs with different seeds for statistical significance
 
 ### 8.2 Run Experiments
-- [ ] Execute experiment matrix (use `analysis/run_experiments.py`)
-- [ ] Collect all output data
-- [ ] Generate analysis plots for each experiment
+- [x] Execute experiment matrix (use `analysis/run_experiments.py`) — 60+ runs completed
+- [x] Collect all output data in `output/`
+- [x] Generate analysis plots for each experiment (51 PNGs in `output/plots/`)
 
 ### 8.3 Analysis
-- [ ] Analyze fitness convergence rates across configurations
+- [x] Analyze fitness convergence rates across configurations (`output/plots/summary.md`)
 - [ ] Analyze emergent behaviors: do predators develop hunting strategies? Do prey develop flocking?
 - [ ] Analyze genome complexity: does NEAT grow complexity minimally?
 - [ ] Compare GPU vs CPU performance at various population sizes
@@ -336,12 +336,12 @@ A step-by-step guide to fully implementing MoonAI. Each phase builds on the prev
 |-------|--------|-----------------|
 | 1. Core Infrastructure | ✅ Complete | Building, config, logging, RNG |
 | 2. Simulation Environment | ✅ Complete | Moving agents with collision and sensing |
-| 3. NEAT Evolution | ✅ Mostly Complete | Full evolutionary loop with improving fitness |
+| 3. NEAT Evolution | ✅ Complete | Full evolutionary loop with improving fitness |
 | 4. Visualization | ✅ Mostly Complete | Interactive SFML 3.x viewer |
 | 5. GPU Acceleration | ✅ Implemented | CSR-packed kernels, GpuBatch RAII, runtime CPU fallback, --no-gpu flag |
-| 6. Data & Analysis | ✅ Mostly Complete | Research-grade logging + Python pipeline |
+| 6. Data & Analysis | ✅ Complete | Research-grade logging + Python pipeline |
 | 7. Polish | ✅ Mostly Complete | Performance, robustness, code quality |
-| 8. Experimentation | 🔴 Not started | Results, analysis, final report |
+| 8. Experimentation | 🟡 In Progress | Results, analysis, final report |
 
 ## Development Principles
 

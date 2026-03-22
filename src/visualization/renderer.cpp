@@ -71,6 +71,29 @@ void Renderer::draw_agent(sf::RenderTarget& target, const Agent& agent, bool sel
     float alpha = agent.alive() ? 255.0f : dead_fade_alpha;
     auto a = static_cast<std::uint8_t>(alpha);
 
+    // Use species color when available, otherwise fall back to type color
+    sf::Color base_color;
+    if (agent.species_id() >= 0) {
+        base_color = species_color(agent.species_id());
+    } else if (agent.type() == AgentType::Predator) {
+        base_color = sf::Color(220, 60, 60);
+    } else {
+        base_color = sf::Color(60, 200, 80);
+    }
+    base_color.a = a;
+
+    if (selected) {
+        // Brighten for selection
+        base_color.r = std::min(255, base_color.r + 60);
+        base_color.g = std::min(255, base_color.g + 60);
+        base_color.b = std::min(255, base_color.b + 60);
+    }
+
+    sf::Color outline_color(
+        std::min(255, base_color.r + 30),
+        std::min(255, base_color.g + 30),
+        std::min(255, base_color.b + 30), a);
+
     if (agent.type() == AgentType::Predator) {
         // Draw predator as triangle pointing in movement direction
         float size = 8.0f;
@@ -95,10 +118,8 @@ void Renderer::draw_agent(sf::RenderTarget& target, const Agent& agent, bool sel
         triangle_.setPoint(2, {x + cos_a * rx - sin_a * ry,
                                 y + sin_a * rx + cos_a * ry});
 
-        sf::Color pred_color(220, 60, 60, a);
-        if (selected) pred_color = sf::Color(255, 120, 120, a);
-        triangle_.setFillColor(pred_color);
-        triangle_.setOutlineColor(sf::Color(255, 100, 100, a));
+        triangle_.setFillColor(base_color);
+        triangle_.setOutlineColor(outline_color);
         triangle_.setOutlineThickness(selected ? 2.0f : 0.0f);
 
         target.draw(triangle_);
@@ -110,10 +131,8 @@ void Renderer::draw_agent(sf::RenderTarget& target, const Agent& agent, bool sel
         circle_.setPosition({agent.position().x, agent.position().y});
         circle_.setPointCount(20);
 
-        sf::Color prey_color(60, 200, 80, a);
-        if (selected) prey_color = sf::Color(120, 255, 140, a);
-        circle_.setFillColor(prey_color);
-        circle_.setOutlineColor(sf::Color(100, 255, 120, a));
+        circle_.setFillColor(base_color);
+        circle_.setOutlineColor(outline_color);
         circle_.setOutlineThickness(selected ? 2.0f : 0.0f);
 
         target.draw(circle_);

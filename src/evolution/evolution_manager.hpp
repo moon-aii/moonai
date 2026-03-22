@@ -59,6 +59,9 @@ public:
     // Returns pointer to genome at population index, or nullptr if out of range
     const Genome* genome_at(int idx) const;
 
+    // Assign species IDs to agents based on current speciation
+    void assign_species_ids(SimulationManager& sim) const;
+
 private:
     void build_networks();
     void speciate();

@@ -39,6 +39,7 @@ struct SimulationConfig {
     float weight_mutation_power = 0.5f;   // Std dev for Gaussian weight perturbation [> 0]
     float add_node_rate         = 0.03f;  // P(add node mutation per genome) ∈ [0, 1]
     float add_connection_rate   = 0.05f;  // P(add connection mutation per genome) ∈ [0, 1]
+    float delete_connection_rate = 0.01f; // P(delete connection mutation per genome) ∈ [0, 1]
     int   max_hidden_nodes      = 50;     // Max hidden nodes per genome; 0 = unlimited [>= 0]
     int   generation_ticks      = 500;    // Simulation steps per generation [>= 10]
     int   max_generations       = 0;      // 0 = run indefinitely; otherwise stop after N
