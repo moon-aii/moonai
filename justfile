@@ -10,6 +10,9 @@ default: build
 # Detect OS
 os := if os() == "windows" { "windows" } else { "linux" }
 
+# vcpkg root (falls back to ~/.vcpkg if not set in environment)
+export VCPKG_ROOT := env("VCPKG_ROOT", env("HOME") + "/.vcpkg")
+
 # Build type (override with: just build-type=release build)
 build-type := "debug"
 
