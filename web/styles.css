@@ -199,16 +199,7 @@ ul {
                 box-shadow var(--transition-base);
 }
 
-.navbar.scrolled {
-    background-color: rgba(13, 13, 13, 0.95);
-    box-shadow: var(--shadow-md);
-}
 
-@media (prefers-color-scheme: light) {
-    .navbar.scrolled {
-        background-color: rgba(255, 255, 255, 0.95);
-    }
-}
 
 .nav-container {
     display: flex;
