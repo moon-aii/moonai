@@ -240,6 +240,17 @@ TEST(CLIArgsTest, SetOverrides) {
     EXPECT_EQ(args.overrides[1].second, "75");
 }
 
+TEST(CLIArgsTest, ProfileFlags) {
+    char* argv[] = {
+        const_cast<char*>("moonai"),
+        const_cast<char*>("--profile"),
+        const_cast<char*>("--profile-output"), const_cast<char*>("profiles/out")
+    };
+    auto args = parse_args(4, argv);
+    EXPECT_TRUE(args.profile);
+    EXPECT_EQ(args.profile_output_dir, "profiles/out");
+}
+
 TEST(ApplyOverrides, ValidOverrides) {
     SimulationConfig config;
     std::vector<std::pair<std::string, std::string>> overrides = {

@@ -480,6 +480,10 @@ CLIArgs parse_args(int argc, char* argv[]) {
             args.run_name = argv[++i];
         } else if (arg == "--validate") {
             args.validate_only = true;
+        } else if (arg == "--profile") {
+            args.profile = true;
+        } else if (arg == "--profile-output" && i + 1 < argc) {
+            args.profile_output_dir = argv[++i];
         } else if (arg == "--set" && i + 1 < argc) {
             std::string kv = argv[++i];
             auto eq = kv.find('=');
@@ -530,6 +534,8 @@ void print_usage(const char* program_name) {
         "      --name <name>         Override output directory name\n"
         "      --set key=value       Override a config parameter (repeatable)\n"
         "      --validate            Validate config and exit\n"
+        "      --profile             Enable built-in profiling outputs (CSV + JSON)\n"
+        "      --profile-output <dir> Override profiling output directory\n"
         "\n"
         "  -h, --help                Show this help message\n",
         program_name

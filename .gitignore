@@ -51,6 +51,7 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.bak
+perf.data
 
 # AI agent instruction symlinks (point to README.md)
 skills-lock.json

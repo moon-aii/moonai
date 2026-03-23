@@ -1,5 +1,6 @@
 #include "core/config.hpp"
 #include "core/lua_runtime.hpp"
+#include "core/profiler.hpp"
 #include "core/random.hpp"
 #include "simulation/simulation_manager.hpp"
 #include "simulation/physics.hpp"
@@ -26,6 +27,7 @@ namespace moonai::gpu {
 #include <cstdio>
 #include <cstdlib>
 #include <cmath>
+#include <filesystem>
 #include <fstream>
 #include <map>
 #include <sstream>
@@ -33,6 +35,18 @@ namespace moonai::gpu {
 namespace {
     volatile std::sig_atomic_t g_running = 1;
     void signal_handler(int) { g_running = 0; }
+
+    std::string profile_output_dir_for(const moonai::CLIArgs& args,
+                                       const std::string& run_dir,
+                                       const std::string& experiment_name) {
+        if (args.profile_output_dir.empty()) {
+            return run_dir;
+        }
+        if (experiment_name.empty()) {
+            return args.profile_output_dir;
+        }
+        return (std::filesystem::path(args.profile_output_dir) / experiment_name).string();
+    }
 
     std::string read_file(const std::string& path) {
         std::ifstream f(path);
@@ -154,6 +168,7 @@ int main(int argc, char* argv[]) {
     }
 
     spdlog::set_level(args.verbose ? spdlog::level::debug : spdlog::level::info);
+    moonai::Profiler::instance().set_enabled(args.profile);
     spdlog::info("MoonAI v{}.{}.{}", 0, 3, 0);
     {
         std::string features = " +vis";
@@ -252,6 +267,17 @@ int main(int argc, char* argv[]) {
             moonai::Logger logger(cfg.output_dir, cfg.seed, name);
             logger.initialize(cfg);
             moonai::MetricsCollector metrics;
+            if (args.profile) {
+                moonai::Profiler::instance().start_run(
+                    name,
+                    profile_output_dir_for(args, logger.run_dir(), name),
+                    cfg.seed,
+                    cfg.predator_count,
+                    cfg.prey_count,
+                    cfg.food_count,
+                    cfg.generation_ticks,
+                    !args.no_gpu);
+            }
 
             if (cfg.tick_log_enabled) {
                 int gen = 0;
@@ -264,7 +290,12 @@ int main(int argc, char* argv[]) {
             }
 
             int gen = 0;
+            const auto experiment_start = std::chrono::steady_clock::now();
             while (g_running && (cfg.max_generations == 0 || gen < cfg.max_generations)) {
+                if (args.profile) {
+                    moonai::Profiler::instance().start_generation(gen);
+                }
+                const auto generation_start = std::chrono::steady_clock::now();
                 simulation.reset();
                 evolution.assign_species_ids(simulation);
                 evolution.evaluate_generation(simulation);
@@ -274,6 +305,7 @@ int main(int argc, char* argv[]) {
                 m.num_species = static_cast<int>(evolution.species().size());
 
                 if (gen % cfg.log_interval == 0) {
+                    moonai::ScopedTimer logging_timer(moonai::ProfileEvent::Logging);
                     logger.log_generation(m.generation, m.predator_count, m.prey_count,
                                           m.best_fitness, m.avg_fitness, m.num_species,
                                           m.avg_genome_complexity);
@@ -310,6 +342,22 @@ int main(int argc, char* argv[]) {
                 }
 
                 evolution.evolve();
+                if (args.profile) {
+                    const auto generation_end = std::chrono::steady_clock::now();
+                    moonai::Profiler::instance().set_duration(
+                        moonai::ProfileEvent::GenerationTotal,
+                        std::chrono::duration_cast<std::chrono::nanoseconds>(generation_end - generation_start).count());
+                    moonai::Profiler::instance().finish_generation({
+                        gen,
+                        evolution.gpu_enabled(),
+                        simulation.alive_predators(),
+                        simulation.alive_prey(),
+                        m.num_species,
+                        m.best_fitness,
+                        m.avg_fitness,
+                        m.avg_genome_complexity
+                    });
+                }
                 ++gen;
             }
             // Fire on_experiment_end hook
@@ -319,6 +367,11 @@ int main(int argc, char* argv[]) {
             }
             std::printf("\n");
             spdlog::info("Output: {}", logger.run_dir());
+            if (args.profile) {
+                const auto experiment_end = std::chrono::steady_clock::now();
+                moonai::Profiler::instance().finish_run(
+                    std::chrono::duration_cast<std::chrono::nanoseconds>(experiment_end - experiment_start).count());
+            }
         }
         spdlog::info("Batch complete: {}/{} succeeded", total - failures, total);
         return failures > 0 ? 1 : 0;
@@ -446,6 +499,17 @@ int main(int argc, char* argv[]) {
     logger->initialize(config);
 
     moonai::MetricsCollector metrics;
+    if (args.profile) {
+        moonai::Profiler::instance().start_run(
+            selected_experiment.empty() ? output_name : selected_experiment,
+            profile_output_dir_for(args, logger->run_dir(), selected_experiment.empty() ? output_name : selected_experiment),
+            config.seed,
+            config.predator_count,
+            config.prey_count,
+            config.food_count,
+            config.generation_ticks,
+            !args.no_gpu);
+    }
 
     bool headless = args.headless;
     // Auto-detect headless environment: if no display server is available,
@@ -478,6 +542,7 @@ int main(int argc, char* argv[]) {
     // ── Main loop state ─────────────────────────────────────────────
     int generation = resumed ? p_evolution->generation() : 0;
     float dt = 1.0f / static_cast<float>(config.target_fps);
+    auto experiment_start = std::chrono::steady_clock::now();
 
     // ── Experiment selector loop (GUI multi-config) ──────────────────
     auto reinit_for_experiment = [&](const std::string& exp_name) {
@@ -514,6 +579,18 @@ int main(int argc, char* argv[]) {
         output_name = exp_name;
         logger = std::make_unique<moonai::Logger>(config.output_dir, config.seed, output_name);
         logger->initialize(config);
+        if (args.profile) {
+            moonai::Profiler::instance().start_run(
+                exp_name,
+                profile_output_dir_for(args, logger->run_dir(), exp_name),
+                config.seed,
+                config.predator_count,
+                config.prey_count,
+                config.food_count,
+                config.generation_ticks,
+                !args.no_gpu);
+            experiment_start = std::chrono::steady_clock::now();
+        }
         generation = 0;
         spdlog::info("Loaded experiment: {} (seed={})", exp_name, config.seed);
         return true;
@@ -555,6 +632,11 @@ int main(int argc, char* argv[]) {
         if (config.max_generations > 0 && generation >= config.max_generations) {
             break;
         }
+
+        if (args.profile) {
+            moonai::Profiler::instance().start_generation(generation);
+        }
+        const auto generation_start = std::chrono::steady_clock::now();
 
         // Reset simulation for this generation
         p_simulation->reset();
@@ -608,6 +690,7 @@ int main(int argc, char* argv[]) {
 #ifdef MOONAI_ENABLE_CUDA
                     if (visual_gpu_ready && p_evolution->infer_actions_gpu(*p_simulation, gpu_actions)) {
                         used_gpu = true;
+                        moonai::Profiler::instance().mark_gpu_used(true);
                         for (size_t i = 0; i < p_simulation->agents().size() && i < networks.size(); ++i) {
                             if (!p_simulation->agents()[i]->alive()) continue;
                             p_simulation->apply_action(i, gpu_actions[i], dt);
@@ -632,6 +715,7 @@ int main(int argc, char* argv[]) {
                         }
                     }
                     p_simulation->tick(dt);
+                    moonai::Profiler::instance().increment(moonai::ProfileCounter::TicksExecuted);
                     ++tick;
 
                     // Per-tick logging (visual path)
@@ -682,6 +766,7 @@ int main(int argc, char* argv[]) {
 
         // Log
         if (generation % config.log_interval == 0) {
+            moonai::ScopedTimer logging_timer(moonai::ProfileEvent::Logging);
             logger->log_generation(m.generation, m.predator_count, m.prey_count,
                                    m.best_fitness, m.avg_fitness,
                                    m.num_species, m.avg_genome_complexity);
@@ -728,6 +813,22 @@ int main(int argc, char* argv[]) {
 
         // Evolve for next generation
         p_evolution->evolve();
+        if (args.profile) {
+            const auto generation_end = std::chrono::steady_clock::now();
+            moonai::Profiler::instance().set_duration(
+                moonai::ProfileEvent::GenerationTotal,
+                std::chrono::duration_cast<std::chrono::nanoseconds>(generation_end - generation_start).count());
+            moonai::Profiler::instance().finish_generation({
+                generation,
+                p_evolution->gpu_enabled(),
+                p_simulation->alive_predators(),
+                p_simulation->alive_prey(),
+                m.num_species,
+                m.best_fitness,
+                m.avg_fitness,
+                m.avg_genome_complexity
+            });
+        }
         ++generation;
 
         // Save checkpoint if requested
@@ -751,5 +852,10 @@ int main(int argc, char* argv[]) {
     // ── Shutdown ────────────────────────────────────────────────────────
     spdlog::info("Simulation ended after {} generations.", generation);
     spdlog::info("Output saved to: {}", logger->run_dir());
+    if (args.profile) {
+        const auto experiment_end = std::chrono::steady_clock::now();
+        moonai::Profiler::instance().finish_run(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(experiment_end - experiment_start).count());
+    }
     return 0;
 }

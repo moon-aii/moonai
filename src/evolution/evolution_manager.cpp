@@ -1,5 +1,6 @@
 #include "evolution/evolution_manager.hpp"
 #include "evolution/crossover.hpp"
+#include "core/profiler.hpp"
 #include "simulation/physics.hpp"
 #include "core/lua_runtime.hpp"
 
@@ -210,6 +211,7 @@ void EvolutionManager::enable_gpu(bool use_gpu) {
 
 #ifdef MOONAI_ENABLE_CUDA
 bool EvolutionManager::prepare_gpu_generation() {
+    ScopedTimer timer(ProfileEvent::PrepareGpuGeneration);
     if (!use_gpu_ || !gpu_batch_) {
         return false;
     }
@@ -240,13 +242,28 @@ bool EvolutionManager::infer_actions_gpu(const SimulationManager& sim, std::vect
     }
     std::fill(actions.begin(), actions.end(), Vec2{0.0f, 0.0f});
 
-    sim.write_sensors_flat(gpu_batch_->host_inputs(), static_cast<size_t>(agent_count));
+    {
+        ScopedTimer timer(ProfileEvent::GpuSensorFlatten);
+        sim.write_sensors_flat(gpu_batch_->host_inputs(), static_cast<size_t>(agent_count));
+    }
 
     const int in_count = agent_count * num_inputs_;
-    gpu_batch_->pack_inputs_async(in_count);
-    gpu_batch_->launch_inference_async();
-    gpu_batch_->start_unpack_async();
-    gpu_batch_->finish_unpack();
+    {
+        ScopedTimer timer(ProfileEvent::GpuPackInputs);
+        gpu_batch_->pack_inputs_async(in_count);
+    }
+    {
+        ScopedTimer timer(ProfileEvent::GpuLaunch);
+        gpu_batch_->launch_inference_async();
+    }
+    {
+        ScopedTimer timer(ProfileEvent::GpuStartUnpack);
+        gpu_batch_->start_unpack_async();
+    }
+    {
+        ScopedTimer timer(ProfileEvent::GpuFinishUnpack);
+        gpu_batch_->finish_unpack();
+    }
 
     if (!gpu_batch_->ok()) {
         spdlog::warn("GPU inference failed; falling back to CPU inference");
@@ -255,16 +272,19 @@ bool EvolutionManager::infer_actions_gpu(const SimulationManager& sim, std::vect
         return false;
     }
 
-    const float* flat_out = gpu_batch_->host_outputs();
-    for (int i = 0; i < agent_count; ++i) {
-        if (!sim.agents()[i]->alive()) {
-            continue;
-        }
-        if (num_outputs_ >= 2) {
-            actions[i] = Vec2{
-                flat_out[i * num_outputs_ + 0] * 2.0f - 1.0f,
-                flat_out[i * num_outputs_ + 1] * 2.0f - 1.0f
-            };
+    {
+        ScopedTimer timer(ProfileEvent::GpuOutputConvert);
+        const float* flat_out = gpu_batch_->host_outputs();
+        for (int i = 0; i < agent_count; ++i) {
+            if (!sim.agents()[i]->alive()) {
+                continue;
+            }
+            if (num_outputs_ >= 2) {
+                actions[i] = Vec2{
+                    flat_out[i * num_outputs_ + 0] * 2.0f - 1.0f,
+                    flat_out[i * num_outputs_ + 1] * 2.0f - 1.0f
+                };
+            }
         }
     }
     return true;
@@ -290,20 +310,28 @@ void EvolutionManager::evaluate_generation(SimulationManager& sim) {
 
 #ifdef MOONAI_ENABLE_CUDA
     if (prepare_gpu_generation()) {
+        Profiler::instance().mark_gpu_used(true);
         for (int tick = 0; tick < config_.generation_ticks; ++tick) {
             if (!infer_actions_gpu(sim, actions)) {
                 break;
             }
 
-            for (int i = 0; i < agent_count; ++i) {
-                if (!sim.agents()[i]->alive()) continue;
-                sim.apply_action(static_cast<size_t>(i), actions[i], dt);
+            {
+                ScopedTimer timer(ProfileEvent::ApplyActions);
+                for (int i = 0; i < agent_count; ++i) {
+                    if (!sim.agents()[i]->alive()) continue;
+                    sim.apply_action(static_cast<size_t>(i), actions[i], dt);
+                }
             }
 
             sim.tick(dt);
             last_tick = tick + 1;
+            Profiler::instance().increment(ProfileCounter::TicksExecuted);
 
-            if (tick_callback_) tick_callback_(tick, sim);
+            if (tick_callback_) {
+                ScopedTimer timer(ProfileEvent::TickCallback);
+                tick_callback_(tick, sim);
+            }
             if (sim.alive_prey() == 0 || sim.alive_predators() == 0) break;
         }
 
@@ -315,7 +343,7 @@ void EvolutionManager::evaluate_generation(SimulationManager& sim) {
 #endif
 
     // CPU path (OpenMP-parallelized)
-    auto t0 = std::chrono::steady_clock::now();
+    ScopedTimer cpu_eval_timer(ProfileEvent::CpuEvalTotal);
     for (int tick = last_tick; tick < config_.generation_ticks; ++tick) {
         // Parallel compute phase: sensor + NN per agent (read-only on shared state)
         std::fill(actions.begin(), actions.end(), Vec2{0.0f, 0.0f});
@@ -331,9 +359,26 @@ void EvolutionManager::evaluate_generation(SimulationManager& sim) {
             float* sensor_buf = thread_sensor_bufs[tid].data();
             float* output_buf = thread_output_bufs[tid].data();
 
-            sim.get_sensors(static_cast<size_t>(i)).write_to(sensor_buf);
-            networks_[i]->activate_into(sensor_buf, num_inputs_,
-                                        output_buf, num_outputs_);
+            if (Profiler::instance().enabled()) {
+                const auto sensor_start = std::chrono::steady_clock::now();
+                sim.get_sensors(static_cast<size_t>(i)).write_to(sensor_buf);
+                const auto sensor_end = std::chrono::steady_clock::now();
+                Profiler::instance().add_duration(
+                    ProfileEvent::CpuSensorBuild,
+                    std::chrono::duration_cast<std::chrono::nanoseconds>(sensor_end - sensor_start).count());
+
+                const auto nn_start = std::chrono::steady_clock::now();
+                networks_[i]->activate_into(sensor_buf, num_inputs_,
+                                            output_buf, num_outputs_);
+                const auto nn_end = std::chrono::steady_clock::now();
+                Profiler::instance().add_duration(
+                    ProfileEvent::CpuNnActivate,
+                    std::chrono::duration_cast<std::chrono::nanoseconds>(nn_end - nn_start).count());
+            } else {
+                sim.get_sensors(static_cast<size_t>(i)).write_to(sensor_buf);
+                networks_[i]->activate_into(sensor_buf, num_inputs_,
+                                            output_buf, num_outputs_);
+            }
 
             if (num_outputs_ >= 2) {
                 actions[i] = Vec2{
@@ -344,29 +389,28 @@ void EvolutionManager::evaluate_generation(SimulationManager& sim) {
         }
 
         // Sequential apply phase
-        for (size_t i = 0; i < sim.agents().size(); ++i) {
-            if (!sim.agents()[i]->alive()) continue;
-            sim.apply_action(i, actions[i], dt);
+        {
+            ScopedTimer timer(ProfileEvent::ApplyActions);
+            for (size_t i = 0; i < sim.agents().size(); ++i) {
+                if (!sim.agents()[i]->alive()) continue;
+                sim.apply_action(i, actions[i], dt);
+            }
         }
 
         sim.tick(dt);
         last_tick = tick + 1;
+        Profiler::instance().increment(ProfileCounter::TicksExecuted);
 
-        if (tick_callback_) tick_callback_(tick, sim);
+        if (tick_callback_) {
+            ScopedTimer timer(ProfileEvent::TickCallback);
+            tick_callback_(tick, sim);
+        }
 
         // Early exit if all prey or all predators are dead
         if (sim.alive_prey() == 0 || sim.alive_predators() == 0) {
             break;
         }
     }
-    auto t1 = std::chrono::steady_clock::now();
-    double ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
-    int total_nn_calls = last_tick * static_cast<int>(networks_.size());
-    if (total_nn_calls > 0) {
-        spdlog::debug("CPU eval: {} ticks, ~{} NN calls, {:.1f} ms ({:.2f} µs/call)",
-                      last_tick, total_nn_calls, ms, ms * 1000.0 / total_nn_calls);
-    }
-
     // Compute fitness from simulation results
     compute_fitness(sim);
 }
@@ -396,6 +440,7 @@ void EvolutionManager::evolve() {
 }
 
 void EvolutionManager::build_networks() {
+    ScopedTimer timer(ProfileEvent::BuildNetworks);
     networks_.clear();
     networks_.reserve(population_.size());
     for (const auto& genome : population_) {
@@ -404,6 +449,7 @@ void EvolutionManager::build_networks() {
 }
 
 void EvolutionManager::compute_fitness(const SimulationManager& sim) {
+    ScopedTimer timer(ProfileEvent::ComputeFitness);
     const auto& agents = sim.agents();
     bool use_lua = lua_runtime_ && lua_runtime_->callbacks().has_fitness_fn;
 
@@ -452,6 +498,7 @@ float EvolutionManager::default_fitness(float age_ratio, float kills_or_food,
 }
 
 void EvolutionManager::speciate() {
+    ScopedTimer timer(ProfileEvent::Speciate);
     // Clear stale member pointers first (they point into the previous generation's
     // population which was freed in reproduce()), then update the representative
     // from the now-empty members (keeps the existing representative if no members).
@@ -492,6 +539,7 @@ void EvolutionManager::speciate() {
 }
 
 void EvolutionManager::remove_stagnant_species() {
+    ScopedTimer timer(ProfileEvent::RemoveStagnantSpecies);
     if (species_.size() <= 2) return;  // Always keep at least 2 species
 
     species_.erase(
@@ -513,6 +561,7 @@ void EvolutionManager::remove_stagnant_species() {
 }
 
 void EvolutionManager::reproduce() {
+    ScopedTimer timer(ProfileEvent::Reproduce);
     std::vector<Genome> new_population;
     int target_size = static_cast<int>(population_.size());
 

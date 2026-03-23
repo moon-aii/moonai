@@ -1,6 +1,7 @@
 add_library(moonai_core STATIC
     config.cpp
     lua_runtime.cpp
+    profiler.cpp
     random.cpp
 )
 

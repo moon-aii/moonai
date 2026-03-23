@@ -1,5 +1,7 @@
 #include "evolution/genome.hpp"
 
+#include "core/profiler.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <nlohmann/json.hpp>
@@ -57,6 +59,8 @@ int Genome::complexity() const {
 
 float Genome::compatibility_distance(const Genome& a, const Genome& b,
                                      float c1, float c2, float c3) {
+    ScopedTimer timer(ProfileEvent::CompatibilityDistance);
+    Profiler::instance().increment(ProfileCounter::CompatibilityChecks);
     const auto& conns_a = a.connections();
     const auto& conns_b = b.connections();
 

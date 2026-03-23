@@ -1,5 +1,7 @@
 #include "simulation/spatial_grid.hpp"
 
+#include "core/profiler.hpp"
+
 #include <algorithm>
 #include <cmath>
 
@@ -48,6 +50,8 @@ std::vector<AgentId> SpatialGrid::query(Vec2 position) const {
 }
 
 std::vector<AgentId> SpatialGrid::query_radius(Vec2 position, float radius) const {
+    ScopedTimer timer(ProfileEvent::SpatialQueryRadius);
+    Profiler::instance().increment(ProfileCounter::GridQueryCalls);
     std::vector<AgentId> result;
     float r2 = radius * radius;
     int cells_to_check = static_cast<int>(std::ceil(radius / cell_size_)) + 1;
@@ -60,6 +64,8 @@ std::vector<AgentId> SpatialGrid::query_radius(Vec2 position, float radius) cons
             int ny = cy + dy;
             if (nx < 0 || nx >= cols_ || ny < 0 || ny >= rows_) continue;
             int idx = ny * cols_ + nx;
+            Profiler::instance().increment(ProfileCounter::GridCandidatesScanned,
+                                           static_cast<std::int64_t>(cells_[idx].size()));
             for (const auto& entry : cells_[idx]) {
                 float ddx = entry.pos.x - position.x;
                 float ddy = entry.pos.y - position.y;

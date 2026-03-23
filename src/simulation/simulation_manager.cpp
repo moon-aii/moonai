@@ -1,4 +1,5 @@
 #include "simulation/simulation_manager.hpp"
+#include "core/profiler.hpp"
 #include "simulation/predator.hpp"
 #include "simulation/prey.hpp"
 
@@ -55,14 +56,18 @@ void SimulationManager::initialize() {
 }
 
 void SimulationManager::tick(float dt) {
+    ScopedTimer timer(ProfileEvent::SimulationTick);
     last_events_.clear();
     rebuild_spatial_grid();
     rebuild_food_grid();
 
     // Update agents (age increment)
-    for (auto& agent : agents_) {
-        if (agent->alive()) {
-            agent->update(dt);
+    {
+        ScopedTimer section(ProfileEvent::AgentUpdate);
+        for (auto& agent : agents_) {
+            if (agent->alive()) {
+                agent->update(dt);
+            }
         }
     }
 
@@ -75,16 +80,22 @@ void SimulationManager::tick(float dt) {
     environment_.tick_food(rng_, config_.food_respawn_rate);
 
     // Apply boundary conditions
-    for (auto& agent : agents_) {
-        if (agent->alive()) {
-            agent->set_position(environment_.apply_boundary(agent->position()));
+    {
+        ScopedTimer section(ProfileEvent::BoundaryApply);
+        for (auto& agent : agents_) {
+            if (agent->alive()) {
+                agent->set_position(environment_.apply_boundary(agent->position()));
+            }
         }
     }
 
     // Check for energy death
-    for (auto& agent : agents_) {
-        if (agent->alive() && agent->is_dead()) {
-            agent->set_alive(false);
+    {
+        ScopedTimer section(ProfileEvent::DeathCheck);
+        for (auto& agent : agents_) {
+            if (agent->alive() && agent->is_dead()) {
+                agent->set_alive(false);
+            }
         }
     }
 
@@ -125,6 +136,7 @@ void SimulationManager::apply_action(size_t agent_index, Vec2 direction, float d
 }
 
 void SimulationManager::rebuild_spatial_grid() {
+    ScopedTimer timer(ProfileEvent::RebuildSpatialGrid);
     grid_.clear();
     for (const auto& agent : agents_) {
         if (agent->alive()) {
@@ -134,6 +146,7 @@ void SimulationManager::rebuild_spatial_grid() {
 }
 
 void SimulationManager::rebuild_food_grid() {
+    ScopedTimer timer(ProfileEvent::RebuildFoodGrid);
     food_grid_.clear();
     const auto& food = environment_.food();
     for (size_t i = 0; i < food.size(); ++i) {
@@ -144,6 +157,7 @@ void SimulationManager::rebuild_food_grid() {
 }
 
 void SimulationManager::process_energy(float dt) {
+    ScopedTimer timer(ProfileEvent::ProcessEnergy);
     for (auto& agent : agents_) {
         if (!agent->alive()) continue;
         // All agents drain energy per tick (cost of living)
@@ -152,18 +166,22 @@ void SimulationManager::process_energy(float dt) {
 }
 
 void SimulationManager::process_food() {
+    ScopedTimer timer(ProfileEvent::ProcessFood);
     float eat_range = config_.food_pickup_range;
     for (auto& agent : agents_) {
         if (!agent->alive() || agent->type() != AgentType::Prey) continue;
+        Profiler::instance().increment(ProfileCounter::FoodEatAttempts);
         if (environment_.try_eat_food(agent->position(), eat_range)) {
             agent->add_energy(config_.energy_gain_from_food);
             agent->add_food();
+            Profiler::instance().increment(ProfileCounter::FoodEaten);
             last_events_.push_back({SimEvent::Food, agent->id(), 0, agent->position()});
         }
     }
 }
 
 void SimulationManager::process_attacks() {
+    ScopedTimer timer(ProfileEvent::ProcessAttacks);
     // Record kills before attack processing
     std::vector<int> kills_before;
     kills_before.reserve(agents_.size());
@@ -185,6 +203,7 @@ void SimulationManager::process_attacks() {
         if (agents_[i]->type() != AgentType::Predator) continue;
         int new_kills = agents_[i]->kills() - kills_before[i];
         if (new_kills > 0) {
+            Profiler::instance().increment(ProfileCounter::Kills, new_kills);
             if (agents_[i]->alive()) {
                 agents_[i]->add_energy(config_.energy_gain_from_kill * static_cast<float>(new_kills));
             }
@@ -201,6 +220,7 @@ void SimulationManager::process_attacks() {
 }
 
 void SimulationManager::count_alive() {
+    ScopedTimer timer(ProfileEvent::CountAlive);
     alive_predators_ = 0;
     alive_prey_ = 0;
     for (const auto& agent : agents_) {

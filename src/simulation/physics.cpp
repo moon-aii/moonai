@@ -1,4 +1,5 @@
 #include "simulation/physics.hpp"
+#include "core/profiler.hpp"
 #include "simulation/environment.hpp"
 #include "simulation/predator.hpp"
 
@@ -53,6 +54,8 @@ SensorInput Physics::build_sensors(
     float world_width, float world_height,
     float max_energy,
     bool has_walls) {
+
+    ScopedTimer timer(ProfileEvent::PhysicsBuildSensors);
 
     SensorInput s;
     float vision = agent.vision_range();
@@ -172,6 +175,8 @@ std::vector<AgentId> Physics::process_attacks(
 
         auto* predator = static_cast<Predator*>(agent.get());
         auto nearby = grid.query_radius(predator->position(), attack_range);
+        Profiler::instance().increment(ProfileCounter::AttackChecks,
+                                       static_cast<std::int64_t>(nearby.size()));
 
         for (AgentId nid : nearby) {
             if (nid >= agents.size()) continue;
