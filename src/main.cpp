@@ -1,4 +1,5 @@
 #include "core/config.hpp"
+#include "core/lua_runtime.hpp"
 #include "core/random.hpp"
 #include "simulation/simulation_manager.hpp"
 #include "simulation/physics.hpp"
@@ -168,20 +169,22 @@ int main(int argc, char* argv[]) {
     }
 
     // ── Load configuration from Lua ─────────────────────────────────────
-    auto all_configs = moonai::load_all_configs_lua(args.config_path);
+    // --list and --validate use the lightweight loader (no persistent state).
+    // Everything else uses LuaRuntime so Lua callbacks survive config loading.
+    if (args.list_experiments) {
+        auto all = moonai::load_all_configs_lua(args.config_path);
+        if (all.empty()) { spdlog::error("No configs loaded from '{}'", args.config_path); return 1; }
+        std::printf("Experiments in '%s':\n", args.config_path.c_str());
+        for (const auto& [name, _] : all) std::printf("  %s\n", name.c_str());
+        std::printf("Total: %zu\n", all.size());
+        return 0;
+    }
+
+    moonai::LuaRuntime lua_runtime;
+    auto all_configs = lua_runtime.load_config(args.config_path);
     if (all_configs.empty()) {
         spdlog::error("No configs loaded from '{}'", args.config_path);
         return 1;
-    }
-
-    // --list: print experiment names and exit
-    if (args.list_experiments) {
-        std::printf("Experiments in '%s':\n", args.config_path.c_str());
-        for (const auto& [name, _] : all_configs) {
-            std::printf("  %s\n", name.c_str());
-        }
-        std::printf("Total: %zu\n", all_configs.size());
-        return 0;
     }
 
     // --all: run all experiments sequentially (headless only)
@@ -234,6 +237,11 @@ int main(int argc, char* argv[]) {
             moonai::EvolutionManager evolution(cfg, rng);
             simulation.initialize();
             evolution.initialize(NN_INPUTS, NN_OUTPUTS);
+
+            // Wire Lua runtime for fitness functions and hooks
+            lua_runtime.select_experiment(name);
+            evolution.set_lua_runtime(&lua_runtime);
+            lua_runtime.call_on_experiment_start(cfg);
 
 #ifdef MOONAI_ENABLE_CUDA
             if (!args.no_gpu && moonai::gpu::init_cuda()) {
@@ -289,8 +297,25 @@ int main(int argc, char* argv[]) {
                     std::fflush(stdout);
                 }
 
+                // Fire on_generation_end hook (may return config overrides)
+                if (lua_runtime.callbacks().has_on_generation_end) {
+                    moonai::GenerationStats gs{gen, m.best_fitness, m.avg_fitness,
+                        m.num_species, simulation.alive_predators(),
+                        simulation.alive_prey(), m.avg_genome_complexity};
+                    std::map<std::string, float> overrides;
+                    if (lua_runtime.call_on_generation_end(gs, overrides)) {
+                        moonai::apply_overrides_float(cfg, overrides);
+                        evolution.update_config(cfg);
+                    }
+                }
+
                 evolution.evolve();
                 ++gen;
+            }
+            // Fire on_experiment_end hook
+            {
+                moonai::GenerationStats gs{gen, 0.0f, 0.0f, 0, 0, 0, 0.0f};
+                lua_runtime.call_on_experiment_end(gs);
             }
             std::printf("\n");
             spdlog::info("Output: {}", logger.run_dir());
@@ -301,6 +326,7 @@ int main(int argc, char* argv[]) {
 
     // ── Single experiment mode ───────────────────────────────────────────
     moonai::SimulationConfig config;
+    std::string selected_experiment;
 
     if (!args.experiment_name.empty()) {
         // --experiment: select one from multi-config
@@ -311,19 +337,24 @@ int main(int argc, char* argv[]) {
             return 1;
         }
         config = it->second;
+        selected_experiment = args.experiment_name;
     } else if (all_configs.size() == 1) {
         config = all_configs.begin()->second;
+        selected_experiment = all_configs.begin()->first;
     } else {
         // Multi-config without --experiment or --all: store names for GUI selector
         // For now in headless mode, pick first
         if (args.headless) {
             spdlog::warn("Multiple experiments found. Use --experiment or --all. Using first.");
             config = all_configs.begin()->second;
+            selected_experiment = all_configs.begin()->first;
         } else {
             // GUI mode: will use experiment selector (handled later)
             config = all_configs.begin()->second;
+            selected_experiment = all_configs.begin()->first;
         }
     }
+    lua_runtime.select_experiment(selected_experiment);
 
     // Apply --set overrides
     if (!args.overrides.empty()) {
@@ -390,6 +421,8 @@ int main(int argc, char* argv[]) {
         p_evolution->initialize(NN_INPUTS, NN_OUTPUTS);
     }
 
+    // Wire Lua runtime for fitness functions and hooks
+    p_evolution->set_lua_runtime(&lua_runtime);
 
     // ── CUDA initialization ─────────────────────────────────────────────
     // Must happen after evolution.initialize() / load_checkpoint() so that
@@ -470,6 +503,9 @@ int main(int argc, char* argv[]) {
         p_evolution = std::make_unique<moonai::EvolutionManager>(config, rng);
         p_simulation->initialize();
         p_evolution->initialize(NN_INPUTS, NN_OUTPUTS);
+        lua_runtime.select_experiment(exp_name);
+        p_evolution->set_lua_runtime(&lua_runtime);
+        lua_runtime.call_on_experiment_start(config);
         output_name = exp_name;
         logger = std::make_unique<moonai::Logger>(config.output_dir, config.seed, output_name);
         logger->initialize(config);
@@ -479,6 +515,7 @@ int main(int argc, char* argv[]) {
     };
 
     // ── Main loop ───────────────────────────────────────────────────────
+    lua_runtime.call_on_experiment_start(config);
     spdlog::info("Starting simulation: {} predators, {} prey, {} ticks/gen",
                  config.predator_count, config.prey_count, config.generation_ticks);
 
@@ -650,6 +687,18 @@ int main(int argc, char* argv[]) {
             std::fflush(stdout);
         }
 
+        // Fire on_generation_end hook (may return config overrides)
+        if (lua_runtime.callbacks().has_on_generation_end) {
+            moonai::GenerationStats gs{generation, m.best_fitness, m.avg_fitness,
+                m.num_species, p_simulation->alive_predators(),
+                p_simulation->alive_prey(), m.avg_genome_complexity};
+            std::map<std::string, float> overrides;
+            if (lua_runtime.call_on_generation_end(gs, overrides)) {
+                moonai::apply_overrides_float(config, overrides);
+                p_evolution->update_config(config);
+            }
+        }
+
         // Evolve for next generation
         p_evolution->evolve();
         ++generation;
@@ -660,6 +709,12 @@ int main(int argc, char* argv[]) {
                 + std::to_string(generation) + ".json";
             p_evolution->save_checkpoint(ckpt_path, rng);
         }
+    }
+
+    // Fire on_experiment_end hook
+    {
+        moonai::GenerationStats gs{generation, 0.0f, 0.0f, 0, 0, 0, 0.0f};
+        lua_runtime.call_on_experiment_end(gs);
     }
 
     if (headless && max_gen > 0) {

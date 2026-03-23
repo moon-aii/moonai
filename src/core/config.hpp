@@ -99,6 +99,11 @@ std::vector<ConfigError> apply_overrides(
     SimulationConfig& config,
     const std::vector<std::pair<std::string, std::string>>& overrides);
 
+// Apply float-valued overrides from Lua hooks (e.g. { mutation_rate = 0.5 }).
+// Only applies to recognized float/int fields. Logs warnings for unknown keys.
+void apply_overrides_float(SimulationConfig& config,
+                           const std::map<std::string, float>& overrides);
+
 // ── CLI ─────────────────────────────────────────────────────────────────
 struct CLIArgs {
     std::string config_path = "config.lua";

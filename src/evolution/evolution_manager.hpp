@@ -18,6 +18,8 @@ namespace moonai::gpu { class GpuBatch; }
 
 namespace moonai {
 
+class LuaRuntime;  // forward declaration
+
 class EvolutionManager {
 public:
     explicit EvolutionManager(const SimulationConfig& config, Random& rng);
@@ -48,6 +50,12 @@ public:
     void set_tick_callback(TickCallback cb) { tick_callback_ = std::move(cb); }
     void clear_tick_callback() { tick_callback_ = nullptr; }
 
+    // Lua runtime (for scripted fitness / hooks)
+    void set_lua_runtime(LuaRuntime* rt) { lua_runtime_ = rt; }
+
+    // Update config (e.g. from Lua hook overrides)
+    void update_config(const SimulationConfig& cfg) { config_ = cfg; }
+
     // GPU acceleration
     void enable_gpu(bool use_gpu);
     bool gpu_enabled() const { return use_gpu_; }
@@ -77,6 +85,8 @@ private:
     int generation_ = 0;
     int num_inputs_ = 0;
     int num_outputs_ = 0;
+
+    LuaRuntime* lua_runtime_ = nullptr;
 
     bool use_gpu_ = false;
 #ifdef MOONAI_ENABLE_CUDA

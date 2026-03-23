@@ -1,6 +1,5 @@
 add_library(moonai_gpu STATIC
     neural_inference.cu
-    fitness_eval.cu
     gpu_batch.cu
 )
 

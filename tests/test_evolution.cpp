@@ -7,6 +7,7 @@
 #include "evolution/crossover.hpp"
 #include "evolution/species.hpp"
 #include "evolution/evolution_manager.hpp"
+#include "simulation/physics.hpp"
 
 using namespace moonai;
 
@@ -469,4 +470,76 @@ TEST(MutationTest, DeleteConnectionProducesValidNetwork) {
     NeuralNetwork nn(g);
     auto outputs = nn.activate({1.0f, 0.5f, -1.0f});
     EXPECT_EQ(outputs.size(), 2u);
+}
+
+// ── SensorInput::write_to Tests ─────────────────────────────────────────
+
+TEST(SensorInputTest, WriteToMatchesToVector) {
+    SensorInput si;
+    si.nearest_predator_dist = 0.5f;
+    si.nearest_predator_angle = -0.3f;
+    si.nearest_prey_dist = 0.8f;
+    si.nearest_prey_angle = 0.1f;
+    si.nearest_food_dist = 0.2f;
+    si.nearest_food_angle = -0.7f;
+    si.energy_level = 0.6f;
+    si.speed_x = 0.3f;
+    si.speed_y = -0.4f;
+    si.local_predator_density = 0.15f;
+    si.local_prey_density = 0.25f;
+    si.wall_left = 0.9f;
+    si.wall_right = 0.1f;
+    si.wall_top = 0.5f;
+    si.wall_bottom = 0.7f;
+
+    auto vec = si.to_vector();
+    float buf[SensorInput::SIZE];
+    si.write_to(buf);
+
+    ASSERT_EQ(vec.size(), static_cast<size_t>(SensorInput::SIZE));
+    for (int i = 0; i < SensorInput::SIZE; ++i) {
+        EXPECT_FLOAT_EQ(buf[i], vec[i]) << "Mismatch at index " << i;
+    }
+}
+
+// ── NeuralNetwork::activate_into Tests ──────────────────────────────────
+
+TEST(NeuralNetworkTest, ActivateIntoMatchesActivate) {
+    Genome g(3, 2);
+    InnovationTracker tracker;
+    Random rng(42);
+
+    // Fully connect
+    for (const auto& in_node : g.nodes()) {
+        if (in_node.type != NodeType::Input && in_node.type != NodeType::Bias) continue;
+        for (const auto& out_node : g.nodes()) {
+            if (out_node.type != NodeType::Output) continue;
+            g.add_connection({in_node.id, out_node.id,
+                              rng.next_float(-1.0f, 1.0f), true,
+                              tracker.get_innovation(in_node.id, out_node.id)});
+        }
+    }
+
+    // Add some hidden nodes
+    SimulationConfig config;
+    config.mutation_rate = 1.0f;
+    config.add_node_rate = 0.5f;
+    for (int i = 0; i < 5; ++i) {
+        Mutation::mutate(g, rng, config, tracker);
+    }
+
+    std::vector<float> inputs = {1.0f, 0.5f, -1.0f};
+
+    NeuralNetwork nn(g);
+    auto vec_out = nn.activate(inputs);
+
+    // Reset and use activate_into
+    NeuralNetwork nn2(g);
+    float out_buf[2];
+    nn2.activate_into(inputs.data(), 3, out_buf, 2);
+
+    ASSERT_EQ(vec_out.size(), 2u);
+    for (int i = 0; i < 2; ++i) {
+        EXPECT_FLOAT_EQ(out_buf[i], vec_out[i]) << "Mismatch at output " << i;
+    }
 }

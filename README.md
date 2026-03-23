@@ -21,10 +21,10 @@ The platform enables researchers to:
 
 - **NEAT Implementation** - Evolves both topology and weights of neural networks simultaneously
 - **Real-Time Visualization** - SFML-based rendering with interactive controls and live NN activation display
-- **GPU Acceleration** - CUDA backend for batch neural inference and fitness evaluation with runtime CPU fallback
+- **GPU Acceleration** - CUDA backend for batch neural inference with async streams, pinned memory, and runtime CPU fallback
 - **Cross-Platform** - Runs on Linux and Windows with identical behavior
 - **Reproducible Experiments** - Seeded RNG with deterministic simulation for scientific rigor
-- **Configurable** - All parameters adjustable via Lua configs without recompilation
+- **Lua Scripting** - Config, custom fitness functions, and generation hooks — all in Lua without recompilation
 - **Data Export** - CSV/JSON output (including optional per-tick trajectories) compatible with Python analysis tools
 
 ## Architecture
@@ -51,12 +51,12 @@ The system follows a modular architecture with four primary subsystems, each bui
 
 | Subsystem | Library | Description |
 |-----------|---------|-------------|
-| `src/core/` | `moonai_core` | Shared types (`Vec2`), Lua config loader (sol2), seeded RNG |
+| `src/core/` | `moonai_core` | Shared types (`Vec2`), Lua config loader (sol2), Lua runtime (fitness/hooks), seeded RNG |
 | `src/simulation/` | `moonai_simulation` | Agent hierarchy, environment grid, collision/sensing |
 | `src/evolution/` | `moonai_evolution` | NEAT genome, neural network, speciation, mutation, crossover |
 | `src/visualization/` | `moonai_visualization` | SFML window, renderer, UI overlay |
 | `src/data/` | `moonai_data` | CSV logger, metrics collector |
-| `src/gpu/` | `moonai_gpu` | CUDA kernels for batch inference and fitness evaluation |
+| `src/gpu/` | `moonai_gpu` | CUDA kernels for batch neural inference (async streams + pinned memory) |
 
 ## Prerequisites
 
@@ -197,6 +197,39 @@ return experiments
 
 A single-entry file auto-selects without `--experiment`. The `default` entry serves as the everyday run config.
 
+### Lua Callbacks
+
+Experiments can optionally define Lua functions that the runtime calls at specific points. No callback defined means the default C++ behavior is used (zero overhead).
+
+| Callback | Signature | Purpose |
+|----------|-----------|---------|
+| `fitness_fn` | `(stats, weights) -> number` | Custom fitness formula replacing the built-in linear combination |
+| `on_generation_end` | `(gen, stats) -> table or nil` | Called after each generation; return a table of config overrides (e.g. `{ mutation_rate = 0.5 }`) or `nil` |
+| `on_experiment_start` | `(config) -> nil` | Called once before the main loop |
+| `on_experiment_end` | `(stats) -> nil` | Called once after the main loop |
+
+Example with a custom fitness function and adaptive mutation hook:
+
+```lua
+experiments["adaptive"] = extend(moonai_defaults, {
+    fitness_fn = function(stats, weights)
+        return weights.survival * stats.age_ratio
+             + weights.kill     * stats.kills_or_food
+             + weights.energy   * stats.energy_ratio
+             + stats.alive_bonus
+             + weights.distance * stats.dist_ratio
+             - weights.complexity_penalty * stats.complexity
+    end,
+
+    on_generation_end = function(gen, stats)
+        if stats.avg_fitness < 2.0 and gen > 20 then
+            return { mutation_rate = 0.5 }
+        end
+        return nil
+    end,
+})
+```
+
 ### CLI flags
 
 | Flag | Purpose |
@@ -336,7 +369,7 @@ moonai/
 ├── config.lua                  # Unified config: default run + experiment matrix (8 × 5 seeds)
 ├── src/
 │   ├── main.cpp                # Entry point: CLI parsing, init, main loop, shutdown
-│   ├── core/                   # Shared types (Vec2, AgentId), config loader, seeded RNG
+│   ├── core/                   # Shared types (Vec2, AgentId), config loader, Lua runtime, seeded RNG
 │   ├── simulation/             # Agent hierarchy, environment, physics, spatial grid
 │   ├── evolution/              # NEAT: genome, neural network, species, mutation, crossover
 │   ├── visualization/          # SFML rendering (always compiled in; window suppressed by --headless)

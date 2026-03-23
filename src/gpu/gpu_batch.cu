@@ -9,20 +9,42 @@ GpuBatch::GpuBatch(int num_agents, int num_inputs, int num_outputs)
     : num_agents_(num_agents)
     , num_inputs_(num_inputs)
     , num_outputs_(num_outputs) {
+    size_t in_bytes  = num_agents * num_inputs  * sizeof(float);
+    size_t out_bytes = num_agents * num_outputs * sizeof(float);
+
+    // Sync path arrays
     CUDA_CHECK_ABORT(cudaMalloc(&d_descs_,   num_agents * sizeof(GpuNetDesc)));
-    CUDA_CHECK_ABORT(cudaMalloc(&d_inputs_,  num_agents * num_inputs  * sizeof(float)));
-    CUDA_CHECK_ABORT(cudaMalloc(&d_outputs_, num_agents * num_outputs * sizeof(float)));
-    CUDA_CHECK_ABORT(cudaMalloc(&d_stats_,   num_agents * sizeof(GpuAgentStats)));
-    CUDA_CHECK_ABORT(cudaMalloc(&d_fitness_, num_agents * sizeof(float)));
+    CUDA_CHECK_ABORT(cudaMalloc(&d_inputs_,  in_bytes));
+    CUDA_CHECK_ABORT(cudaMalloc(&d_outputs_, out_bytes));
+
+    // Async path: double-buffered device arrays, pinned host memory, streams
+    for (int b = 0; b < kNumBuffers; ++b) {
+        CUDA_CHECK_ABORT(cudaMalloc(&d_inputs_db_[b],  in_bytes));
+        CUDA_CHECK_ABORT(cudaMalloc(&d_outputs_db_[b], out_bytes));
+        CUDA_CHECK_ABORT(cudaMallocHost(&h_pinned_in_[b],  in_bytes));
+        CUDA_CHECK_ABORT(cudaMallocHost(&h_pinned_out_[b], out_bytes));
+        cudaStream_t s;
+        CUDA_CHECK_ABORT(cudaStreamCreate(&s));
+        streams_[b] = static_cast<void*>(s);
+    }
 }
 
 GpuBatch::~GpuBatch() {
+    // Sync path
     if (d_descs_)       cudaFree(d_descs_);
     if (d_inputs_)      cudaFree(d_inputs_);
     if (d_outputs_)     cudaFree(d_outputs_);
-    if (d_stats_)       cudaFree(d_stats_);
-    if (d_fitness_)     cudaFree(d_fitness_);
 
+    // Async path: double buffers, pinned memory, streams
+    for (int b = 0; b < kNumBuffers; ++b) {
+        if (d_inputs_db_[b])  cudaFree(d_inputs_db_[b]);
+        if (d_outputs_db_[b]) cudaFree(d_outputs_db_[b]);
+        if (h_pinned_in_[b])  cudaFreeHost(h_pinned_in_[b]);
+        if (h_pinned_out_[b]) cudaFreeHost(h_pinned_out_[b]);
+        if (streams_[b])      cudaStreamDestroy(static_cast<cudaStream_t>(streams_[b]));
+    }
+
+    // Topology arrays
     if (d_node_vals_)   cudaFree(d_node_vals_);
     if (d_node_types_)  cudaFree(d_node_types_);
     if (d_eval_order_)  cudaFree(d_eval_order_);
@@ -105,17 +127,57 @@ void GpuBatch::unpack_outputs(std::vector<float>& flat_out) const {
         flat_out.size() * sizeof(float), cudaMemcpyDeviceToHost));
 }
 
-// ── Post-generation fitness ───────────────────────────────────────────────────
+// ── Async per-tick I/O ───────────────────────────────────────────────────────
 
-void GpuBatch::pack_agent_stats(const std::vector<GpuAgentStats>& stats) {
-    CUDA_CHECK(cudaMemcpy(d_stats_, stats.data(),
-        stats.size() * sizeof(GpuAgentStats), cudaMemcpyHostToDevice));
+void GpuBatch::pack_inputs_async(const float* flat_inputs, int count, int buf) {
+    size_t bytes = count * sizeof(float);
+    memcpy(h_pinned_in_[buf], flat_inputs, bytes);
+    cudaStream_t s = static_cast<cudaStream_t>(streams_[buf]);
+    CUDA_CHECK(cudaMemcpyAsync(d_inputs_db_[buf], h_pinned_in_[buf],
+        bytes, cudaMemcpyHostToDevice, s));
 }
 
-void GpuBatch::unpack_fitness(std::vector<float>& fitness_out) const {
-    fitness_out.resize(num_agents_);
-    CUDA_CHECK(cudaMemcpy(fitness_out.data(), d_fitness_,
-        fitness_out.size() * sizeof(float), cudaMemcpyDeviceToHost));
+void GpuBatch::launch_inference_async(int buf) {
+    batch_neural_inference(*this, buf);
+}
+
+void GpuBatch::start_unpack_async(int buf) {
+    size_t bytes = num_agents_ * num_outputs_ * sizeof(float);
+    cudaStream_t s = static_cast<cudaStream_t>(streams_[buf]);
+    CUDA_CHECK(cudaMemcpyAsync(h_pinned_out_[buf], d_outputs_db_[buf],
+        bytes, cudaMemcpyDeviceToHost, s));
+}
+
+void GpuBatch::finish_unpack(float* dst, int count, int buf) {
+    cudaStream_t s = static_cast<cudaStream_t>(streams_[buf]);
+    CUDA_CHECK(cudaStreamSynchronize(s));
+    memcpy(dst, h_pinned_out_[buf], count * sizeof(float));
+}
+
+void GpuBatch::sync_stream(int buf) {
+    cudaStream_t s = static_cast<cudaStream_t>(streams_[buf]);
+    CUDA_CHECK(cudaStreamSynchronize(s));
+}
+
+// ── CUDA initialization (moved from fitness_eval.cu) ─────────────────────────
+
+bool init_cuda() {
+    int device_count = 0;
+    cudaError_t err = cudaGetDeviceCount(&device_count);
+    if (err != cudaSuccess || device_count == 0) {
+        return false;
+    }
+    CUDA_CHECK(cudaSetDevice(0));
+    return true;
+}
+
+void print_device_info() {
+    cudaDeviceProp prop;
+    CUDA_CHECK(cudaGetDeviceProperties(&prop, 0));
+    printf("CUDA Device: %s\n", prop.name);
+    printf("  Compute capability: %d.%d\n", prop.major, prop.minor);
+    printf("  Total memory: %.1f MB\n", prop.totalGlobalMem / (1024.0 * 1024.0));
+    printf("  SM count: %d\n", prop.multiProcessorCount);
 }
 
 } // namespace moonai::gpu

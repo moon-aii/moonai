@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "core/config.hpp"
+#include "core/lua_runtime.hpp"
 
 #include <fstream>
 #include <filesystem>
@@ -278,4 +279,131 @@ TEST(ApplyOverrides, InvalidValue) {
     auto errors = apply_overrides(config, overrides);
     EXPECT_EQ(errors.size(), 1u);
     EXPECT_EQ(errors[0].field, "predator_count");
+}
+
+// ── LuaRuntime Tests ────────────────────────────────────────────────────
+
+TEST(LuaRuntimeTest, LoadWithFitnessFn) {
+    std::string path = (std::filesystem::temp_directory_path() / "moonai_rt_fitness.lua").string();
+    {
+        std::ofstream f(path);
+        f << "return { test = {\n"
+          << "  fitness_fn = function(s, w) return s.age_ratio * 10 end\n"
+          << "} }\n";
+    }
+
+    LuaRuntime rt;
+    auto configs = rt.load_config(path);
+    ASSERT_EQ(configs.size(), 1u);
+    rt.select_experiment("test");
+    EXPECT_TRUE(rt.callbacks().has_fitness_fn);
+    EXPECT_FALSE(rt.callbacks().has_on_generation_end);
+
+    std::filesystem::remove(path);
+}
+
+TEST(LuaRuntimeTest, LoadWithoutFitnessFn) {
+    std::string path = (std::filesystem::temp_directory_path() / "moonai_rt_nofn.lua").string();
+    {
+        std::ofstream f(path);
+        f << "return { test = { grid_width = 800 } }\n";
+    }
+
+    LuaRuntime rt;
+    auto configs = rt.load_config(path);
+    ASSERT_EQ(configs.size(), 1u);
+    rt.select_experiment("test");
+    EXPECT_FALSE(rt.callbacks().has_fitness_fn);
+
+    std::filesystem::remove(path);
+}
+
+TEST(LuaRuntimeTest, CallFitness) {
+    std::string path = (std::filesystem::temp_directory_path() / "moonai_rt_call.lua").string();
+    {
+        std::ofstream f(path);
+        f << "return { test = {\n"
+          << "  fitness_fn = function(s, w) return s.age_ratio * 10 end\n"
+          << "} }\n";
+    }
+
+    LuaRuntime rt;
+    rt.load_config(path);
+    rt.select_experiment("test");
+
+    SimulationConfig config;
+    float result = rt.call_fitness(0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, config);
+    EXPECT_FLOAT_EQ(result, 5.0f);
+
+    std::filesystem::remove(path);
+}
+
+TEST(LuaRuntimeTest, FitnessFnErrorReturnsFallback) {
+    std::string path = (std::filesystem::temp_directory_path() / "moonai_rt_err.lua").string();
+    {
+        std::ofstream f(path);
+        f << "return { test = {\n"
+          << "  fitness_fn = function(s, w) error('broken') end\n"
+          << "} }\n";
+    }
+
+    LuaRuntime rt;
+    rt.load_config(path);
+    rt.select_experiment("test");
+
+    SimulationConfig config;
+    float result = rt.call_fitness(0.5f, 1.0f, 0.5f, 1.0f, 0.2f, 0.1f, config);
+    EXPECT_FLOAT_EQ(result, 0.0f);
+
+    std::filesystem::remove(path);
+}
+
+TEST(LuaRuntimeTest, GenerationHookReturnsOverrides) {
+    std::string path = (std::filesystem::temp_directory_path() / "moonai_rt_hook.lua").string();
+    {
+        std::ofstream f(path);
+        f << "return { test = {\n"
+          << "  on_generation_end = function(gen, stats)\n"
+          << "    return { mutation_rate = 0.9 }\n"
+          << "  end\n"
+          << "} }\n";
+    }
+
+    LuaRuntime rt;
+    rt.load_config(path);
+    rt.select_experiment("test");
+    EXPECT_TRUE(rt.callbacks().has_on_generation_end);
+
+    GenerationStats gs{5, 1.0f, 0.5f, 3, 10, 20, 5.0f};
+    std::map<std::string, float> overrides;
+    bool has_overrides = rt.call_on_generation_end(gs, overrides);
+    EXPECT_TRUE(has_overrides);
+    ASSERT_TRUE(overrides.count("mutation_rate"));
+    EXPECT_FLOAT_EQ(overrides["mutation_rate"], 0.9f);
+
+    std::filesystem::remove(path);
+}
+
+TEST(LuaRuntimeTest, GenerationHookReturnsNil) {
+    std::string path = (std::filesystem::temp_directory_path() / "moonai_rt_nil.lua").string();
+    {
+        std::ofstream f(path);
+        f << "return { test = {\n"
+          << "  on_generation_end = function(gen, stats)\n"
+          << "    return nil\n"
+          << "  end\n"
+          << "} }\n";
+    }
+
+    LuaRuntime rt;
+    rt.load_config(path);
+    rt.select_experiment("test");
+
+    GenerationStats gs{5, 1.0f, 0.5f, 3, 10, 20, 5.0f};
+    std::map<std::string, float> overrides;
+    bool has_overrides = rt.call_on_generation_end(gs, overrides);
+    EXPECT_FALSE(has_overrides);
+    EXPECT_TRUE(overrides.empty());
+
+    std::filesystem::remove(path);
 }

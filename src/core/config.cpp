@@ -384,6 +384,46 @@ std::vector<ConfigError> apply_overrides(
     return errors;
 }
 
+// ── Float overrides (from Lua hooks) ─────────────────────────────────────
+
+void apply_overrides_float(SimulationConfig& config,
+                           const std::map<std::string, float>& overrides) {
+    for (const auto& [key, val] : overrides) {
+        // Float fields
+        if      (key == "mutation_rate")             config.mutation_rate = val;
+        else if (key == "crossover_rate")            config.crossover_rate = val;
+        else if (key == "weight_mutation_power")     config.weight_mutation_power = val;
+        else if (key == "add_node_rate")             config.add_node_rate = val;
+        else if (key == "add_connection_rate")       config.add_connection_rate = val;
+        else if (key == "delete_connection_rate")    config.delete_connection_rate = val;
+        else if (key == "compatibility_threshold")   config.compatibility_threshold = val;
+        else if (key == "c1_excess")                 config.c1_excess = val;
+        else if (key == "c2_disjoint")               config.c2_disjoint = val;
+        else if (key == "c3_weight")                 config.c3_weight = val;
+        else if (key == "predator_speed")            config.predator_speed = val;
+        else if (key == "prey_speed")                config.prey_speed = val;
+        else if (key == "vision_range")              config.vision_range = val;
+        else if (key == "attack_range")              config.attack_range = val;
+        else if (key == "initial_energy")            config.initial_energy = val;
+        else if (key == "energy_drain_per_tick")     config.energy_drain_per_tick = val;
+        else if (key == "energy_gain_from_kill")     config.energy_gain_from_kill = val;
+        else if (key == "energy_gain_from_food")     config.energy_gain_from_food = val;
+        else if (key == "food_respawn_rate")         config.food_respawn_rate = val;
+        else if (key == "fitness_survival_weight")   config.fitness_survival_weight = val;
+        else if (key == "fitness_kill_weight")       config.fitness_kill_weight = val;
+        else if (key == "fitness_energy_weight")     config.fitness_energy_weight = val;
+        else if (key == "fitness_distance_weight")   config.fitness_distance_weight = val;
+        else if (key == "complexity_penalty_weight") config.complexity_penalty_weight = val;
+        // Integer fields (truncated from float)
+        else if (key == "generation_ticks")          config.generation_ticks = static_cast<int>(val);
+        else if (key == "stagnation_limit")          config.stagnation_limit = static_cast<int>(val);
+        else if (key == "max_hidden_nodes")          config.max_hidden_nodes = static_cast<int>(val);
+        else {
+            spdlog::warn("Lua hook returned unknown override key: {}", key);
+        }
+    }
+}
+
 // ── CLI parsing ─────────────────────────────────────────────────────────
 
 CLIArgs parse_args(int argc, char* argv[]) {

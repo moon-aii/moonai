@@ -63,6 +63,31 @@ end
 -- ── Default run ───────────────────────────────────────────────────────────────
 -- Single named entry for casual use: 'just run' auto-selects this because it is
 -- the only entry with this name.  All values come from moonai_defaults.
-experiments["default"] = moonai_defaults
+--
+-- Optional Lua callbacks:
+--   fitness_fn(stats, weights) → number     Custom fitness formula (replaces C++ default)
+--   on_generation_end(gen, stats) → table?  Called after each generation; return overrides or nil
+--   on_experiment_start(config)             Called once before the main loop
+--   on_experiment_end(stats)                Called once after the main loop
+experiments["default"] = extend(moonai_defaults, {
+    -- Example fitness function (mirrors the default C++ formula).
+    -- Remove or comment out to use the built-in C++ default.
+    fitness_fn = function(stats, weights)
+        return weights.survival * stats.age_ratio
+             + weights.kill     * stats.kills_or_food
+             + weights.energy   * stats.energy_ratio
+             + stats.alive_bonus
+             + weights.distance * stats.dist_ratio
+             - weights.complexity_penalty * stats.complexity
+    end,
+
+    -- Example generation hook: boost mutation when average fitness stagnates.
+    -- on_generation_end = function(gen, stats)
+    --     if stats.avg_fitness < 2.0 and gen > 20 then
+    --         return { mutation_rate = 0.5 }
+    --     end
+    --     return nil
+    -- end,
+})
 
 return experiments
