@@ -11,8 +11,6 @@ import statistics
 import sys
 from pathlib import Path
 
-# Scripts live flat in analysis/; Python adds the script's directory to sys.path
-# automatically when run as `python3 analysis/report.py`, so these imports work.
 from utils import find_runs, load_config, load_stats, condition_label, CONDITIONS
 from plot_fitness import plot as plot_fitness
 from plot_population import plot as plot_population

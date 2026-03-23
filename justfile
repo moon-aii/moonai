@@ -55,7 +55,7 @@ setup-ubuntu:
 # Set up Python environment for analysis
 [group('setup')]
 setup-python:
-    uv sync
+    cd analysis && uv sync
 
 # Full first-time setup
 [group('setup')]
@@ -151,17 +151,18 @@ run-experiment name: release
 # Plot fitness curves from a run directory
 [group('analysis')]
 plot run_dir="output":
-    uv run python analysis/cli.py plot {{run_dir}}
+    cd analysis && uv run python cli.py plot {{justfile_directory()}}/{{run_dir}}
 
 # Plot fitness and save to file
 [group('analysis')]
-plot-save run_dir="output" output_path="output/fitness_plot.png":
-    uv run python analysis/cli.py plot {{run_dir}} -o {{output_path}}
+plot-save run_dir="output" output_path="analysis/output/fitness_plot.png":
+    cd analysis && uv run python cli.py plot {{justfile_directory()}}/{{run_dir}} \
+        -o {{justfile_directory()}}/{{output_path}}
 
 # Generate all plots and print results summary (single post-run step)
 [group('analysis')]
 report:
-    uv run python analysis/cli.py report
+    cd analysis && uv run python cli.py report
 
 # Full experiment pipeline: run all experiments → generate report
 [group('experiment')]

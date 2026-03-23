@@ -260,15 +260,15 @@ just run-experiment baseline_seed42
 **4. Set up Python and generate report**
 ```bash
 just setup-python           # installs pandas, matplotlib, networkx via uv
-just report                 # reads output/, writes output/plots/*.png + summary.md
+just report                 # reads output/, writes analysis/output/*.png + summary.md
 ```
 
 ### Analysis CLI (`analysis/cli.py`)
 
-All analysis is accessed through a single entry point:
+All analysis is accessed through a single entry point (`analysis/` contains its own `pyproject.toml`):
 
 ```bash
-uv run python analysis/cli.py <command> [options]
+cd analysis && uv run python cli.py <command> [options]
 ```
 
 | Command | Description |
@@ -281,7 +281,7 @@ uv run python analysis/cli.py <command> [options]
 | `genome <run_dir>` | Neural network topology of the best genome (`-g` for generation) |
 | `report` | Generate complete report: all plots + summary table |
 
-All commands accept `-o <path>` to save as PNG instead of displaying interactively. Run `uv run python analysis/cli.py <command> --help` for full options.
+All commands accept `-o <path>` to save as PNG instead of displaying interactively. Run `cd analysis && uv run python cli.py <command> --help` for full options.
 
 The library modules (`plot_fitness.py`, `plot_population.py`, `plot_species.py`, `plot_complexity.py`, `compare_experiments.py`, `analyze_genome.py`, `report.py`) expose their functions for import — all shared utilities live in `utils.py`.
 
@@ -343,7 +343,7 @@ moonai/
 │   ├── data/                   # CSV/JSON logger, metrics collector
 │   └── gpu/                    # CUDA kernels (auto-detected; disabled at runtime by --no-gpu)
 ├── tests/                      # Google Test unit tests
-├── analysis/                   # Python analysis (single entry point: cli.py)
+├── analysis/                   # Python analysis (self-contained: pyproject.toml + cli.py entry point)
 ├── docs/                       # Project documents (PDFs + LLD LaTeX source)
 ├── web/                        # GitHub Pages website
 └── .github/workflows/          # CI/CD pipelines

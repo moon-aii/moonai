@@ -32,9 +32,10 @@ from compare_experiments import compare as _compare, VALID_METRICS
 from analyze_genome      import load_genome, visualize_genome
 import report as _report
 
-_PROJECT_ROOT  = Path(__file__).parent.parent
+_HERE          = Path(__file__).parent
+_PROJECT_ROOT  = _HERE.parent
 _DEFAULT_OUT   = _PROJECT_ROOT / "output"
-_DEFAULT_PLOTS = _PROJECT_ROOT / "output" / "plots"
+_DEFAULT_PLOTS = _HERE / "output"
 
 
 # ── Command handlers ──────────────────────────────────────────────────────────
