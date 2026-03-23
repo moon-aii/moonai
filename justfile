@@ -82,10 +82,10 @@ release:
 
 # ─── Run ────────────────────────────────────────────────────────────────────
 
-# Run the simulation with default config
+# Run the simulation with default config (auto-selects the 'default' experiment)
 [group('run')]
 run: build
-    {{build-dir}}/moonai config/default_config.json
+    {{build-dir}}/moonai config.lua --experiment default
 
 # Run with a custom config file
 [group('run')]
@@ -95,17 +95,22 @@ run-config config_path: build
 # Run in headless mode (no window, max speed)
 [group('run')]
 run-headless: build
-    {{build-dir}}/moonai --headless config/default_config.json
+    {{build-dir}}/moonai config.lua --experiment default --headless
 
 # Run with CPU-only inference (disable GPU even if compiled in)
 [group('run')]
 run-no-gpu: build
-    {{build-dir}}/moonai --no-gpu config/default_config.json
+    {{build-dir}}/moonai config.lua --experiment default --no-gpu
 
 # Run headless and CPU-only (useful on servers without a GPU or display)
 [group('run')]
 run-server: build
-    {{build-dir}}/moonai --headless --no-gpu config/default_config.json
+    {{build-dir}}/moonai config.lua --experiment default --headless --no-gpu
+
+# Validate a config file
+[group('run')]
+validate config_path="config.lua": build
+    {{build-dir}}/moonai --validate {{config_path}}
 
 # ─── Test ───────────────────────────────────────────────────────────────────
 
@@ -124,54 +129,43 @@ test-verbose: build
 test-filter pattern: build
     ctest --test-dir {{build-dir}} --output-on-failure -R {{pattern}}
 
+# ─── Experiments ─────────────────────────────────────────────────────────────
+
+# List all experiments defined in the Lua config
+[group('experiment')]
+list-experiments: build
+    {{build-dir}}/moonai config.lua --list
+
+# Run the full experiment matrix (all conditions × seeds, headless)
+[group('experiment')]
+experiments: release
+    ./build/linux-release/moonai config.lua --all --headless
+
+# Run one named experiment (headless)
+[group('experiment')]
+run-experiment name: release
+    ./build/linux-release/moonai config.lua --experiment {{name}} --headless
+
 # ─── Analysis ───────────────────────────────────────────────────────────────
 
 # Plot fitness curves from a run directory
 [group('analysis')]
 plot run_dir="output":
-    uv run python3 analysis/plot_fitness.py {{run_dir}}
+    uv run python analysis/cli.py plot {{run_dir}}
 
 # Plot fitness and save to file
 [group('analysis')]
 plot-save run_dir="output" output_path="output/fitness_plot.png":
-    uv run python3 analysis/plot_fitness.py {{run_dir}} -o {{output_path}}
-
-# Create experiment config files in config/experiments/
-[group('analysis')]
-setup-experiments:
-    uv run python3 analysis/setup_experiments.py
-
-# Validate all experiment configs
-[group('analysis')]
-validate-configs:
-    uv run python3 analysis/validate_config.py config/experiments/*.json
-
-# Run the full experiment matrix (all conditions × 5 seeds × 200 generations)
-[group('analysis')]
-run-experiments:
-    #!/usr/bin/env bash
-    set -e
-    for cfg in config/experiments/*.json; do
-        echo "==> Running condition: $cfg"
-        uv run python3 analysis/run_experiments.py \
-            --binary ./build/linux-release/moonai \
-            --config "$cfg" \
-            --seeds 42 43 44 45 46 \
-            --generations 200
-    done
+    uv run python analysis/cli.py plot {{run_dir}} -o {{output_path}}
 
 # Generate all plots and print results summary (single post-run step)
 [group('analysis')]
 report:
-    uv run python3 analysis/report.py
+    uv run python analysis/cli.py report
 
-# Run full experiment pipeline: setup → validate → run → report
-[group('analysis')]
-experiment-pipeline:
-    just setup-experiments
-    just validate-configs
-    just run-experiments
-    just report
+# Full experiment pipeline: run all experiments → generate report
+[group('experiment')]
+experiment-pipeline: experiments report
 
 # Validate GPU/CPU output parity: same stats.csv results with and without GPU
 [group('analysis')]
@@ -181,9 +175,9 @@ cuda-validate:
     just build-type=release configure
     just build-type=release build
     echo "Running with GPU..."
-    ./build/linux-release/moonai --headless --generations 5 --seed 42 > /tmp/gpu_run.txt 2>&1
+    ./build/linux-release/moonai config.lua --experiment default --headless -g 5 --seed 42 > /tmp/gpu_run.txt 2>&1
     echo "Running with CPU (--no-gpu)..."
-    ./build/linux-release/moonai --headless --generations 5 --seed 42 --no-gpu > /tmp/cpu_run.txt 2>&1
+    ./build/linux-release/moonai config.lua --experiment default --headless --no-gpu -g 5 --seed 42 > /tmp/cpu_run.txt 2>&1
     echo "Results match check (stats.csv comparison):"
     diff <(ls -t output/ | head -2 | tail -1 | xargs -I{} cat "output/{}/stats.csv") \
          <(ls -t output/ | head -1 | xargs -I{} cat "output/{}/stats.csv") \
@@ -196,11 +190,11 @@ cuda-bench:
     just build-type=release configure
     just build-type=release build
     echo "=== GPU path (pop_large) ==="
-    time ./build/linux-release/moonai \
-        --headless --generations 20 --seed 42 --config config/experiments/pop_large.json
+    time ./build/linux-release/moonai config.lua \
+        --experiment pop_large_seed42 --headless -g 20
     echo "=== CPU path (pop_large) ==="
-    time ./build/linux-release/moonai \
-        --headless --no-gpu --generations 20 --seed 42 --config config/experiments/pop_large.json
+    time ./build/linux-release/moonai config.lua \
+        --experiment pop_large_seed42 --headless --no-gpu -g 20
 
 # ─── Clean ──────────────────────────────────────────────────────────────────
 
@@ -238,18 +232,18 @@ lint:
 # Benchmark NN forward pass: 1 generation of pop_large, verbose timing
 [group('dev')]
 bench-nn: release
-    ./build/linux-release/moonai --headless --generations 1 --verbose \
-        config/experiments/pop_large_seed1.json 2>&1 | grep -E "CPU eval|GPU eval|CUDA"
+    ./build/linux-release/moonai config.lua \
+        --experiment pop_large_seed42 --headless -g 1 -v 2>&1 | grep -E "CPU eval|GPU eval|CUDA"
 
 # Run visual mode briefly and capture FPS from stdout (requires display)
 [group('dev')]
 bench-fps: build
-    timeout 10 ./build/linux-debug/moonai config/default_config.json 2>&1 | grep -i fps || true
+    timeout 10 ./build/linux-debug/moonai config.lua --experiment default 2>&1 | grep -i fps || true
 
 # Profile with perf (Linux only — requires perf installed)
 [group('dev')]
 profile: release
-    perf record -g ./build/linux-release/moonai --headless --generations 20 config/default_config.json
+    perf record -g ./build/linux-release/moonai config.lua --experiment default --headless -g 20
     perf report
 
 # Build with AddressSanitizer and run headless for 5 generations
@@ -257,7 +251,7 @@ profile: release
 check-memory:
     cmake --preset linux-debug -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined" -B build/linux-asan
     cmake --build build/linux-asan --parallel
-    ./build/linux-asan/moonai --headless --generations 5 --seed 42 config/default_config.json
+    ./build/linux-asan/moonai config.lua --experiment default --headless -g 5 --seed 42
 
 # ─── Info ───────────────────────────────────────────────────────────────────
 

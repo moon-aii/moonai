@@ -13,8 +13,10 @@
 
 namespace moonai {
 
-Logger::Logger(const std::string& output_dir, std::uint64_t seed)
+Logger::Logger(const std::string& output_dir, std::uint64_t seed,
+               const std::string& name)
     : base_dir_(output_dir)
+    , name_(name)
     , seed_(seed) {
 }
 
@@ -52,9 +54,28 @@ bool Logger::initialize(const SimulationConfig& config) {
     localtime_r(&time, &tm);
 #endif
 
-    std::ostringstream oss;
-    oss << std::put_time(&tm, "%Y%m%d_%H%M%S") << "_seed" << seed_;
-    run_dir_ = base_dir_ + "/" + oss.str();
+    std::string dir_name;
+    if (!name_.empty()) {
+        // Named experiment: use name as-is (e.g., "baseline_seed42")
+        dir_name = name_;
+    } else {
+        // Anonymous run: output/YYYYMMDD_HHMMSS_seed42/
+        std::ostringstream oss;
+        oss << std::put_time(&tm, "%Y%m%d_%H%M%S") << "_seed" << seed_;
+        dir_name = oss.str();
+    }
+    run_dir_ = base_dir_ + "/" + dir_name;
+
+    // Overwrite protection: append suffix if directory exists
+    if (std::filesystem::exists(run_dir_)) {
+        for (int suffix = 2; suffix < 1000; ++suffix) {
+            std::string candidate = base_dir_ + "/" + dir_name + "_" + std::to_string(suffix);
+            if (!std::filesystem::exists(candidate)) {
+                run_dir_ = candidate;
+                break;
+            }
+        }
+    }
 
     std::filesystem::create_directories(run_dir_);
 

@@ -66,7 +66,11 @@ void UIOverlay::draw(sf::RenderTarget& target, const OverlayStats& stats,
     float y = margin + 6.0f;
     float line_h = 18.0f;
 
-    draw_text(target, "MoonAI", x, y, 16, sf::Color(200, 200, 255));
+    if (!stats.experiment_name.empty()) {
+        draw_text(target, stats.experiment_name, x, y, 16, sf::Color(200, 200, 255));
+    } else {
+        draw_text(target, "MoonAI", x, y, 16, sf::Color(200, 200, 255));
+    }
     y += line_h + 4;
 
     char buf[128];
@@ -109,7 +113,7 @@ void UIOverlay::draw(sf::RenderTarget& target, const OverlayStats& stats,
     // Controls hint
     draw_text(target, "[Space] Pause  [+/-] Speed", x, y, 11, sf::Color(120, 120, 140));
     y += 14;
-    draw_text(target, "[G] Grid  [V] Vision  [H] FF  [R] Reset", x, y, 11, sf::Color(120, 120, 140));
+    draw_text(target, "[G] Grid  [V] Vision  [H] FF  [E] Exp  [R] Reset", x, y, 11, sf::Color(120, 120, 140));
 
     // Selected agent panel (bottom-left)
     if (stats.selected_agent >= 0) {
@@ -371,6 +375,81 @@ void UIOverlay::draw_nn_panel(sf::RenderTarget& target, const Genome& genome) {
         circle.setPosition({it->second.x - NODE_R, it->second.y - NODE_R});
         target.draw(circle);
     }
+}
+
+int UIOverlay::draw_experiment_selector(sf::RenderTarget& target,
+                                        const std::vector<std::string>& names,
+                                        int hover_index, int scroll_offset) {
+    if (!font_loaded_ || names.empty()) return -1;
+
+    sf::View ui_view = target.getDefaultView();
+    sf::View current_view = target.getView();
+    target.setView(ui_view);
+
+    sf::Vector2f view_size = ui_view.getSize();
+
+    // Dark fullscreen backdrop
+    sf::RectangleShape backdrop;
+    backdrop.setSize(view_size);
+    backdrop.setPosition({0.0f, 0.0f});
+    backdrop.setFillColor(sf::Color(0, 0, 0, 180));
+    target.draw(backdrop);
+
+    // Panel dimensions
+    float panel_w = 400.0f;
+    float panel_h = std::min(view_size.y - 80.0f, 500.0f);
+    float panel_x = (view_size.x - panel_w) / 2.0f;
+    float panel_y = (view_size.y - panel_h) / 2.0f;
+
+    draw_panel(target, panel_x, panel_y, panel_w, panel_h);
+
+    // Title
+    draw_text(target, "Select Experiment", panel_x + 12.0f, panel_y + 10.0f, 18,
+              sf::Color(200, 200, 255));
+    draw_text(target, "Click to select, Scroll to navigate, ESC to cancel",
+              panel_x + 12.0f, panel_y + 34.0f, 11, sf::Color(120, 120, 140));
+
+    // List area
+    float list_y = panel_y + 56.0f;
+    float list_h = panel_h - 66.0f;
+    float item_h = 28.0f;
+    int visible_count = static_cast<int>(list_h / item_h);
+    int total = static_cast<int>(names.size());
+
+    int clicked = -1;
+
+    for (int i = 0; i < visible_count && (i + scroll_offset) < total; ++i) {
+        int idx = i + scroll_offset;
+        float iy = list_y + i * item_h;
+
+        // Hover highlight
+        if (idx == hover_index) {
+            sf::RectangleShape highlight;
+            highlight.setSize({panel_w - 16.0f, item_h - 2.0f});
+            highlight.setPosition({panel_x + 8.0f, iy});
+            highlight.setFillColor(sf::Color(60, 60, 100, 150));
+            target.draw(highlight);
+        }
+
+        sf::Color text_color = (idx == hover_index)
+            ? sf::Color(255, 220, 100)
+            : sf::Color(200, 200, 200);
+
+        draw_text(target, names[idx], panel_x + 16.0f, iy + 4.0f, 14, text_color);
+    }
+
+    // Scroll indicator
+    if (total > visible_count) {
+        char scroll_buf[64];
+        std::snprintf(scroll_buf, sizeof(scroll_buf), "[%d-%d of %d]",
+                      scroll_offset + 1,
+                      std::min(scroll_offset + visible_count, total), total);
+        draw_text(target, scroll_buf, panel_x + panel_w - 120.0f, panel_y + 10.0f,
+                  11, sf::Color(120, 120, 140));
+    }
+
+    target.setView(current_view);
+    return clicked;
 }
 
 } // namespace moonai

@@ -33,6 +33,8 @@ endif()
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 find_package(SFML 3 COMPONENTS Graphics Window System REQUIRED)
+find_package(sol2 CONFIG REQUIRED)
+find_package(Lua REQUIRED)
 
 # ── OpenMP ────────────────────────────────────────────────────────────────────
 find_package(OpenMP)
@@ -69,6 +71,16 @@ if(MOONAI_ENABLE_CUDA)
     target_link_libraries(moonai PRIVATE moonai_gpu)
     target_compile_definitions(moonai PRIVATE MOONAI_ENABLE_CUDA)
 endif()
+
+# ── Copy runtime assets to build directory ───────────────────────────────────
+# config.lua is resolved relative to CWD; copy it alongside the binary so that
+# running from the build dir (e.g. ./build/linux-debug/moonai) works out of the box.
+add_custom_command(TARGET moonai POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_SOURCE_DIR}/config.lua
+        $<TARGET_FILE_DIR:moonai>/config.lua
+    COMMENT "Copying config.lua to build directory"
+)
 
 # ── Tests ────────────────────────────────────────────────────────────────────
 if(MOONAI_BUILD_TESTS)

@@ -24,7 +24,7 @@ The platform enables researchers to:
 - **GPU Acceleration** - CUDA backend for batch neural inference and fitness evaluation with runtime CPU fallback
 - **Cross-Platform** - Runs on Linux and Windows with identical behavior
 - **Reproducible Experiments** - Seeded RNG with deterministic simulation for scientific rigor
-- **Configurable** - All parameters adjustable via JSON without recompilation
+- **Configurable** - All parameters adjustable via Lua configs without recompilation
 - **Data Export** - CSV/JSON output (including optional per-tick trajectories) compatible with Python analysis tools
 
 ## Architecture
@@ -51,7 +51,7 @@ The system follows a modular architecture with four primary subsystems, each bui
 
 | Subsystem | Library | Description |
 |-----------|---------|-------------|
-| `src/core/` | `moonai_core` | Shared types (`Vec2`), config loader, seeded RNG |
+| `src/core/` | `moonai_core` | Shared types (`Vec2`), Lua config loader (sol2), seeded RNG |
 | `src/simulation/` | `moonai_simulation` | Agent hierarchy, environment grid, collision/sensing |
 | `src/evolution/` | `moonai_evolution` | NEAT genome, neural network, speciation, mutation, crossover |
 | `src/visualization/` | `moonai_visualization` | SFML window, renderer, UI overlay |
@@ -145,7 +145,7 @@ Mode selection happens at runtime via flags — no need to rebuild:
 | `just run-headless` | No window, max speed (auto-switches if `$DISPLAY` unset) |
 | `just run-no-gpu` | Force CPU inference even if CUDA is compiled in |
 | `just run-server` | Headless + CPU-only (for servers without a display or GPU) |
-| `just run-config <path>` | Run with a custom config JSON |
+| `just run-config <path>` | Run with a custom config file |
 
 ### Visualization Controls
 
@@ -157,6 +157,7 @@ Mode selection happens at runtime via flags — no need to rebuild:
 | `H` | Toggle fast-forward mode (skip rendering for current generation) |
 | `G` | Toggle grid overlay |
 | `V` | Toggle vision range / sensor lines for selected agent |
+| `E` | Open experiment selector (multi-config only) |
 | `R` | Reset simulation |
 | `S` | Save screenshot |
 | `Esc` | Quit |
@@ -168,35 +169,60 @@ When an agent is selected, the **Network panel** (top-right) shows its topology 
 
 ## Configuration
 
-All experiment parameters are defined in `config/default_config.json` (40+ fields — snippet shows key ones):
+Configuration uses a single **`config.lua`** file at the project root. It returns a named table of experiments — every entry is a fully-specified run. The runtime injects C++ struct defaults as the `moonai_defaults` global, so Lua only needs to override what it changes.
 
-```json
-{
-    "grid_width": 800,
-    "grid_height": 600,
-    "boundary_mode": "wrap",
-    "predator_count": 50,
-    "prey_count": 150,
-    "vision_range": 100.0,
-    "food_pickup_range": 10.0,
-    "max_hidden_nodes": 50,
-    "mutation_rate": 0.3,
-    "add_node_rate": 0.03,
-    "add_connection_rate": 0.05,
-    "compatibility_threshold": 3.0,
-    "complexity_penalty_weight": 0.01,
-    "generation_ticks": 500,
-    "seed": 0,
-    "tick_log_enabled": false,
-    "tick_log_interval": 10
+### `config.lua` structure
+
+```lua
+-- moonai_defaults is injected by the runtime (mirrors C++ SimulationConfig defaults)
+local function extend(t, overrides) ... end
+
+local conditions = {
+    baseline = moonai_defaults,
+    mut_low  = extend(moonai_defaults, { mutation_rate = 0.1 }),
+    -- ...
 }
+local seeds = { 42, 43, 44, 45, 46 }
+
+local experiments = {}
+for name, cfg in pairs(conditions) do
+    for _, seed in ipairs(seeds) do
+        experiments[name .. "_seed" .. seed] = extend(cfg, { seed = seed, max_generations = 200 })
+    end
+end
+
+experiments["default"] = moonai_defaults  -- auto-selected by 'just run'
+return experiments
+```
+
+A single-entry file auto-selects without `--experiment`. The `default` entry serves as the everyday run config.
+
+### CLI flags
+
+| Flag | Purpose |
+|------|---------|
+| `--experiment <name>` | Select one experiment by name |
+| `--all` | Run all experiments sequentially (headless only) |
+| `--list` | List experiment names and exit |
+| `--name <name>` | Override output directory name |
+| `--validate` | Load + validate config, print result, exit |
+| `--set key=value` | Override any param after Lua load (repeatable) |
+
+### Examples
+
+```bash
+./moonai config.lua --experiment default              # GUI with default config
+./moonai config.lua                                   # GUI with experiment selector
+./moonai config.lua --experiment mut_low_seed42 --headless  # One experiment
+./moonai config.lua --all --headless                  # Full batch
+./moonai config.lua --experiment default --set mutation_rate=0.1  # Ad-hoc override
 ```
 
 Set `seed` to `0` for random seed, or a fixed value for reproducible experiments.
 
 ### Per-Tick Logging
 
-Enable `tick_log_enabled: true` to write `ticks.csv` alongside the usual outputs. Every `tick_log_interval` ticks, one row per agent is appended:
+Enable `tick_log_enabled = true` to write `ticks.csv` alongside the usual outputs. Every `tick_log_interval` ticks, one row per agent is appended:
 
 ```
 generation,tick,agent_id,type,alive,x,y,energy,kills,food_eaten
@@ -204,85 +230,72 @@ generation,tick,agent_id,type,alive,x,y,energy,kills,food_eaten
 
 Writes are buffered (flush every 500 rows) to minimise I/O overhead.
 
-Run with a custom config:
-```bash
-just run-config path/to/my_config.json
-```
-
 ## Running Experiments
 
 ### Quick start (full pipeline)
 
 ```bash
-just experiment-pipeline
+just experiment-pipeline    # runs all experiments + generates report
 ```
 
 ### Step by step
 
-**1. Set up Python environment**
+**1. Build release binary**
 ```bash
-just setup-python        # installs pandas, matplotlib, networkx via uv
+just release
 ```
 
-**2. Build release binary**
+**2. List available experiments**
 ```bash
-just release             # cmake --preset linux-release && cmake --build
+just list-experiments       # shows all experiments in config.lua
 ```
 
-**3. Create experiment configs**
+**3. Run experiments**
 ```bash
-just setup-experiments   # writes config/experiments/*.json
+just experiments            # 8 conditions × 5 seeds × 200 generations → output/
+# or run a single experiment:
+just run-experiment baseline_seed42
 ```
 
-**4. Validate configs**
+**4. Set up Python and generate report**
 ```bash
-just validate-configs    # exits 1 if any parameter is out of range
+just setup-python           # installs pandas, matplotlib, networkx via uv
+just report                 # reads output/, writes output/plots/*.png + summary.md
 ```
 
-**5. Run experiments**
+### Analysis CLI (`analysis/cli.py`)
+
+All analysis is accessed through a single entry point:
+
 ```bash
-just run-experiments     # 8 conditions × 5 seeds × 200 generations → output/
+uv run python analysis/cli.py <command> [options]
 ```
 
-**6. Generate plots and summary**
-```bash
-just report              # reads output/, writes output/plots/*.png + summary.md
-```
+| Command | Description |
+|---------|-------------|
+| `plot <run_dir>` | Fitness and complexity curves for one run |
+| `population <run_dir>` | Predator/prey counts over generations |
+| `species <run_dir>` | Species count and size distribution |
+| `complexity <run_dir>` | Genome node/connection count over generations |
+| `compare <run_dirs...>` | Overlay one metric across multiple runs (`--metric`, `--smooth`) |
+| `genome <run_dir>` | Neural network topology of the best genome (`-g` for generation) |
+| `report` | Generate complete report: all plots + summary table |
 
-### Individual analysis scripts
+All commands accept `-o <path>` to save as PNG instead of displaying interactively. Run `uv run python analysis/cli.py <command> --help` for full options.
 
-| Script | Usage |
-|--------|-------|
-| `utils.py` | **Shared library** — `CONDITIONS`, `condition_label()`, `load_stats()`, `load_config()`, `find_runs()` |
-| `report.py` | **Main post-run entry point** — all plots + summary table → `output/plots/` |
-| `plot_fitness.py` | Fitness + complexity curve for one run (CLI + importable `plot()`) |
-| `plot_population.py` | Predator/prey counts for one run (CLI + importable `plot()`) |
-| `plot_species.py` | Species count + distribution for one run (CLI + importable `plot()`) |
-| `plot_complexity.py` | Genome complexity for one run (CLI + importable `plot()`) |
-| `compare_experiments.py` | Metric overlay for multiple runs (CLI + importable `compare()`) |
-| `analyze_genome.py` | Network topology of best genome (uses networkx) |
-| `run_experiments.py` | Batch headless runner — dispatches binary with multiple seeds |
-| `setup_experiments.py` | Create experiment config files for all 8 conditions |
-| `validate_config.py` | Validate config JSON against known parameter bounds (exit 1 on failure) |
-
-### Analysis script conventions
-
-- **All shared logic lives in `utils.py`** — do not duplicate `condition_label()`, `load_stats()`, `find_runs()`, or `CONDITIONS` elsewhere
-- **Individual plot scripts must stay importable** — each exposes a module-level `plot()` or `compare()` function; `report.py` calls these directly (no subprocess)
-- `matplotlib.use('Agg')` must appear before any `import matplotlib.pyplot` in every script that plots
-- Scripts are run from the project root, so `analysis/` is on `sys.path` — use `from utils import ...` directly
+The library modules (`plot_fitness.py`, `plot_population.py`, `plot_species.py`, `plot_complexity.py`, `compare_experiments.py`, `analyze_genome.py`, `report.py`) expose their functions for import — all shared utilities live in `utils.py`.
 
 ### Experiment conditions
 
-8 conditions, each overrides one parameter from `config/default_config.json`:
+8 conditions defined in `config.lua`, each overrides one parameter from `moonai_defaults`:
 
 | Condition | Override |
 |-----------|----------|
 | `baseline` | — (default config) |
 | `mut_low` | `mutation_rate: 0.1` |
 | `mut_high` | `mutation_rate: 0.5` |
-| `pop_small` | `predator_count: 25, prey_count: 75` |
-| `pop_large` | `predator_count: 100, prey_count: 300` |
+| `pop_small` | `predator_count: 40, prey_count: 120` |
+| `pop_large` | `predator_count: 200, prey_count: 600` |
 | `no_speciation` | `compatibility_threshold: 100` |
 | `tanh` | `activation_function: "tanh"` |
 | `crossover_low` | `crossover_rate: 0.25` |
@@ -320,9 +333,7 @@ moonai/
 ├── CMakePresets.json            # Build presets for Linux/Windows
 ├── vcpkg.json                  # Dependency manifest
 ├── justfile                    # Project commands (run `just --list` for full list)
-├── config/
-│   ├── default_config.json     # Default experiment parameters (42 fields)
-│   └── experiments/            # Per-condition configs (generated by setup_experiments.py)
+├── config.lua                  # Unified config: default run + experiment matrix (8 × 5 seeds)
 ├── src/
 │   ├── main.cpp                # Entry point: CLI parsing, init, main loop, shutdown
 │   ├── core/                   # Shared types (Vec2, AgentId), config loader, seeded RNG
@@ -332,7 +343,7 @@ moonai/
 │   ├── data/                   # CSV/JSON logger, metrics collector
 │   └── gpu/                    # CUDA kernels (auto-detected; disabled at runtime by --no-gpu)
 ├── tests/                      # Google Test unit tests
-├── analysis/                   # Python analysis scripts
+├── analysis/                   # Python analysis (single entry point: cli.py)
 ├── docs/                       # Project documents (PDFs + LLD LaTeX source)
 ├── web/                        # GitHub Pages website
 └── .github/workflows/          # CI/CD pipelines
@@ -340,7 +351,7 @@ moonai/
 
 ### Simulation Output
 
-Each run writes to `output/[YYYYMMDD_HHMMSS_seedN]/`:
+Each run writes to `output/{experiment_name}/` (named experiments) or `output/YYYYMMDD_HHMMSS_seedN/` (anonymous runs):
 
 | File | Contents |
 |------|----------|

@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
-"""Visualize a genome's neural network topology from MoonAI output."""
+"""Genome network topology visualization library for MoonAI analysis.
 
-import argparse
+Entry point: analysis/cli.py genome <run_dir> [options]
+"""
+
 import json
 import sys
 from pathlib import Path
@@ -138,31 +140,3 @@ def visualize_genome(genome: dict, output: str = None):
         plt.show()
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="Visualize MoonAI genome neural network topology")
-    parser.add_argument("run_dir", help="Path to run output directory")
-    parser.add_argument("--generation", "-g", type=int, default=-1,
-                        help="Generation to visualize (default: last)")
-    parser.add_argument("--output", "-o", help="Save plot to file instead of showing")
-    args = parser.parse_args()
-
-    run_dir = Path(args.run_dir)
-    genomes_path = run_dir / "genomes.json"
-
-    if not genomes_path.exists():
-        print(f"Error: {genomes_path} not found", file=sys.stderr)
-        sys.exit(1)
-
-    genome = load_genome(str(genomes_path), args.generation)
-
-    print(f"Genome from generation {genome.get('generation', '?')}:")
-    print(f"  Fitness: {genome.get('fitness', 0):.3f}")
-    print(f"  Nodes: {genome['num_nodes']}")
-    print(f"  Connections: {genome['num_connections']}")
-
-    visualize_genome(genome, args.output)
-
-
-if __name__ == "__main__":
-    main()

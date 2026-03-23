@@ -92,8 +92,10 @@ TEST_F(LoggerTest, ConfigSnapshotIsSaved) {
     config.grid_width = 999;
     logger.initialize(config);
 
-    auto loaded = load_config(logger.run_dir() + "/config.json");
-    EXPECT_EQ(loaded.grid_width, 999);
+    // Verify the JSON snapshot is correct by parsing it directly
+    std::ifstream f(logger.run_dir() + "/config.json");
+    auto j = nlohmann::json::parse(f);
+    EXPECT_EQ(j["grid_width"].get<int>(), 999);
 }
 
 TEST_F(LoggerTest, RunDirContainsSeed) {

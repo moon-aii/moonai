@@ -10,6 +10,7 @@
 #include <SFML/Graphics/VertexArray.hpp>
 
 #include <string>
+#include <vector>
 #include <deque>
 #include <unordered_map>
 #include <cstdint>
@@ -30,6 +31,7 @@ struct OverlayStats {
     int speed_multiplier = 1;
     bool paused = false;
     bool fast_forward = false;
+    std::string experiment_name;
 
     // Selected agent info (negative = no selection)
     int selected_agent = -1;
@@ -54,6 +56,12 @@ public:
 
     // Set node activation values for the selected agent's NN panel
     void set_activations(const std::unordered_map<std::uint32_t, float>& vals);
+
+    // Experiment selector overlay
+    // Returns index of clicked experiment, or -1 if none clicked
+    int draw_experiment_selector(sf::RenderTarget& target,
+                                  const std::vector<std::string>& names,
+                                  int hover_index, int scroll_offset);
 
 private:
     void draw_panel(sf::RenderTarget& target, float x, float y, float w, float h);

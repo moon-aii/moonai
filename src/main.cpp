@@ -167,12 +167,189 @@ int main(int argc, char* argv[]) {
         spdlog::info("Build features:{}", features);
     }
 
-    // ── Load and validate configuration ─────────────────────────────────
-    auto config = moonai::load_config(args.config_path);
+    // ── Load configuration from Lua ─────────────────────────────────────
+    auto all_configs = moonai::load_all_configs_lua(args.config_path);
+    if (all_configs.empty()) {
+        spdlog::error("No configs loaded from '{}'", args.config_path);
+        return 1;
+    }
+
+    // --list: print experiment names and exit
+    if (args.list_experiments) {
+        std::printf("Experiments in '%s':\n", args.config_path.c_str());
+        for (const auto& [name, _] : all_configs) {
+            std::printf("  %s\n", name.c_str());
+        }
+        std::printf("Total: %zu\n", all_configs.size());
+        return 0;
+    }
+
+    // --all: run all experiments sequentially (headless only)
+    if (args.run_all) {
+        if (!args.headless) {
+            spdlog::error("--all requires --headless");
+            return 1;
+        }
+        int total = static_cast<int>(all_configs.size());
+        int idx = 0;
+        int failures = 0;
+        for (auto& [name, cfg] : all_configs) {
+            ++idx;
+            spdlog::info("=== Experiment {}/{}: {} ===", idx, total, name);
+
+            // Apply --set overrides
+            if (!args.overrides.empty()) {
+                auto override_errors = moonai::apply_overrides(cfg, args.overrides);
+                for (const auto& e : override_errors) {
+                    spdlog::error("Override error [{}]: {}", e.field, e.message);
+                }
+                if (!override_errors.empty()) { ++failures; continue; }
+            }
+
+            // CLI overrides
+            if (args.seed_override != 0) cfg.seed = args.seed_override;
+            if (args.max_generations_override != 0) cfg.max_generations = args.max_generations_override;
+
+            auto errors = moonai::validate_config(cfg);
+            if (!errors.empty()) {
+                for (const auto& e : errors) {
+                    spdlog::error("Config error [{}]: {}", e.field, e.message);
+                }
+                ++failures;
+                continue;
+            }
+
+            // Seed RNG
+            if (cfg.seed == 0) {
+                cfg.seed = static_cast<std::uint64_t>(
+                    std::chrono::steady_clock::now().time_since_epoch().count());
+            }
+            spdlog::info("Seed: {}", cfg.seed);
+            moonai::Random rng(cfg.seed);
+
+            // Initialize subsystems
+            moonai::SimulationManager simulation(cfg);
+            constexpr int NN_INPUTS = moonai::SensorInput::SIZE;
+            constexpr int NN_OUTPUTS = 2;
+            moonai::EvolutionManager evolution(cfg, rng);
+            simulation.initialize();
+            evolution.initialize(NN_INPUTS, NN_OUTPUTS);
+
+#ifdef MOONAI_ENABLE_CUDA
+            if (!args.no_gpu && moonai::gpu::init_cuda()) {
+                evolution.enable_gpu(true);
+            }
+#endif
+
+            moonai::Logger logger(cfg.output_dir, cfg.seed, name);
+            logger.initialize(cfg);
+            moonai::MetricsCollector metrics;
+
+            if (cfg.tick_log_enabled) {
+                int gen = 0;
+                evolution.set_tick_callback([&](int tick, const moonai::SimulationManager& sim) {
+                    if (tick % cfg.tick_log_interval == 0) {
+                        logger.log_tick(gen, tick, sim.agents());
+                    }
+                    logger.log_events(gen, tick, sim.last_events());
+                });
+            }
+
+            int gen = 0;
+            while (g_running && (cfg.max_generations == 0 || gen < cfg.max_generations)) {
+                simulation.reset();
+                evolution.assign_species_ids(simulation);
+                evolution.evaluate_generation(simulation);
+
+                auto m = metrics.collect(gen, evolution.population(),
+                                          simulation.alive_predators(), simulation.alive_prey());
+                m.num_species = static_cast<int>(evolution.species().size());
+
+                if (gen % cfg.log_interval == 0) {
+                    logger.log_generation(m.generation, m.predator_count, m.prey_count,
+                                          m.best_fitness, m.avg_fitness, m.num_species,
+                                          m.avg_genome_complexity);
+                    const auto& pop = evolution.population();
+                    if (!pop.empty()) {
+                        auto best = std::max_element(pop.begin(), pop.end(),
+                            [](const moonai::Genome& a, const moonai::Genome& b) {
+                                return a.fitness() < b.fitness();
+                            });
+                        logger.log_best_genome(gen, *best);
+                    }
+                    logger.log_species(gen, evolution.species());
+                    logger.flush();
+                }
+
+                if (cfg.max_generations > 0) {
+                    int pct = (gen * 100) / cfg.max_generations;
+                    std::printf("\r  [%s] Gen %d/%d [%d%%]  best=%.3f  avg=%.3f   ",
+                                name.c_str(), gen, cfg.max_generations, pct,
+                                m.best_fitness, m.avg_fitness);
+                    std::fflush(stdout);
+                }
+
+                evolution.evolve();
+                ++gen;
+            }
+            std::printf("\n");
+            spdlog::info("Output: {}", logger.run_dir());
+        }
+        spdlog::info("Batch complete: {}/{} succeeded", total - failures, total);
+        return failures > 0 ? 1 : 0;
+    }
+
+    // ── Single experiment mode ───────────────────────────────────────────
+    moonai::SimulationConfig config;
+
+    if (!args.experiment_name.empty()) {
+        // --experiment: select one from multi-config
+        auto it = all_configs.find(args.experiment_name);
+        if (it == all_configs.end()) {
+            spdlog::error("Experiment '{}' not found. Use --list to see available experiments.",
+                          args.experiment_name);
+            return 1;
+        }
+        config = it->second;
+    } else if (all_configs.size() == 1) {
+        config = all_configs.begin()->second;
+    } else {
+        // Multi-config without --experiment or --all: store names for GUI selector
+        // For now in headless mode, pick first
+        if (args.headless) {
+            spdlog::warn("Multiple experiments found. Use --experiment or --all. Using first.");
+            config = all_configs.begin()->second;
+        } else {
+            // GUI mode: will use experiment selector (handled later)
+            config = all_configs.begin()->second;
+        }
+    }
+
+    // Apply --set overrides
+    if (!args.overrides.empty()) {
+        auto override_errors = moonai::apply_overrides(config, args.overrides);
+        for (const auto& e : override_errors) {
+            spdlog::error("Override error [{}]: {}", e.field, e.message);
+        }
+        if (!override_errors.empty()) return 1;
+    }
 
     // Apply CLI overrides
     if (args.seed_override != 0) config.seed = args.seed_override;
     if (args.max_generations_override != 0) config.max_generations = args.max_generations_override;
+
+    // --validate: check config and exit
+    if (args.validate_only) {
+        auto errors = moonai::validate_config(config);
+        if (errors.empty()) {
+            std::printf("OK\n");
+            return 0;
+        }
+        for (const auto& e : errors) {
+            std::fprintf(stderr, "ERROR [%s]: %s\n", e.field.c_str(), e.message.c_str());
+        }
+        return 1;
+    }
 
     auto errors = moonai::validate_config(config);
     if (!errors.empty()) {
@@ -192,16 +369,15 @@ int main(int argc, char* argv[]) {
     moonai::Random rng(config.seed);
 
     // ── Initialize subsystems ───────────────────────────────────────────
-    moonai::SimulationManager simulation(config);
-
     constexpr int NN_INPUTS = moonai::SensorInput::SIZE;  // 15 sensor inputs
     constexpr int NN_OUTPUTS = 2;  // dx, dy movement direction
 
-    moonai::EvolutionManager evolution(config, rng);
+    auto p_simulation = std::make_unique<moonai::SimulationManager>(config);
+    auto p_evolution = std::make_unique<moonai::EvolutionManager>(config, rng);
 
     bool resumed = false;
     if (!args.resume_path.empty()) {
-        if (evolution.load_checkpoint(args.resume_path, rng)) {
+        if (p_evolution->load_checkpoint(args.resume_path, rng)) {
             resumed = true;
         } else {
             spdlog::error("Failed to load checkpoint '{}'. Exiting.", args.resume_path);
@@ -210,9 +386,10 @@ int main(int argc, char* argv[]) {
     }
 
     if (!resumed) {
-        simulation.initialize();
-        evolution.initialize(NN_INPUTS, NN_OUTPUTS);
+        p_simulation->initialize();
+        p_evolution->initialize(NN_INPUTS, NN_OUTPUTS);
     }
+
 
     // ── CUDA initialization ─────────────────────────────────────────────
     // Must happen after evolution.initialize() / load_checkpoint() so that
@@ -221,14 +398,19 @@ int main(int argc, char* argv[]) {
     if (!args.no_gpu && moonai::gpu::init_cuda()) {
         spdlog::info("CUDA initialized. GPU acceleration enabled.");
         moonai::gpu::print_device_info();
-        evolution.enable_gpu(true);
+        p_evolution->enable_gpu(true);
     } else {
         spdlog::warn("CUDA unavailable or --no-gpu set. Using CPU path.");
     }
 #endif
 
-    moonai::Logger logger(config.output_dir, config.seed);
-    logger.initialize(config);
+    // Determine output name: --name flag, --experiment name, or empty (timestamp)
+    std::string output_name = args.run_name;
+    if (output_name.empty() && !args.experiment_name.empty()) {
+        output_name = args.experiment_name;
+    }
+    auto logger = std::make_unique<moonai::Logger>(config.output_dir, config.seed, output_name);
+    logger->initialize(config);
 
     moonai::MetricsCollector metrics;
 
@@ -243,50 +425,107 @@ int main(int argc, char* argv[]) {
         headless = true;
     }
     moonai::VisualizationManager visualization(config);
+    bool has_multi_config = all_configs.size() > 1 && args.experiment_name.empty();
     if (!headless) {
         visualization.initialize();
+        if (has_multi_config) {
+            std::vector<std::string> exp_names;
+            exp_names.reserve(all_configs.size());
+            for (const auto& [name, _] : all_configs) {
+                exp_names.push_back(name);
+            }
+            visualization.set_experiments(exp_names);
+        }
     }
 
     // ── Signal handling ─────────────────────────────────────────────────
     std::signal(SIGINT, signal_handler);
     std::signal(SIGTERM, signal_handler);
 
+    // ── Main loop state ─────────────────────────────────────────────
+    int generation = resumed ? p_evolution->generation() : 0;
+    float dt = 1.0f / static_cast<float>(config.target_fps);
+
+    // ── Experiment selector loop (GUI multi-config) ──────────────────
+    auto reinit_for_experiment = [&](const std::string& exp_name) {
+        auto it = all_configs.find(exp_name);
+        if (it == all_configs.end()) return false;
+        config = it->second;
+        if (args.seed_override != 0) config.seed = args.seed_override;
+        if (args.max_generations_override != 0) config.max_generations = args.max_generations_override;
+        if (!args.overrides.empty()) {
+            moonai::apply_overrides(config, args.overrides);
+        }
+        auto errs = moonai::validate_config(config);
+        if (!errs.empty()) {
+            for (const auto& e : errs) spdlog::error("Config error [{}]: {}", e.field, e.message);
+            return false;
+        }
+        if (config.seed == 0) {
+            config.seed = static_cast<std::uint64_t>(
+                std::chrono::steady_clock::now().time_since_epoch().count());
+        }
+        rng = moonai::Random(config.seed);
+        p_simulation = std::make_unique<moonai::SimulationManager>(config);
+        p_evolution = std::make_unique<moonai::EvolutionManager>(config, rng);
+        p_simulation->initialize();
+        p_evolution->initialize(NN_INPUTS, NN_OUTPUTS);
+        output_name = exp_name;
+        logger = std::make_unique<moonai::Logger>(config.output_dir, config.seed, output_name);
+        logger->initialize(config);
+        generation = 0;
+        spdlog::info("Loaded experiment: {} (seed={})", exp_name, config.seed);
+        return true;
+    };
+
     // ── Main loop ───────────────────────────────────────────────────────
     spdlog::info("Starting simulation: {} predators, {} prey, {} ticks/gen",
                  config.predator_count, config.prey_count, config.generation_ticks);
 
-    int generation = resumed ? evolution.generation() : 0;
-    float dt = 1.0f / static_cast<float>(config.target_fps);
-
     // Set up per-tick logging callback for headless/fast-forward path
     if (config.tick_log_enabled) {
-        evolution.set_tick_callback([&](int tick, const moonai::SimulationManager& sim) {
+        p_evolution->set_tick_callback([&](int tick, const moonai::SimulationManager& sim) {
             if (tick % config.tick_log_interval == 0) {
-                logger.log_tick(generation, tick, sim.agents());
+                logger->log_tick(generation, tick, sim.agents());
             }
-            logger.log_events(generation, tick, sim.last_events());
+            logger->log_events(generation, tick, sim.last_events());
         });
     }
     int max_gen = (args.max_generations_override != 0) ? args.max_generations_override
                                                         : config.max_generations;
 
     while (g_running) {
+        // Handle experiment selector mode
+        if (!headless && visualization.in_experiment_select_mode()) {
+            visualization.handle_events();
+            if (visualization.should_close()) {
+                g_running = 0;
+                break;
+            }
+            visualization.render(*p_simulation, *p_evolution);
+            if (visualization.experiment_was_selected()) {
+                visualization.clear_experiment_selected();
+                reinit_for_experiment(visualization.selected_experiment());
+            }
+            continue;
+        }
+
         if (config.max_generations > 0 && generation >= config.max_generations) {
             break;
         }
 
         // Reset simulation for this generation
-        simulation.reset();
+        p_simulation->reset();
 
         // Assign species IDs to agents for visualization coloring
-        evolution.assign_species_ids(simulation);
+        p_evolution->assign_species_ids(*p_simulation);
 
         if (headless || visualization.is_fast_forward()) {
             // ── Headless / fast-forward mode: run generation at max speed ──
-            evolution.evaluate_generation(simulation);
+            p_evolution->evaluate_generation(*p_simulation);
         } else {
             // ── Visual mode: tick-by-tick with rendering ─────────────
-            const auto& networks = evolution.networks();
+            const auto& networks = p_evolution->networks();
             int tick = 0;
 
             while (tick < config.generation_ticks && g_running) {
@@ -296,16 +535,19 @@ int main(int argc, char* argv[]) {
                     break;
                 }
 
+                // If E key was pressed, break to experiment selector
+                if (visualization.in_experiment_select_mode()) break;
+
                 if (visualization.should_reset()) {
                     visualization.clear_reset();
-                    simulation.reset();
+                    p_simulation->reset();
                     tick = 0;
                     continue;
                 }
 
                 if (visualization.is_paused() && !visualization.should_step()) {
                     visualization.set_generation(generation);
-                    visualization.render(simulation, evolution);
+                    visualization.render(*p_simulation, *p_evolution);
                     continue;
                 }
                 visualization.clear_step();
@@ -313,10 +555,10 @@ int main(int argc, char* argv[]) {
                 int steps = std::min(visualization.speed_multiplier(),
                                      config.generation_ticks - tick);
                 for (int s = 0; s < steps; ++s) {
-                    for (size_t i = 0; i < simulation.agents().size() && i < networks.size(); ++i) {
-                        if (!simulation.agents()[i]->alive()) continue;
+                    for (size_t i = 0; i < p_simulation->agents().size() && i < networks.size(); ++i) {
+                        if (!p_simulation->agents()[i]->alive()) continue;
 
-                        auto sensors = simulation.get_sensors(i);
+                        auto sensors = p_simulation->get_sensors(i);
                         auto output = networks[i]->activate(sensors.to_vector());
 
                         moonai::Vec2 direction{0.0f, 0.0f};
@@ -324,46 +566,49 @@ int main(int argc, char* argv[]) {
                             direction.x = output[0] * 2.0f - 1.0f;
                             direction.y = output[1] * 2.0f - 1.0f;
                         }
-                        simulation.apply_action(i, direction, dt);
+                        p_simulation->apply_action(i, direction, dt);
                     }
-                    simulation.tick(dt);
+                    p_simulation->tick(dt);
                     ++tick;
 
                     // Per-tick logging (visual path)
                     if (config.tick_log_enabled) {
                         if (tick % config.tick_log_interval == 0) {
-                            logger.log_tick(generation, tick, simulation.agents());
+                            logger->log_tick(generation, tick, p_simulation->agents());
                         }
-                        logger.log_events(generation, tick, simulation.last_events());
+                        logger->log_events(generation, tick, p_simulation->last_events());
                     }
 
-                    if (simulation.alive_prey() == 0 || simulation.alive_predators() == 0) break;
+                    if (p_simulation->alive_prey() == 0 || p_simulation->alive_predators() == 0) break;
                     if (tick >= config.generation_ticks) break;
                 }
 
                 // Update activation values for the selected agent's NN panel
                 int sel = visualization.selected_agent();
                 if (sel >= 0 && sel < static_cast<int>(networks.size())
-                        && simulation.agents()[sel]->alive()) {
+                        && p_simulation->agents()[sel]->alive()) {
                     visualization.set_selected_activations(
                         networks[sel]->last_activations(),
                         networks[sel]->node_index_map());
                 }
 
                 visualization.set_generation(generation);
-                visualization.render(simulation, evolution);
+                visualization.render(*p_simulation, *p_evolution);
             }
 
+            // If we broke out for experiment selector, skip the rest of the generation
+            if (visualization.in_experiment_select_mode()) continue;
+
             // Compute fitness using the single authoritative formula
-            evolution.compute_fitness(simulation);
+            p_evolution->compute_fitness(*p_simulation);
         }
 
         // Collect metrics
         auto m = metrics.collect(generation,
-                                  evolution.population(),
-                                  simulation.alive_predators(),
-                                  simulation.alive_prey());
-        m.num_species = static_cast<int>(evolution.species().size());
+                                  p_evolution->population(),
+                                  p_simulation->alive_predators(),
+                                  p_simulation->alive_prey());
+        m.num_species = static_cast<int>(p_evolution->species().size());
 
         if (!headless) {
             visualization.set_fitness(m.best_fitness, m.avg_fitness);
@@ -373,26 +618,26 @@ int main(int argc, char* argv[]) {
 
         // Log
         if (generation % config.log_interval == 0) {
-            logger.log_generation(m.generation, m.predator_count, m.prey_count,
-                                  m.best_fitness, m.avg_fitness,
-                                  m.num_species, m.avg_genome_complexity);
+            logger->log_generation(m.generation, m.predator_count, m.prey_count,
+                                   m.best_fitness, m.avg_fitness,
+                                   m.num_species, m.avg_genome_complexity);
 
-            const auto& pop = evolution.population();
+            const auto& pop = p_evolution->population();
             if (!pop.empty()) {
                 auto best = std::max_element(pop.begin(), pop.end(),
                     [](const moonai::Genome& a, const moonai::Genome& b) {
                         return a.fitness() < b.fitness();
                     });
-                logger.log_best_genome(generation, *best);
+                logger->log_best_genome(generation, *best);
             }
-            logger.log_species(generation, evolution.species());
-            logger.flush();
+            logger->log_species(generation, p_evolution->species());
+            logger->flush();
         }
 
         spdlog::info("Gen {:>4d}: best={:.3f} avg={:.3f} species={} alive=({}/{}) complexity={:.1f}",
                      generation, m.best_fitness, m.avg_fitness,
                      m.num_species,
-                     simulation.alive_predators(), simulation.alive_prey(),
+                     p_simulation->alive_predators(), p_simulation->alive_prey(),
                      m.avg_genome_complexity);
 
         // Headless progress bar
@@ -401,19 +646,19 @@ int main(int argc, char* argv[]) {
             std::printf("\r  Gen %d/%d [%d%%]  best=%.3f  avg=%.3f  species=%d   ",
                         generation, max_gen, pct,
                         m.best_fitness, m.avg_fitness,
-                        evolution.species_count());
+                        p_evolution->species_count());
             std::fflush(stdout);
         }
 
         // Evolve for next generation
-        evolution.evolve();
+        p_evolution->evolve();
         ++generation;
 
         // Save checkpoint if requested
         if (args.checkpoint_interval > 0 && generation % args.checkpoint_interval == 0) {
             std::string ckpt_path = config.output_dir + "/checkpoint_gen_"
                 + std::to_string(generation) + ".json";
-            evolution.save_checkpoint(ckpt_path, rng);
+            p_evolution->save_checkpoint(ckpt_path, rng);
         }
     }
 
@@ -423,6 +668,6 @@ int main(int argc, char* argv[]) {
 
     // ── Shutdown ────────────────────────────────────────────────────────
     spdlog::info("Simulation ended after {} generations.", generation);
-    spdlog::info("Output saved to: {}", logger.run_dir());
+    spdlog::info("Output saved to: {}", logger->run_dir());
     return 0;
 }

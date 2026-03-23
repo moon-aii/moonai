@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
-"""Compare metrics from multiple MoonAI experiment runs."""
+"""Multi-run comparison plotting library for MoonAI analysis.
 
-import argparse
+Entry point: analysis/cli.py compare <run_dirs...> [options]
+"""
+
 import sys
 from pathlib import Path
 
@@ -67,19 +69,3 @@ def compare(run_dirs, metric="best_fitness", output=None, smooth=1, labels=None)
         return None
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="Compare multiple MoonAI experiment runs")
-    parser.add_argument("run_dirs", nargs="+",
-                        help="Paths to run output directories")
-    parser.add_argument("--output", "-o", help="Save plot to file instead of showing")
-    parser.add_argument("--metric", default="best_fitness", choices=VALID_METRICS,
-                        help="Metric to compare (default: best_fitness)")
-    parser.add_argument("--smooth", type=int, default=1,
-                        help="Rolling average window (default: 1)")
-    args = parser.parse_args()
-    compare(args.run_dirs, metric=args.metric, output=args.output, smooth=args.smooth)
-
-
-if __name__ == "__main__":
-    main()

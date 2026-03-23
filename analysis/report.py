@@ -1,19 +1,12 @@
 #!/usr/bin/env python3
-"""Generate a complete experiment report: all plots + summary table.
+"""Report generation library for MoonAI analysis.
 
-Replaces both generate_plots.py and summarize_results.py. Imports plot
-functions directly (no subprocess) for speed and clean tracebacks.
-
-Usage:
-    uv run python3 analysis/report.py
-    uv run python3 analysis/report.py --output-dir output --plots-dir output/plots
-    uv run python3 analysis/report.py --min-generations 190 --generation 200
+Entry point: analysis/cli.py report [options]
 """
 
 import matplotlib
 matplotlib.use('Agg')
 
-import argparse
 import statistics
 import sys
 from pathlib import Path
@@ -118,46 +111,24 @@ def print_table(groups: dict[str, list[dict]], generation: int) -> str:
     return "\n".join(lines)
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Generate full experiment report: plots + summary table."
-    )
-    parser.add_argument("--output-dir", default="output",
-                        help="Directory containing run subdirs (default: output)")
-    parser.add_argument("--plots-dir", default="output/plots",
-                        help="Directory to write plots into (default: output/plots)")
-    parser.add_argument("--min-generations", type=int, default=190,
-                        help="Min generation rows to include a run (default: 190)")
-    parser.add_argument("--generation", type=int, default=200,
-                        help="Generation to sample for summary table (default: 200)")
-    args = parser.parse_args()
-
-    output_dir = Path(args.output_dir)
-    plots_dir  = Path(args.plots_dir)
-
-    runs = find_runs(output_dir, min_generations=args.min_generations)
+def run_report(output_dir: Path, plots_dir: Path, min_generations: int, generation: int) -> int:
+    """Generate the complete report: plots + summary table. Returns exit code."""
+    runs = find_runs(output_dir, min_generations=min_generations)
     if not runs:
         print(f"No qualifying runs found in {output_dir} "
-              f"(min_generations={args.min_generations})", file=sys.stderr)
+              f"(min_generations={min_generations})", file=sys.stderr)
         return 1
 
     print(f"Found {len(runs)} qualifying runs in {output_dir}/")
 
-    # Generate plots
     generate_plots(runs, plots_dir)
 
-    # Build and print summary table
-    groups = build_summary(runs, generation=args.generation)
-    table = print_table(groups, generation=args.generation)
+    groups = build_summary(runs, generation=generation)
+    table = print_table(groups, generation=generation)
     print(table)
 
-    # Write summary.md artifact
     summary_path = plots_dir / "summary.md"
     summary_path.write_text(table)
     print(f"Summary written to {summary_path}")
 
     return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())
