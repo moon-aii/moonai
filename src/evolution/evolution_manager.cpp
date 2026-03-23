@@ -20,6 +20,12 @@
 #ifdef MOONAI_ENABLE_CUDA
 #include "gpu/gpu_batch.hpp"
 
+namespace {
+
+constexpr int kGpuMinPopulation = 1000;
+
+}
+
 // ── GPU network packing helper ────────────────────────────────────────────────
 // Extracts the CSR-packed flat arrays from NeuralNetwork objects into the
 // GpuNetworkData struct. Lives here (in moonai_evolution) because it needs
@@ -180,10 +186,10 @@ void EvolutionManager::enable_gpu(bool use_gpu) {
 #ifdef MOONAI_ENABLE_CUDA
     if (use_gpu_) {
         int total_agents = config_.predator_count + config_.prey_count;
-        if (total_agents < 500) {
-            spdlog::info("GPU disabled: population {} < 500 threshold "
+        if (total_agents < kGpuMinPopulation) {
+            spdlog::info("GPU disabled: population {} < {} threshold "
                          "(kernel launch overhead exceeds computation)",
-                         total_agents);
+                         total_agents, kGpuMinPopulation);
             use_gpu_ = false;
             return;
         }
@@ -192,86 +198,87 @@ void EvolutionManager::enable_gpu(bool use_gpu) {
                 static_cast<int>(population_.size()), num_inputs_, num_outputs_);
             spdlog::debug("GpuBatch allocated: {} agents, {} inputs, {} outputs",
                           population_.size(), num_inputs_, num_outputs_);
+            if (!gpu_batch_->ok()) {
+                spdlog::warn("GpuBatch allocation failed; falling back to CPU inference");
+                gpu_batch_.reset();
+                use_gpu_ = false;
+            }
         }
     }
 #endif
 }
 
+#ifdef MOONAI_ENABLE_CUDA
+bool EvolutionManager::prepare_gpu_generation() {
+    if (!use_gpu_ || !gpu_batch_) {
+        return false;
+    }
+
+    gpu_batch_->upload_network_data(
+        build_gpu_network_data(networks_, config_.activation_function));
+    if (!gpu_batch_->ok()) {
+        spdlog::warn("GPU network upload failed; falling back to CPU inference");
+        gpu_batch_.reset();
+        use_gpu_ = false;
+        return false;
+    }
+    return true;
+}
+
+bool EvolutionManager::infer_actions_gpu(const SimulationManager& sim, std::vector<Vec2>& actions) {
+    if (!use_gpu_ || !gpu_batch_) {
+        return false;
+    }
+
+    int agent_count = static_cast<int>(std::min(sim.agents().size(), networks_.size()));
+    if (agent_count <= 0) {
+        return true;
+    }
+
+    if (static_cast<int>(actions.size()) < agent_count) {
+        actions.resize(agent_count, {0.0f, 0.0f});
+    }
+    std::fill(actions.begin(), actions.end(), Vec2{0.0f, 0.0f});
+
+    sim.write_sensors_flat(gpu_batch_->host_inputs(), static_cast<size_t>(agent_count));
+
+    const int in_count = agent_count * num_inputs_;
+    gpu_batch_->pack_inputs_async(in_count);
+    gpu_batch_->launch_inference_async();
+    gpu_batch_->start_unpack_async();
+    gpu_batch_->finish_unpack();
+
+    if (!gpu_batch_->ok()) {
+        spdlog::warn("GPU inference failed; falling back to CPU inference");
+        gpu_batch_.reset();
+        use_gpu_ = false;
+        return false;
+    }
+
+    const float* flat_out = gpu_batch_->host_outputs();
+    for (int i = 0; i < agent_count; ++i) {
+        if (!sim.agents()[i]->alive()) {
+            continue;
+        }
+        if (num_outputs_ >= 2) {
+            actions[i] = Vec2{
+                flat_out[i * num_outputs_ + 0] * 2.0f - 1.0f,
+                flat_out[i * num_outputs_ + 1] * 2.0f - 1.0f
+            };
+        }
+    }
+    return true;
+}
+#endif
+
 void EvolutionManager::evaluate_generation(SimulationManager& sim) {
     build_networks();
 
     float dt = 1.0f / static_cast<float>(config_.target_fps);
-
-#ifdef MOONAI_ENABLE_CUDA
-    if (use_gpu_ && gpu_batch_) {
-        gpu_batch_->upload_network_data(
-            build_gpu_network_data(networks_, config_.activation_function));
-        if (!gpu_batch_->ok()) {
-            spdlog::error("GPU network upload failed; aborting GPU evaluation for this generation");
-            return;
-        }
-
-        int agent_count = static_cast<int>(
-            std::min(sim.agents().size(), networks_.size()));
-
-        if (num_outputs_ < 2) {
-            spdlog::error("GPU path requires num_outputs >= 2, got {}", num_outputs_);
-            return;
-        }
-
-        int in_count  = agent_count * num_inputs_;
-        int out_count = agent_count * num_outputs_;
-
-        // Pre-allocate flat buffers (reused every tick, no per-tick allocation)
-        std::vector<float> flat_in(in_count);
-        std::vector<float> flat_out(out_count);
-
-        for (int tick = 0; tick < config_.generation_ticks; ++tick) {
-            // Pack sensor inputs for all agents into flat buffer
-            for (int i = 0; i < agent_count; ++i) {
-                sim.get_sensors(static_cast<size_t>(i))
-                    .write_to(flat_in.data() + i * num_inputs_);
-            }
-
-            // Async pipeline: H2D → kernel → D2H
-            gpu_batch_->pack_inputs_async(flat_in.data(), in_count);
-            gpu_batch_->launch_inference_async();
-            gpu_batch_->start_unpack_async();
-            gpu_batch_->finish_unpack(flat_out.data(), out_count);
-            if (!gpu_batch_->ok()) {
-                spdlog::error("GPU inference failed at tick {}; aborting GPU evaluation for this generation", tick);
-                return;
-            }
-
-            // Apply actions from GPU outputs
-            for (int i = 0; i < agent_count; ++i) {
-                if (!sim.agents()[i]->alive()) continue;
-                Vec2 direction{
-                    flat_out[i * num_outputs_ + 0] * 2.0f - 1.0f,
-                    flat_out[i * num_outputs_ + 1] * 2.0f - 1.0f
-                };
-                sim.apply_action(static_cast<size_t>(i), direction, dt);
-            }
-
-            sim.tick(dt);
-
-            if (sim.alive_prey() == 0 || sim.alive_predators() == 0) break;
-        }
-
-        compute_fitness(sim);
-        return;
-    }
-#endif
-
-    // CPU path (OpenMP-parallelized)
-    auto t0 = std::chrono::steady_clock::now();
     int last_tick = 0;
-    int agent_count = static_cast<int>(
-        std::min(sim.agents().size(), networks_.size()));
+    int agent_count = static_cast<int>(std::min(sim.agents().size(), networks_.size()));
     std::vector<Vec2> actions(sim.agents().size(), {0.0f, 0.0f});
 
-    // Pre-allocate per-thread sensor/output buffers to avoid per-call allocations
-    // (400 agents × 1000 ticks = 400K allocs saved per generation)
     int max_threads = 1;
 #ifdef MOONAI_OPENMP_ENABLED
     max_threads = omp_get_max_threads();
@@ -281,7 +288,35 @@ void EvolutionManager::evaluate_generation(SimulationManager& sim) {
     std::vector<std::vector<float>> thread_output_bufs(max_threads,
         std::vector<float>(num_outputs_));
 
-    for (int tick = 0; tick < config_.generation_ticks; ++tick) {
+#ifdef MOONAI_ENABLE_CUDA
+    if (prepare_gpu_generation()) {
+        for (int tick = 0; tick < config_.generation_ticks; ++tick) {
+            if (!infer_actions_gpu(sim, actions)) {
+                break;
+            }
+
+            for (int i = 0; i < agent_count; ++i) {
+                if (!sim.agents()[i]->alive()) continue;
+                sim.apply_action(static_cast<size_t>(i), actions[i], dt);
+            }
+
+            sim.tick(dt);
+            last_tick = tick + 1;
+
+            if (tick_callback_) tick_callback_(tick, sim);
+            if (sim.alive_prey() == 0 || sim.alive_predators() == 0) break;
+        }
+
+        if (use_gpu_) {
+            compute_fitness(sim);
+            return;
+        }
+    }
+#endif
+
+    // CPU path (OpenMP-parallelized)
+    auto t0 = std::chrono::steady_clock::now();
+    for (int tick = last_tick; tick < config_.generation_ticks; ++tick) {
         // Parallel compute phase: sensor + NN per agent (read-only on shared state)
         std::fill(actions.begin(), actions.end(), Vec2{0.0f, 0.0f});
 

@@ -1,0 +1,23 @@
+name: CUDA
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+
+jobs:
+  gpu-tests:
+    name: GPU Tests
+    runs-on: [self-hosted, linux, x64, gpu, cuda]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake --preset linux-debug
+
+      - name: Build
+        run: cmake --build build/linux-debug --parallel
+
+      - name: Run GPU tests
+        run: ctest --test-dir build/linux-debug --output-on-failure -R GpuTest

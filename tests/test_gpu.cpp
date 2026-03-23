@@ -1,8 +1,13 @@
 #include <gtest/gtest.h>
 #include <cmath>
+#include "core/config.hpp"
+#include "core/random.hpp"
+#include "evolution/evolution_manager.hpp"
 #include "evolution/genome.hpp"
+#include "evolution/mutation.hpp"
 #include "evolution/neural_network.hpp"
 #include "gpu/gpu_batch.hpp"
+#include "simulation/simulation_manager.hpp"
 
 using namespace moonai;
 using namespace moonai::gpu;
@@ -123,6 +128,45 @@ static Genome make_genome(int inputs, int outputs, float weight) {
             g.add_connection({in_node.id, out_node.id, weight, true, innov++});
         }
     }
+    return g;
+}
+
+static Genome make_hidden_genome() {
+    Genome g(3, 2);
+    InnovationTracker tracker;
+    Random rng(42);
+
+    for (const auto& in_node : g.nodes()) {
+        if (in_node.type != NodeType::Input && in_node.type != NodeType::Bias) {
+            continue;
+        }
+        for (const auto& out_node : g.nodes()) {
+            if (out_node.type != NodeType::Output) {
+                continue;
+            }
+            g.add_connection({in_node.id, out_node.id, rng.next_float(-1.0f, 1.0f), true,
+                              tracker.get_innovation(in_node.id, out_node.id)});
+        }
+    }
+
+    SimulationConfig config;
+    config.mutation_rate = 1.0f;
+    config.add_node_rate = 0.6f;
+    config.add_connection_rate = 0.6f;
+    for (int i = 0; i < 5; ++i) {
+        Mutation::mutate(g, rng, config, tracker);
+    }
+    return g;
+}
+
+static Genome make_recurrent_genome() {
+    Genome g(2, 1);
+    g.add_node({4, NodeType::Hidden});
+    g.add_connection({0, 4, 0.8f, true, 0});
+    g.add_connection({1, 4, -0.4f, true, 1});
+    g.add_connection({2, 4, 0.5f, true, 2});
+    g.add_connection({4, 3, 1.1f, true, 3});
+    g.add_connection({4, 4, 0.25f, true, 4});
     return g;
 }
 
@@ -360,5 +404,111 @@ TEST_F(GpuTest, ActivationFunctions) {
                 << "Activation=" << fn << " output " << i
                 << " mismatch: CPU=" << cpu_out[i] << " GPU=" << gpu_out[i];
         }
+    }
+}
+
+TEST_F(GpuTest, HiddenTopologyMatchesCpu) {
+    Genome g = make_hidden_genome();
+    std::vector<std::unique_ptr<NeuralNetwork>> nets;
+    nets.push_back(std::make_unique<NeuralNetwork>(g, "sigmoid"));
+
+    GpuBatch batch(1, 3, 2);
+    auto data = build_test_network_data(nets, "sigmoid");
+    batch.upload_network_data(data);
+    ASSERT_TRUE(batch.ok()) << "GPU upload failed";
+
+    float in_data[3] = {0.8f, -0.25f, 0.5f};
+    float cpu_out[2] = {};
+    float gpu_out[2] = {};
+    nets[0]->activate_into(in_data, 3, cpu_out, 2);
+    run_gpu_inference(batch, in_data, 3, gpu_out, 2);
+
+    for (int i = 0; i < 2; ++i) {
+        EXPECT_NEAR(cpu_out[i], gpu_out[i], 1e-5f);
+    }
+}
+
+TEST_F(GpuTest, RecurrentTopologyMatchesCpu) {
+    Genome g = make_recurrent_genome();
+    std::vector<std::unique_ptr<NeuralNetwork>> nets;
+    nets.push_back(std::make_unique<NeuralNetwork>(g, "sigmoid"));
+
+    GpuBatch batch(1, 2, 1);
+    auto data = build_test_network_data(nets, "sigmoid");
+    batch.upload_network_data(data);
+    ASSERT_TRUE(batch.ok()) << "GPU upload failed";
+
+    float in_data[2] = {0.2f, -0.7f};
+    float cpu_out[1] = {};
+    float gpu_out[1] = {};
+    nets[0]->activate_into(in_data, 2, cpu_out, 1);
+    run_gpu_inference(batch, in_data, 2, gpu_out, 1);
+
+    EXPECT_NEAR(cpu_out[0], gpu_out[0], 1e-5f);
+}
+
+TEST_F(GpuTest, RejectsDescriptorCountMismatch) {
+    Genome g = make_genome(3, 2, 0.5f);
+    std::vector<std::unique_ptr<NeuralNetwork>> nets;
+    nets.push_back(std::make_unique<NeuralNetwork>(g, "sigmoid"));
+
+    GpuBatch batch(2, 3, 2);
+    auto data = build_test_network_data(nets, "sigmoid");
+    batch.upload_network_data(data);
+    EXPECT_FALSE(batch.ok());
+}
+
+TEST_F(GpuTest, RejectsOversizedCopies) {
+    Genome g = make_genome(3, 2, 0.5f);
+    std::vector<std::unique_ptr<NeuralNetwork>> nets;
+    nets.push_back(std::make_unique<NeuralNetwork>(g, "sigmoid"));
+
+    GpuBatch batch(1, 3, 2);
+    auto data = build_test_network_data(nets, "sigmoid");
+    batch.upload_network_data(data);
+    ASSERT_TRUE(batch.ok()) << "GPU upload failed";
+
+    float oversized_inputs[4] = {1.0f, 0.5f, -1.0f, 0.0f};
+    batch.pack_inputs_async(oversized_inputs, 4);
+    EXPECT_FALSE(batch.ok());
+}
+
+TEST_F(GpuTest, EvaluateGenerationMatchesCpuAndCallbacks) {
+    SimulationConfig config;
+    config.predator_count = 400;
+    config.prey_count = 700;
+    config.generation_ticks = 12;
+    config.seed = 42;
+    config.target_fps = 30;
+
+    Random cpu_rng(config.seed);
+    Random gpu_rng(config.seed);
+    SimulationManager cpu_sim(config);
+    SimulationManager gpu_sim(config);
+    EvolutionManager cpu_evo(config, cpu_rng);
+    EvolutionManager gpu_evo(config, gpu_rng);
+
+    cpu_sim.initialize();
+    gpu_sim.initialize();
+    cpu_evo.initialize(SensorInput::SIZE, 2);
+    gpu_evo.initialize(SensorInput::SIZE, 2);
+
+    int cpu_ticks = 0;
+    int gpu_ticks = 0;
+    cpu_evo.set_tick_callback([&](int, const SimulationManager&) { ++cpu_ticks; });
+    gpu_evo.set_tick_callback([&](int, const SimulationManager&) { ++gpu_ticks; });
+    gpu_evo.enable_gpu(true);
+    ASSERT_TRUE(gpu_evo.gpu_enabled()) << "GPU path was not enabled for the parity test";
+
+    cpu_evo.evaluate_generation(cpu_sim);
+    gpu_evo.evaluate_generation(gpu_sim);
+
+    EXPECT_EQ(cpu_ticks, gpu_ticks);
+    EXPECT_EQ(cpu_sim.alive_predators(), gpu_sim.alive_predators());
+    EXPECT_EQ(cpu_sim.alive_prey(), gpu_sim.alive_prey());
+
+    for (size_t i = 0; i < cpu_evo.population().size(); i += 137) {
+        EXPECT_NEAR(cpu_evo.population()[i].fitness(), gpu_evo.population()[i].fitness(), 1e-4f)
+            << "Fitness mismatch at genome " << i;
     }
 }

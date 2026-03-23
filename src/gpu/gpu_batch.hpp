@@ -47,13 +47,19 @@ public:
     // ── Per-tick I/O (async — uses pinned memory + single CUDA stream) ──
     // Copy flat_inputs into pinned host buffer, then async H2D.
     void pack_inputs_async(const float* flat_inputs, int count);
+    // Launch H2D using the existing pinned host input buffer.
+    void pack_inputs_async(int count);
     // Launch kernel on the stream.
     void launch_inference_async();
     // Async D2H into pinned host buffer.
     void start_unpack_async();
     // Block until stream completes, then copy from pinned buffer to dst.
+    void finish_unpack();
     void finish_unpack(float* dst, int count);
     bool ok() const { return !had_error_; }
+
+    float*       host_inputs()       { return h_pinned_in_; }
+    const float* host_outputs() const { return h_pinned_out_; }
 
     // ── Kernel-facing accessors (device pointers) ────────────────────────
     const GpuNetDesc* d_descs()       const { return d_descs_; }
@@ -112,6 +118,8 @@ private:
     int num_outputs_;
     int activation_fn_id_ = 0;  // 0=sigmoid, 1=tanh, 2=relu
     bool had_error_ = false;
+
+    bool validate_copy_count(int count, int capacity, const char* label);
 };
 
 // ── Free functions (implemented in neural_inference.cu / gpu_batch.cu) ────

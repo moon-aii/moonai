@@ -21,7 +21,7 @@ The platform enables researchers to:
 
 - **NEAT Implementation** - Evolves both topology and weights of neural networks simultaneously
 - **Real-Time Visualization** - SFML-based rendering with interactive controls and live NN activation display
-- **GPU Acceleration** - CUDA backend for batch neural inference — auto-enabled for populations above 1000 agents, with pinned memory, async transfers, and runtime CPU fallback
+- **GPU Acceleration** - CUDA backend for batch neural inference — auto-enabled for populations >= 1000 agents, uses pinned host buffers, and falls back to the CPU path on runtime GPU failures
 - **Cross-Platform** - Runs on Linux and Windows with identical behavior
 - **Reproducible Experiments** - Seeded RNG with deterministic simulation for scientific rigor
 - **Lua Scripting** - Config, custom fitness functions, and generation hooks — all in Lua without recompilation
@@ -56,7 +56,7 @@ The system follows a modular architecture with four primary subsystems, each bui
 | `src/evolution/` | `moonai_evolution` | NEAT genome, neural network, speciation, mutation, crossover |
 | `src/visualization/` | `moonai_visualization` | SFML window, renderer, UI overlay |
 | `src/data/` | `moonai_data` | CSV logger, metrics collector |
-| `src/gpu/` | `moonai_gpu` | CUDA kernels for batch neural inference (async streams + pinned memory) |
+| `src/gpu/` | `moonai_gpu` | CUDA kernels and batch runtime for neural inference (pinned host buffers + runtime CPU fallback) |
 
 ## Prerequisites
 
@@ -141,11 +141,13 @@ Mode selection happens at runtime via flags — no need to rebuild:
 
 | Command | Description |
 |---------|-------------|
-| `just run` | Default: visualization window, GPU if available |
+| `just run` | Default: visualization window, GPU if available for large populations |
 | `just run-headless` | No window, max speed (auto-switches if `$DISPLAY` unset) |
 | `just run-no-gpu` | Force CPU inference even if CUDA is compiled in |
 | `just run-server` | Headless + CPU-only (for servers without a display or GPU) |
 | `just run-config <path>` | Run with a custom config file |
+
+CUDA is enabled at runtime when available and the population is at least 1000 agents. If GPU upload or inference fails during execution, MoonAI disables the CUDA path and continues with CPU inference.
 
 ### Visualization Controls
 
@@ -456,6 +458,7 @@ Experiments with 5K+ agents require significant compute. Recommendations:
 - **GPU strongly recommended** for populations >= 2000 (auto-enabled when CUDA is available)
 - **Release build** (`just release`) for 2-5x faster simulation
 - **Headless mode** (`--headless`) disables rendering for maximum throughput
+- **Visual mode** can also use CUDA inference now, but headless mode still gives the best throughput because rendering stays on the CPU/SFML side
 - **Memory**: ~4 GB RAM for 10K agents, ~8 GB for 20K agents
 - **VRAM**: ~512 MB for 10K agents, ~1 GB for 20K agents
 - Running all 330 experiments sequentially takes significant time; use `--experiment` to run specific conditions or parallelize across machines
@@ -468,6 +471,9 @@ just compdb
 
 # Format code
 just format
+
+# Run only CUDA tests
+just test-gpu
 
 # Run static analysis (cppcheck)
 just lint

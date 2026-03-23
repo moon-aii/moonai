@@ -124,6 +124,11 @@ test: build
 test-verbose: build
     ctest --test-dir {{build-dir}} --output-on-failure --verbose
 
+# Run only CUDA/GPU tests
+[group('test')]
+test-gpu: build
+    ctest --test-dir {{build-dir}} --output-on-failure -R GpuTest
+
 # Run a specific test by name pattern
 [group('test')]
 test-filter pattern: build

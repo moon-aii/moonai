@@ -59,6 +59,10 @@ public:
     // GPU acceleration
     void enable_gpu(bool use_gpu);
     bool gpu_enabled() const { return use_gpu_; }
+#ifdef MOONAI_ENABLE_CUDA
+    bool prepare_gpu_generation();
+    bool infer_actions_gpu(const SimulationManager& sim, std::vector<Vec2>& actions);
+#endif
 
     // Checkpoint serialization
     void save_checkpoint(const std::string& path, const Random& rng) const;

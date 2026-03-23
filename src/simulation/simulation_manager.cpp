@@ -113,6 +113,12 @@ SensorInput SimulationManager::get_sensors(size_t agent_index) const {
         config_.boundary_mode == BoundaryMode::Clamp);
 }
 
+void SimulationManager::write_sensors_flat(float* dst, size_t agent_count) const {
+    for (size_t i = 0; i < agent_count; ++i) {
+        get_sensors(i).write_to(dst + i * SensorInput::SIZE);
+    }
+}
+
 void SimulationManager::apply_action(size_t agent_index, Vec2 direction, float dt) {
     if (agent_index >= agents_.size() || !agents_[agent_index]->alive()) return;
     agents_[agent_index]->apply_movement(direction, dt);

@@ -506,6 +506,11 @@ int main(int argc, char* argv[]) {
         lua_runtime.select_experiment(exp_name);
         p_evolution->set_lua_runtime(&lua_runtime);
         lua_runtime.call_on_experiment_start(config);
+#ifdef MOONAI_ENABLE_CUDA
+        if (!args.no_gpu && moonai::gpu::init_cuda()) {
+            p_evolution->enable_gpu(true);
+        }
+#endif
         output_name = exp_name;
         logger = std::make_unique<moonai::Logger>(config.output_dir, config.seed, output_name);
         logger->initialize(config);
@@ -564,6 +569,13 @@ int main(int argc, char* argv[]) {
             // ── Visual mode: tick-by-tick with rendering ─────────────
             const auto& networks = p_evolution->networks();
             int tick = 0;
+            std::vector<moonai::Vec2> gpu_actions(p_simulation->agents().size(), {0.0f, 0.0f});
+
+#ifdef MOONAI_ENABLE_CUDA
+            bool visual_gpu_ready = p_evolution->prepare_gpu_generation();
+#else
+            bool visual_gpu_ready = false;
+#endif
 
             while (tick < config.generation_ticks && g_running) {
                 visualization.handle_events();
@@ -592,18 +604,32 @@ int main(int argc, char* argv[]) {
                 int steps = std::min(visualization.speed_multiplier(),
                                      config.generation_ticks - tick);
                 for (int s = 0; s < steps; ++s) {
-                    for (size_t i = 0; i < p_simulation->agents().size() && i < networks.size(); ++i) {
-                        if (!p_simulation->agents()[i]->alive()) continue;
-
-                        auto sensors = p_simulation->get_sensors(i);
-                        auto output = networks[i]->activate(sensors.to_vector());
-
-                        moonai::Vec2 direction{0.0f, 0.0f};
-                        if (output.size() >= 2) {
-                            direction.x = output[0] * 2.0f - 1.0f;
-                            direction.y = output[1] * 2.0f - 1.0f;
+                    bool used_gpu = false;
+#ifdef MOONAI_ENABLE_CUDA
+                    if (visual_gpu_ready && p_evolution->infer_actions_gpu(*p_simulation, gpu_actions)) {
+                        used_gpu = true;
+                        for (size_t i = 0; i < p_simulation->agents().size() && i < networks.size(); ++i) {
+                            if (!p_simulation->agents()[i]->alive()) continue;
+                            p_simulation->apply_action(i, gpu_actions[i], dt);
                         }
-                        p_simulation->apply_action(i, direction, dt);
+                    } else if (visual_gpu_ready) {
+                        visual_gpu_ready = false;
+                    }
+#endif
+                    if (!used_gpu) {
+                        for (size_t i = 0; i < p_simulation->agents().size() && i < networks.size(); ++i) {
+                            if (!p_simulation->agents()[i]->alive()) continue;
+
+                            auto sensors = p_simulation->get_sensors(i);
+                            auto output = networks[i]->activate(sensors.to_vector());
+
+                            moonai::Vec2 direction{0.0f, 0.0f};
+                            if (output.size() >= 2) {
+                                direction.x = output[0] * 2.0f - 1.0f;
+                                direction.y = output[1] * 2.0f - 1.0f;
+                            }
+                            p_simulation->apply_action(i, direction, dt);
+                        }
                     }
                     p_simulation->tick(dt);
                     ++tick;
@@ -624,6 +650,7 @@ int main(int argc, char* argv[]) {
                 int sel = visualization.selected_agent();
                 if (sel >= 0 && sel < static_cast<int>(networks.size())
                         && p_simulation->agents()[sel]->alive()) {
+                    networks[sel]->activate(p_simulation->get_sensors(static_cast<size_t>(sel)).to_vector());
                     visualization.set_selected_activations(
                         networks[sel]->last_activations(),
                         networks[sel]->node_index_map());

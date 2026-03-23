@@ -3,20 +3,34 @@
 
 namespace moonai::gpu {
 
+namespace {
+
+__device__ __forceinline__ float apply_activation(float sum, int activation_fn_id) {
+    if (activation_fn_id == 1) {
+        return tanhf(sum);
+    }
+    if (activation_fn_id == 2) {
+        return fmaxf(0.0f, sum);
+    }
+    return 1.0f / (1.0f + expf(-4.9f * sum));
+}
+
+} // namespace
+
 // One thread per agent. Reads packed CSR topology, initializes node values
 // from d_inputs, runs topological forward pass, writes d_outputs.
 __global__ void neural_forward_kernel(
-    const GpuNetDesc* descs,
-    float*            node_vals,
-    const uint8_t*    node_types,
-    const int*        eval_order,
-    const int*        conn_ptr,
-    const int*        in_count,
-    const int*        conn_from,
-    const float*      conn_w,
-    const int*        out_indices,
-    const float*      inputs,
-    float*            outputs,
+    const GpuNetDesc* __restrict__ descs,
+    float* __restrict__            node_vals,
+    const uint8_t* __restrict__    node_types,
+    const int* __restrict__        eval_order,
+    const int* __restrict__        conn_ptr,
+    const int* __restrict__        in_count,
+    const int* __restrict__        conn_from,
+    const float* __restrict__      conn_w,
+    const int* __restrict__        out_indices,
+    const float* __restrict__      inputs,
+    float* __restrict__            outputs,
     int               num_agents,
     int               num_inputs,
     int               activation_fn_id
@@ -58,15 +72,7 @@ __global__ void neural_forward_kernel(
             sum += node_vals[desc.node_off + from_idx] * w;
         }
 
-        float act;
-        if (activation_fn_id == 1) {          // tanh
-            act = tanhf(sum);
-        } else if (activation_fn_id == 2) {   // relu
-            act = fmaxf(0.0f, sum);
-        } else {                               // sigmoid (default)
-            act = 1.0f / (1.0f + expf(-4.9f * sum));
-        }
-        node_vals[desc.node_off + ni] = act;
+        node_vals[desc.node_off + ni] = apply_activation(sum, activation_fn_id);
     }
 
     // ── Write outputs ────────────────────────────────────────────────────
@@ -79,12 +85,22 @@ __global__ void neural_forward_kernel(
 // Launches kernel on the batch's stream.
 void batch_neural_inference(GpuBatch& batch) {
     int n = batch.num_agents();
-    constexpr int kBlockSize = 256;
-    int grid_size = (n + kBlockSize - 1) / kBlockSize;
+    int min_grid_size = 0;
+    int block_size = 0;
+    CUDA_CHECK(cudaOccupancyMaxPotentialBlockSize(
+        &min_grid_size,
+        &block_size,
+        neural_forward_kernel,
+        0,
+        0));
+    if (block_size <= 0) {
+        block_size = 256;
+    }
+    int grid_size = (n + block_size - 1) / block_size;
 
     cudaStream_t stream = static_cast<cudaStream_t>(batch.stream_handle());
 
-    neural_forward_kernel<<<grid_size, kBlockSize, 0, stream>>>(
+    neural_forward_kernel<<<grid_size, block_size, 0, stream>>>(
         batch.d_descs(),
         batch.d_node_vals(),
         batch.d_node_types(),

@@ -42,6 +42,7 @@ public:
 
     // Get sensor inputs for all agents (indexed by position in agents_ vector)
     SensorInput get_sensors(size_t agent_index) const;
+    void write_sensors_flat(float* dst, size_t agent_count) const;
 
     // Apply neural network output to an agent
     void apply_action(size_t agent_index, Vec2 direction, float dt);
