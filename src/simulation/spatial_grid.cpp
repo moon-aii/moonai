@@ -50,9 +50,15 @@ std::vector<AgentId> SpatialGrid::query(Vec2 position) const {
 }
 
 std::vector<AgentId> SpatialGrid::query_radius(Vec2 position, float radius) const {
+    std::vector<AgentId> result;
+    query_radius_into(position, radius, result);
+    return result;
+}
+
+void SpatialGrid::query_radius_into(Vec2 position, float radius, std::vector<AgentId>& result) const {
     ScopedTimer timer(ProfileEvent::SpatialQueryRadius);
     Profiler::instance().increment(ProfileCounter::GridQueryCalls);
-    std::vector<AgentId> result;
+    result.clear();
     float r2 = radius * radius;
     int cells_to_check = static_cast<int>(std::ceil(radius / cell_size_)) + 1;
     int cx = cell_x(position.x);
@@ -75,8 +81,6 @@ std::vector<AgentId> SpatialGrid::query_radius(Vec2 position, float radius) cons
             }
         }
     }
-
-    return result;
 }
 
 int SpatialGrid::cell_index(float x, float y) const {

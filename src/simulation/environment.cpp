@@ -53,9 +53,39 @@ void Environment::tick_food(Random& rng, float respawn_rate) {
 }
 
 bool Environment::try_eat_food(Vec2 position, float range) {
+    const float range_sq = range * range;
     for (auto& f : food_) {
-        if (f.active && position.distance_to(f.position) <= range) {
+        if (!f.active) {
+            continue;
+        }
+        const float dx = position.x - f.position.x;
+        const float dy = position.y - f.position.y;
+        if ((dx * dx + dy * dy) <= range_sq) {
             f.active = false;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool Environment::try_eat_food(Vec2 position, float range, const std::vector<AgentId>& candidate_ids,
+                               AgentId* eaten_id) {
+    const float range_sq = range * range;
+    for (AgentId id : candidate_ids) {
+        if (id >= food_.size()) {
+            continue;
+        }
+        auto& f = food_[id];
+        if (!f.active) {
+            continue;
+        }
+        const float dx = position.x - f.position.x;
+        const float dy = position.y - f.position.y;
+        if ((dx * dx + dy * dy) <= range_sq) {
+            f.active = false;
+            if (eaten_id != nullptr) {
+                *eaten_id = id;
+            }
             return true;
         }
     }

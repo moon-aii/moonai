@@ -27,6 +27,8 @@ public:
     void initialize_food(Random& rng, int count);
     void tick_food(Random& rng, float respawn_rate);
     bool try_eat_food(Vec2 position, float range);
+    bool try_eat_food(Vec2 position, float range, const std::vector<AgentId>& candidate_ids,
+                      AgentId* eaten_id = nullptr);
     const std::vector<Food>& food() const { return food_; }
 
 private:

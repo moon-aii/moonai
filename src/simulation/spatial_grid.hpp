@@ -19,6 +19,7 @@ public:
 
     // Returns all agent IDs within `radius` of `position`
     std::vector<AgentId> query_radius(Vec2 position, float radius) const;
+    void query_radius_into(Vec2 position, float radius, std::vector<AgentId>& result) const;
 
 private:
     int cell_index(float x, float y) const;

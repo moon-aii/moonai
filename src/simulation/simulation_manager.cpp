@@ -168,14 +168,18 @@ void SimulationManager::process_energy(float dt) {
 void SimulationManager::process_food() {
     ScopedTimer timer(ProfileEvent::ProcessFood);
     float eat_range = config_.food_pickup_range;
+    std::vector<AgentId> nearby_food;
+    nearby_food.reserve(32);
     for (auto& agent : agents_) {
         if (!agent->alive() || agent->type() != AgentType::Prey) continue;
         Profiler::instance().increment(ProfileCounter::FoodEatAttempts);
-        if (environment_.try_eat_food(agent->position(), eat_range)) {
+        food_grid_.query_radius_into(agent->position(), eat_range, nearby_food);
+        AgentId eaten_food = 0;
+        if (environment_.try_eat_food(agent->position(), eat_range, nearby_food, &eaten_food)) {
             agent->add_energy(config_.energy_gain_from_food);
             agent->add_food();
             Profiler::instance().increment(ProfileCounter::FoodEaten);
-            last_events_.push_back({SimEvent::Food, agent->id(), 0, agent->position()});
+            last_events_.push_back({SimEvent::Food, agent->id(), eaten_food, agent->position()});
         }
     }
 }

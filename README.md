@@ -492,11 +492,11 @@ just lint
 # Benchmark NN forward-pass timing (requires release build)
 just bench-nn
 
+# Run the built-in profiler and write CSV/JSON timing reports
+just profile
+
 # Quick FPS benchmark in visual mode (requires display)
 just bench-fps
-
-# Profile with perf (Linux, requires perf installed)
-just profile
 
 # Build with AddressSanitizer + UBSan and run 5 headless generations
 just check-memory
@@ -504,6 +504,9 @@ just check-memory
 # Run GPU tests locally (requires CUDA)
 just test-gpu
 ```
+
+The built-in profiler writes per-generation CSV and summary JSON reports under
+`output/profiles/` by default when invoked through `just profile`.
 
 ## Project Structure
 

@@ -230,16 +230,17 @@ bench-nn: release
     ./build/linux-release/moonai config.lua \
         --experiment pop_large_seed42 --headless -g 1 -v 2>&1 | grep -E "CPU eval|GPU eval|CUDA"
 
+# Run the built-in profiler on the baseline experiment
+[group('dev')]
+profile: release
+    ./build/linux-release/moonai config.lua \
+        --experiment baseline_seed42 --headless -g 5 --profile \
+        --profile-output output/profiles
+
 # Run visual mode briefly and capture FPS from stdout (requires display)
 [group('dev')]
 bench-fps: build
     timeout 10 ./build/linux-debug/moonai config.lua --experiment default 2>&1 | grep -i fps || true
-
-# Profile with perf (Linux only — requires perf installed)
-[group('dev')]
-profile: release
-    perf record -g ./build/linux-release/moonai config.lua --experiment default --headless -g 20
-    perf report
 
 # Build with AddressSanitizer and run headless for 5 generations
 [group('dev')]

@@ -73,7 +73,8 @@ SensorInput Physics::build_sensors(
     };
 
     // Query nearby agents from spatial grid
-    auto nearby_ids = grid.query_radius(pos, vision);
+    thread_local std::vector<AgentId> nearby_ids;
+    grid.query_radius_into(pos, vision, nearby_ids);
 
     float nearest_pred_dist = std::numeric_limits<float>::max();
     float nearest_prey_dist = std::numeric_limits<float>::max();
@@ -121,7 +122,8 @@ SensorInput Physics::build_sensors(
     // Nearest food (use spatial grid for O(1) per agent instead of O(n))
     float nearest_food_d = std::numeric_limits<float>::max();
     Vec2 nearest_food_dir = {0.0f, 0.0f};
-    auto nearby_food_ids = food_grid.query_radius(pos, vision);
+    thread_local std::vector<AgentId> nearby_food_ids;
+    food_grid.query_radius_into(pos, vision, nearby_food_ids);
     for (AgentId fi : nearby_food_ids) {
         if (fi >= food.size()) continue;
         const auto& f = food[fi];
@@ -169,12 +171,14 @@ std::vector<AgentId> Physics::process_attacks(
     float attack_range) {
 
     std::vector<AgentId> killed;
+    std::vector<AgentId> nearby;
+    nearby.reserve(32);
 
     for (auto& agent : agents) {
         if (!agent->alive() || agent->type() != AgentType::Predator) continue;
 
         auto* predator = static_cast<Predator*>(agent.get());
-        auto nearby = grid.query_radius(predator->position(), attack_range);
+        grid.query_radius_into(predator->position(), attack_range, nearby);
         Profiler::instance().increment(ProfileCounter::AttackChecks,
                                        static_cast<std::int64_t>(nearby.size()));
 
