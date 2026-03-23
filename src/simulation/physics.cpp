@@ -18,6 +18,24 @@ std::vector<float> SensorInput::to_vector() const {
     };
 }
 
+void SensorInput::write_to(float* buffer) const {
+    buffer[0]  = nearest_predator_dist;
+    buffer[1]  = nearest_predator_angle;
+    buffer[2]  = nearest_prey_dist;
+    buffer[3]  = nearest_prey_angle;
+    buffer[4]  = nearest_food_dist;
+    buffer[5]  = nearest_food_angle;
+    buffer[6]  = energy_level;
+    buffer[7]  = speed_x;
+    buffer[8]  = speed_y;
+    buffer[9]  = local_predator_density;
+    buffer[10] = local_prey_density;
+    buffer[11] = wall_left;
+    buffer[12] = wall_right;
+    buffer[13] = wall_top;
+    buffer[14] = wall_bottom;
+}
+
 namespace {
 
 float normalize_angle(float dx, float dy) {

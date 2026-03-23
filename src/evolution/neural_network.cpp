@@ -66,6 +66,39 @@ std::vector<float> NeuralNetwork::activate(const std::vector<float>& inputs) {
     return outputs;
 }
 
+void NeuralNetwork::activate_into(const float* inputs, int n_in, float* outputs, int n_out) {
+    // Reset all node values
+    std::fill(values_.begin(), values_.end(), 0.0f);
+
+    // Set input and bias values
+    int idx = 0;
+    for (size_t i = 0; i < nodes_.size(); ++i) {
+        if (nodes_[i].type == NodeType::Input && idx < n_in) {
+            values_[i] = inputs[idx++];
+        } else if (nodes_[i].type == NodeType::Bias) {
+            values_[i] = 1.0f;
+        }
+    }
+
+    // Evaluate in topological order using precomputed incoming adjacency list
+    for (auto node_id : evaluation_order_) {
+        int ni = node_index_.at(node_id);
+        float sum = 0.0f;
+        for (const auto& [from_idx, w] : incoming_[ni]) {
+            sum += values_[from_idx] * w;
+        }
+        values_[ni] = apply_activation(sum, activation_fn_);
+    }
+
+    // Collect outputs in node order
+    int out_idx = 0;
+    for (size_t i = 0; i < nodes_.size() && out_idx < n_out; ++i) {
+        if (nodes_[i].type == NodeType::Output) {
+            outputs[out_idx++] = values_[i];
+        }
+    }
+}
+
 void NeuralNetwork::build_evaluation_order() {
     // Kahn's algorithm for topological sort
     // Only sort hidden and output nodes (inputs/bias don't need evaluation)

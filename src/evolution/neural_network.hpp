@@ -21,6 +21,7 @@ public:
     explicit NeuralNetwork(const Genome& genome, const std::string& activation_fn = "sigmoid");
 
     std::vector<float> activate(const std::vector<float>& inputs);
+    void activate_into(const float* inputs, int n_in, float* outputs, int n_out);
 
     int num_nodes() const { return static_cast<int>(nodes_.size()); }
     int num_connections() const { return static_cast<int>(connections_.size()); }

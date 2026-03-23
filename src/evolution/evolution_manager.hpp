@@ -18,6 +18,8 @@ namespace moonai::gpu { class GpuBatch; }
 
 namespace moonai {
 
+class LuaRuntime;  // forward declaration
+
 class EvolutionManager {
 public:
     explicit EvolutionManager(const SimulationConfig& config, Random& rng);
@@ -48,9 +50,19 @@ public:
     void set_tick_callback(TickCallback cb) { tick_callback_ = std::move(cb); }
     void clear_tick_callback() { tick_callback_ = nullptr; }
 
+    // Lua runtime (for scripted fitness / hooks)
+    void set_lua_runtime(LuaRuntime* rt) { lua_runtime_ = rt; }
+
+    // Update config (e.g. from Lua hook overrides)
+    void update_config(const SimulationConfig& cfg) { config_ = cfg; }
+
     // GPU acceleration
     void enable_gpu(bool use_gpu);
     bool gpu_enabled() const { return use_gpu_; }
+#ifdef MOONAI_ENABLE_CUDA
+    bool prepare_gpu_generation();
+    bool infer_actions_gpu(const SimulationManager& sim, std::vector<Vec2>& actions);
+#endif
 
     // Checkpoint serialization
     void save_checkpoint(const std::string& path, const Random& rng) const;
@@ -59,11 +71,16 @@ public:
     // Returns pointer to genome at population index, or nullptr if out of range
     const Genome* genome_at(int idx) const;
 
+    // Assign species IDs to agents based on current speciation
+    void assign_species_ids(SimulationManager& sim) const;
+
 private:
     void build_networks();
     void speciate();
     void reproduce();
     void remove_stagnant_species();
+    float default_fitness(float age_ratio, float kills_or_food, float energy_ratio,
+                          float alive_bonus, float dist_ratio, float complexity) const;
 
     SimulationConfig config_;
     Random& rng_;
@@ -74,6 +91,8 @@ private:
     int generation_ = 0;
     int num_inputs_ = 0;
     int num_outputs_ = 0;
+
+    LuaRuntime* lua_runtime_ = nullptr;
 
     bool use_gpu_ = false;
 #ifdef MOONAI_ENABLE_CUDA

@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
-"""Plot population dynamics from MoonAI simulation output."""
+"""Population dynamics plotting library for MoonAI analysis.
 
-import argparse
+Entry point: analysis/cli.py population <run_dir> [options]
+"""
+
 import sys
 from pathlib import Path
 
@@ -58,14 +60,3 @@ def plot(run_dir, output=None):
         return None
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Plot MoonAI population dynamics")
-    parser.add_argument("run_dir", help="Path to run output directory (or stats.csv)")
-    parser.add_argument("--output", "-o", help="Save plot to file instead of showing")
-    args = parser.parse_args()
-    if plot(args.run_dir, output=args.output) is None and args.output:
-        sys.exit(1)
-
-
-if __name__ == "__main__":
-    main()

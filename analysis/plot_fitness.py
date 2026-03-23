@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
-"""Plot fitness curves from MoonAI simulation output."""
+"""Fitness curve plotting library for MoonAI analysis.
 
-import argparse
+Entry point: analysis/cli.py plot <run_dir> [options]
+"""
+
 import sys
 from pathlib import Path
 
@@ -70,16 +72,3 @@ def plot(run_dir, output=None, smooth=1):
         return None
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Plot MoonAI fitness curves")
-    parser.add_argument("run_dir", help="Path to run output directory (or stats.csv)")
-    parser.add_argument("--output", "-o", help="Save plot to file instead of showing")
-    parser.add_argument("--smooth", type=int, default=1,
-                        help="Rolling average window size (default: 1 = no smoothing)")
-    args = parser.parse_args()
-    if plot(args.run_dir, output=args.output, smooth=args.smooth) is None and args.output:
-        sys.exit(1)
-
-
-if __name__ == "__main__":
-    main()

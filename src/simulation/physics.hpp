@@ -40,6 +40,7 @@ struct SensorInput {
 
     static constexpr int SIZE = 15;
     std::vector<float> to_vector() const;
+    void write_to(float* buffer) const;
 };
 
 class Environment;

@@ -255,3 +255,31 @@ TEST(PhysicsTest, SensorDistIsNegativeOneWhenNoNeighbors) {
     EXPECT_FLOAT_EQ(s.nearest_prey_dist, -1.0f);
     EXPECT_FLOAT_EQ(s.nearest_food_dist, -1.0f);
 }
+
+// ── Species ID Tests ────────────────────────────────────────────────────
+
+TEST(AgentTest, SpeciesIdDefaultAndSet) {
+    Prey prey(0, {0, 0}, 1.0f, 50.0f, 100.0f);
+    EXPECT_EQ(prey.species_id(), -1);
+
+    prey.set_species_id(5);
+    EXPECT_EQ(prey.species_id(), 5);
+}
+
+TEST(SimulationManagerTest, EventsRecordedOnTick) {
+    SimulationConfig config;
+    config.predator_count = 3;
+    config.prey_count = 5;
+    config.seed = 42;
+
+    SimulationManager sim(config);
+    sim.initialize();
+
+    // Events should be empty or populated after a tick
+    sim.tick(1.0f / 60.0f);
+    // Just verify the accessor works (events may or may not occur)
+    const auto& events = sim.last_events();
+    for (const auto& e : events) {
+        EXPECT_TRUE(e.type == SimEvent::Kill || e.type == SimEvent::Food);
+    }
+}

@@ -55,6 +55,7 @@ void SimulationManager::initialize() {
 }
 
 void SimulationManager::tick(float dt) {
+    last_events_.clear();
     rebuild_spatial_grid();
     rebuild_food_grid();
 
@@ -112,6 +113,12 @@ SensorInput SimulationManager::get_sensors(size_t agent_index) const {
         config_.boundary_mode == BoundaryMode::Clamp);
 }
 
+void SimulationManager::write_sensors_flat(float* dst, size_t agent_count) const {
+    for (size_t i = 0; i < agent_count; ++i) {
+        get_sensors(i).write_to(dst + i * SensorInput::SIZE);
+    }
+}
+
 void SimulationManager::apply_action(size_t agent_index, Vec2 direction, float dt) {
     if (agent_index >= agents_.size() || !agents_[agent_index]->alive()) return;
     agents_[agent_index]->apply_movement(direction, dt);
@@ -151,6 +158,7 @@ void SimulationManager::process_food() {
         if (environment_.try_eat_food(agent->position(), eat_range)) {
             agent->add_energy(config_.energy_gain_from_food);
             agent->add_food();
+            last_events_.push_back({SimEvent::Food, agent->id(), 0, agent->position()});
         }
     }
 }
@@ -163,14 +171,31 @@ void SimulationManager::process_attacks() {
         kills_before.push_back(agent->kills());
     }
 
+    // Track which prey were alive before attacks to identify kill events
+    std::vector<bool> alive_before;
+    alive_before.reserve(agents_.size());
+    for (const auto& agent : agents_) {
+        alive_before.push_back(agent->alive());
+    }
+
     Physics::process_attacks(agents_, grid_, config_.attack_range);
 
-    // Reward energy for new kills this tick
+    // Reward energy for new kills this tick and record kill events
     for (size_t i = 0; i < agents_.size(); ++i) {
-        if (!agents_[i]->alive() || agents_[i]->type() != AgentType::Predator) continue;
+        if (agents_[i]->type() != AgentType::Predator) continue;
         int new_kills = agents_[i]->kills() - kills_before[i];
         if (new_kills > 0) {
-            agents_[i]->add_energy(config_.energy_gain_from_kill * static_cast<float>(new_kills));
+            if (agents_[i]->alive()) {
+                agents_[i]->add_energy(config_.energy_gain_from_kill * static_cast<float>(new_kills));
+            }
+            // Find which prey this predator killed (newly dead prey nearby)
+            for (size_t j = 0; j < agents_.size(); ++j) {
+                if (agents_[j]->type() != AgentType::Prey) continue;
+                if (alive_before[j] && !agents_[j]->alive()) {
+                    last_events_.push_back({SimEvent::Kill, agents_[i]->id(),
+                                            agents_[j]->id(), agents_[j]->position()});
+                }
+            }
         }
     }
 }

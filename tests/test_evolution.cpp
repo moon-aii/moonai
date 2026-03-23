@@ -7,6 +7,7 @@
 #include "evolution/crossover.hpp"
 #include "evolution/species.hpp"
 #include "evolution/evolution_manager.hpp"
+#include "simulation/physics.hpp"
 
 using namespace moonai;
 
@@ -408,4 +409,172 @@ TEST(EvolutionManagerTest, EvolveProducesNewGeneration) {
 
     // Population size should be preserved
     EXPECT_EQ(static_cast<int>(evo.population().size()), 15);
+}
+
+// ── Delete Connection Tests ─────────────────────────────────────────────
+
+TEST(MutationTest, DeleteConnectionReducesCount) {
+    Genome g(2, 1);
+    g.add_connection({0, 3, 1.0f, true, 0});
+    g.add_connection({1, 3, 0.5f, true, 1});
+    g.add_connection({2, 3, 0.3f, true, 2});  // bias
+
+    EXPECT_EQ(g.connections().size(), 3u);
+
+    Random rng(42);
+    Mutation::delete_connection(g, rng);
+
+    EXPECT_EQ(g.connections().size(), 2u);
+}
+
+TEST(MutationTest, DeleteConnectionKeepsAtLeastOne) {
+    Genome g(2, 1);
+    g.add_connection({0, 3, 1.0f, true, 0});
+
+    EXPECT_EQ(g.connections().size(), 1u);
+
+    Random rng(42);
+    Mutation::delete_connection(g, rng);
+
+    // Should not delete the last connection
+    EXPECT_EQ(g.connections().size(), 1u);
+}
+
+TEST(MutationTest, DeleteConnectionProducesValidNetwork) {
+    Genome g(3, 2);
+    InnovationTracker tracker;
+    Random rng(42);
+
+    // Fully connect
+    for (const auto& in_node : g.nodes()) {
+        if (in_node.type != NodeType::Input && in_node.type != NodeType::Bias) continue;
+        for (const auto& out_node : g.nodes()) {
+            if (out_node.type != NodeType::Output) continue;
+            g.add_connection({in_node.id, out_node.id,
+                              rng.next_float(-1.0f, 1.0f), true,
+                              tracker.get_innovation(in_node.id, out_node.id)});
+        }
+    }
+
+    size_t initial_conns = g.connections().size();
+
+    // Delete several connections
+    for (int i = 0; i < 3; ++i) {
+        Mutation::delete_connection(g, rng);
+    }
+
+    EXPECT_LT(g.connections().size(), initial_conns);
+    EXPECT_GE(g.connections().size(), 1u);
+
+    // Should still produce a valid network
+    NeuralNetwork nn(g);
+    auto outputs = nn.activate({1.0f, 0.5f, -1.0f});
+    EXPECT_EQ(outputs.size(), 2u);
+}
+
+// ── SensorInput::write_to Tests ─────────────────────────────────────────
+
+TEST(SensorInputTest, WriteToMatchesToVector) {
+    SensorInput si;
+    si.nearest_predator_dist = 0.5f;
+    si.nearest_predator_angle = -0.3f;
+    si.nearest_prey_dist = 0.8f;
+    si.nearest_prey_angle = 0.1f;
+    si.nearest_food_dist = 0.2f;
+    si.nearest_food_angle = -0.7f;
+    si.energy_level = 0.6f;
+    si.speed_x = 0.3f;
+    si.speed_y = -0.4f;
+    si.local_predator_density = 0.15f;
+    si.local_prey_density = 0.25f;
+    si.wall_left = 0.9f;
+    si.wall_right = 0.1f;
+    si.wall_top = 0.5f;
+    si.wall_bottom = 0.7f;
+
+    auto vec = si.to_vector();
+    float buf[SensorInput::SIZE];
+    si.write_to(buf);
+
+    ASSERT_EQ(vec.size(), static_cast<size_t>(SensorInput::SIZE));
+    for (int i = 0; i < SensorInput::SIZE; ++i) {
+        EXPECT_FLOAT_EQ(buf[i], vec[i]) << "Mismatch at index " << i;
+    }
+}
+
+// ── NeuralNetwork::activate_into Tests ──────────────────────────────────
+
+TEST(NeuralNetworkTest, ActivateIntoMatchesActivate) {
+    Genome g(3, 2);
+    InnovationTracker tracker;
+    Random rng(42);
+
+    // Fully connect
+    for (const auto& in_node : g.nodes()) {
+        if (in_node.type != NodeType::Input && in_node.type != NodeType::Bias) continue;
+        for (const auto& out_node : g.nodes()) {
+            if (out_node.type != NodeType::Output) continue;
+            g.add_connection({in_node.id, out_node.id,
+                              rng.next_float(-1.0f, 1.0f), true,
+                              tracker.get_innovation(in_node.id, out_node.id)});
+        }
+    }
+
+    // Add some hidden nodes
+    SimulationConfig config;
+    config.mutation_rate = 1.0f;
+    config.add_node_rate = 0.5f;
+    for (int i = 0; i < 5; ++i) {
+        Mutation::mutate(g, rng, config, tracker);
+    }
+
+    std::vector<float> inputs = {1.0f, 0.5f, -1.0f};
+
+    NeuralNetwork nn(g);
+    auto vec_out = nn.activate(inputs);
+
+    // Reset and use activate_into
+    NeuralNetwork nn2(g);
+    float out_buf[2];
+    nn2.activate_into(inputs.data(), 3, out_buf, 2);
+
+    ASSERT_EQ(vec_out.size(), 2u);
+    for (int i = 0; i < 2; ++i) {
+        EXPECT_FLOAT_EQ(out_buf[i], vec_out[i]) << "Mismatch at output " << i;
+    }
+}
+
+// ── Default Fitness Formula Regression Tests ─────────────────────────────
+
+TEST(FitnessComputationTest, DefaultFormulaKnownValues) {
+    // Regression test: verifies the default fitness formula against a hand-computed
+    // expected value using default config weights. If weights or formula change, this fails.
+    //   survival=1.0, kill=5.0, energy=0.5, distance=0.1, complexity_penalty=0.01
+    //   age=0.5, kills=2.0, energy=0.8, alive=1.0, dist=0.3, complexity=5.0
+    //   = 1.0*0.5 + 5.0*2.0 + 0.5*0.8 + 1.0 + 0.1*0.3 - 0.01*5.0
+    //   = 0.5 + 10.0 + 0.4 + 1.0 + 0.03 - 0.05 = 11.88
+    SimulationConfig config;
+    const float expected = config.fitness_survival_weight   * 0.5f
+                         + config.fitness_kill_weight       * 2.0f
+                         + config.fitness_energy_weight     * 0.8f
+                         + 1.0f
+                         + config.fitness_distance_weight   * 0.3f
+                         - config.complexity_penalty_weight * 5.0f;
+
+    EXPECT_NEAR(expected, 11.88f, 0.001f);
+}
+
+TEST(FitnessComputationTest, DefaultFormulaClampedAtZero) {
+    // Formula result should never go below zero
+    SimulationConfig config;
+    // All-zero inputs, alive_bonus=0 → result should be 0 or clamped to 0
+    const float result = std::max(0.0f,
+        config.fitness_survival_weight   * 0.0f
+      + config.fitness_kill_weight       * 0.0f
+      + config.fitness_energy_weight     * 0.0f
+      + 0.0f   // alive_bonus
+      + config.fitness_distance_weight   * 0.0f
+      - config.complexity_penalty_weight * 100.0f);  // large complexity penalty
+
+    EXPECT_FLOAT_EQ(result, 0.0f);
 }

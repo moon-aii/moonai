@@ -13,10 +13,12 @@ namespace moonai {
 class Agent;
 class Genome;
 class Species;
+struct SimEvent;
 
 class Logger {
 public:
-    Logger(const std::string& output_dir, std::uint64_t seed);
+    Logger(const std::string& output_dir, std::uint64_t seed,
+           const std::string& name = "");
     ~Logger();
 
     bool initialize(const SimulationConfig& config);
@@ -27,6 +29,8 @@ public:
     void log_species(int generation, const std::vector<Species>& species);
     void log_tick(int generation, int tick,
                   const std::vector<std::unique_ptr<Agent>>& agents);
+    void log_events(int generation, int tick,
+                    const std::vector<SimEvent>& events);
     void flush_ticks();
     void flush();
 
@@ -35,6 +39,7 @@ public:
 private:
     std::string base_dir_;
     std::string run_dir_;
+    std::string name_;
     std::uint64_t seed_;
     std::ofstream stats_file_;
     std::ofstream genomes_file_;
@@ -42,6 +47,9 @@ private:
     std::ofstream ticks_file_;
     std::string   ticks_buffer_;
     int           ticks_buffered_ = 0;
+    std::ofstream events_file_;
+    std::string   events_buffer_;
+    int           events_buffered_ = 0;
     bool genomes_first_entry_ = true;
 
     static constexpr int TICK_FLUSH_EVERY = 500;

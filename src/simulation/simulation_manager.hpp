@@ -13,6 +13,15 @@
 
 namespace moonai {
 
+// Discrete interaction event recorded each tick
+struct SimEvent {
+    enum Type : uint8_t { Kill, Food };
+    Type type;
+    AgentId agent_id;    // predator (kill) or prey (food)
+    AgentId target_id;   // prey (kill) or food index (food)
+    Vec2 position;       // where the event occurred
+};
+
 class SimulationManager {
 public:
     explicit SimulationManager(const SimulationConfig& config);
@@ -28,8 +37,12 @@ public:
     int alive_predators() const { return alive_predators_; }
     int alive_prey() const { return alive_prey_; }
 
+    // Interaction events that occurred during the last tick() call
+    const std::vector<SimEvent>& last_events() const { return last_events_; }
+
     // Get sensor inputs for all agents (indexed by position in agents_ vector)
     SensorInput get_sensors(size_t agent_index) const;
+    void write_sensors_flat(float* dst, size_t agent_count) const;
 
     // Apply neural network output to an agent
     void apply_action(size_t agent_index, Vec2 direction, float dt);
@@ -48,6 +61,7 @@ private:
     SpatialGrid grid_;
     SpatialGrid food_grid_;
     std::vector<std::unique_ptr<Agent>> agents_;
+    std::vector<SimEvent> last_events_;
     int current_tick_ = 0;
     int alive_predators_ = 0;
     int alive_prey_ = 0;

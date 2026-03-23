@@ -2,6 +2,7 @@
 #include "evolution/genome.hpp"
 #include "evolution/species.hpp"
 #include "simulation/agent.hpp"
+#include "simulation/simulation_manager.hpp"
 
 #include <filesystem>
 #include <chrono>
@@ -12,13 +13,18 @@
 
 namespace moonai {
 
-Logger::Logger(const std::string& output_dir, std::uint64_t seed)
+Logger::Logger(const std::string& output_dir, std::uint64_t seed,
+               const std::string& name)
     : base_dir_(output_dir)
+    , name_(name)
     , seed_(seed) {
 }
 
 Logger::~Logger() {
     flush_ticks();
+    if (events_file_.is_open() && !events_buffer_.empty()) {
+        events_file_ << events_buffer_;
+    }
     if (genomes_file_.is_open()) {
         genomes_file_ << "\n]";
         genomes_file_.close();
@@ -31,6 +37,9 @@ Logger::~Logger() {
     }
     if (ticks_file_.is_open()) {
         ticks_file_.close();
+    }
+    if (events_file_.is_open()) {
+        events_file_.close();
     }
 }
 
@@ -45,9 +54,28 @@ bool Logger::initialize(const SimulationConfig& config) {
     localtime_r(&time, &tm);
 #endif
 
-    std::ostringstream oss;
-    oss << std::put_time(&tm, "%Y%m%d_%H%M%S") << "_seed" << seed_;
-    run_dir_ = base_dir_ + "/" + oss.str();
+    std::string dir_name;
+    if (!name_.empty()) {
+        // Named experiment: use name as-is (e.g., "baseline_seed42")
+        dir_name = name_;
+    } else {
+        // Anonymous run: output/YYYYMMDD_HHMMSS_seed42/
+        std::ostringstream oss;
+        oss << std::put_time(&tm, "%Y%m%d_%H%M%S") << "_seed" << seed_;
+        dir_name = oss.str();
+    }
+    run_dir_ = base_dir_ + "/" + dir_name;
+
+    // Overwrite protection: append suffix if directory exists
+    if (std::filesystem::exists(run_dir_)) {
+        for (int suffix = 2; suffix < 1000; ++suffix) {
+            std::string candidate = base_dir_ + "/" + dir_name + "_" + std::to_string(suffix);
+            if (!std::filesystem::exists(candidate)) {
+                run_dir_ = candidate;
+                break;
+            }
+        }
+    }
 
     std::filesystem::create_directories(run_dir_);
 
@@ -93,6 +121,15 @@ bool Logger::initialize(const SimulationConfig& config) {
             return false;
         }
         ticks_file_ << "generation,tick,agent_id,type,alive,x,y,energy,kills,food_eaten\n";
+
+        // Also open events CSV for interaction logging
+        std::string events_path = run_dir_ + "/events.csv";
+        events_file_.open(events_path);
+        if (!events_file_.is_open()) {
+            spdlog::error("Failed to open events file: {}", events_path);
+            return false;
+        }
+        events_file_ << "generation,tick,event_type,agent_id,target_id,x,y\n";
     }
 
     spdlog::info("Logger initialized, output: {}", run_dir_);
@@ -186,6 +223,28 @@ void Logger::log_tick(int generation, int tick,
     }
 }
 
+void Logger::log_events(int generation, int tick,
+                         const std::vector<SimEvent>& events) {
+    if (!events_file_.is_open() || events.empty()) return;
+
+    for (const auto& e : events) {
+        events_buffer_ += std::to_string(generation) + ","
+            + std::to_string(tick) + ","
+            + (e.type == SimEvent::Kill ? "kill" : "food") + ","
+            + std::to_string(e.agent_id) + ","
+            + std::to_string(e.target_id) + ","
+            + std::to_string(e.position.x) + ","
+            + std::to_string(e.position.y) + "\n";
+        ++events_buffered_;
+    }
+
+    if (events_buffered_ >= TICK_FLUSH_EVERY) {
+        events_file_ << events_buffer_;
+        events_buffer_.clear();
+        events_buffered_ = 0;
+    }
+}
+
 void Logger::flush_ticks() {
     if (!ticks_file_.is_open() || ticks_buffer_.empty()) return;
     ticks_file_ << ticks_buffer_;
@@ -198,6 +257,11 @@ void Logger::flush() {
     if (genomes_file_.is_open()) genomes_file_.flush();
     if (species_file_.is_open()) species_file_.flush();
     flush_ticks();
+    if (events_file_.is_open() && !events_buffer_.empty()) {
+        events_file_ << events_buffer_;
+        events_buffer_.clear();
+        events_buffered_ = 0;
+    }
     if (ticks_file_.is_open()) ticks_file_.flush();
 }
 

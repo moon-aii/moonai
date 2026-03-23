@@ -1,12 +1,14 @@
 #include "evolution/evolution_manager.hpp"
 #include "evolution/crossover.hpp"
 #include "simulation/physics.hpp"
+#include "core/lua_runtime.hpp"
 
 #include <spdlog/spdlog.h>
 #include <nlohmann/json.hpp>
 #include <algorithm>
 #include <numeric>
 #include <cmath>
+#include <unordered_map>
 #include <chrono>
 #include <fstream>
 #include <sstream>
@@ -17,6 +19,12 @@
 
 #ifdef MOONAI_ENABLE_CUDA
 #include "gpu/gpu_batch.hpp"
+
+namespace {
+
+constexpr int kGpuMinPopulation = 1000;
+
+}
 
 // ── GPU network packing helper ────────────────────────────────────────────────
 // Extracts the CSR-packed flat arrays from NeuralNetwork objects into the
@@ -176,86 +184,163 @@ void EvolutionManager::initialize(int num_inputs, int num_outputs) {
 void EvolutionManager::enable_gpu(bool use_gpu) {
     use_gpu_ = use_gpu;
 #ifdef MOONAI_ENABLE_CUDA
-    if (use_gpu_ && num_inputs_ > 0 && !population_.empty()) {
-        gpu_batch_ = std::make_unique<moonai::gpu::GpuBatch>(
-            static_cast<int>(population_.size()), num_inputs_, num_outputs_);
-        spdlog::debug("GpuBatch allocated: {} agents, {} inputs, {} outputs",
-                      population_.size(), num_inputs_, num_outputs_);
+    if (use_gpu_) {
+        int total_agents = config_.predator_count + config_.prey_count;
+        if (total_agents < kGpuMinPopulation) {
+            spdlog::info("GPU disabled: population {} < {} threshold "
+                         "(kernel launch overhead exceeds computation)",
+                         total_agents, kGpuMinPopulation);
+            use_gpu_ = false;
+            return;
+        }
+        if (num_inputs_ > 0 && !population_.empty()) {
+            gpu_batch_ = std::make_unique<moonai::gpu::GpuBatch>(
+                static_cast<int>(population_.size()), num_inputs_, num_outputs_);
+            spdlog::debug("GpuBatch allocated: {} agents, {} inputs, {} outputs",
+                          population_.size(), num_inputs_, num_outputs_);
+            if (!gpu_batch_->ok()) {
+                spdlog::warn("GpuBatch allocation failed; falling back to CPU inference");
+                gpu_batch_.reset();
+                use_gpu_ = false;
+            }
+        }
     }
 #endif
 }
+
+#ifdef MOONAI_ENABLE_CUDA
+bool EvolutionManager::prepare_gpu_generation() {
+    if (!use_gpu_ || !gpu_batch_) {
+        return false;
+    }
+
+    gpu_batch_->upload_network_data(
+        build_gpu_network_data(networks_, config_.activation_function));
+    if (!gpu_batch_->ok()) {
+        spdlog::warn("GPU network upload failed; falling back to CPU inference");
+        gpu_batch_.reset();
+        use_gpu_ = false;
+        return false;
+    }
+    return true;
+}
+
+bool EvolutionManager::infer_actions_gpu(const SimulationManager& sim, std::vector<Vec2>& actions) {
+    if (!use_gpu_ || !gpu_batch_) {
+        return false;
+    }
+
+    int agent_count = static_cast<int>(std::min(sim.agents().size(), networks_.size()));
+    if (agent_count <= 0) {
+        return true;
+    }
+
+    if (static_cast<int>(actions.size()) < agent_count) {
+        actions.resize(agent_count, {0.0f, 0.0f});
+    }
+    std::fill(actions.begin(), actions.end(), Vec2{0.0f, 0.0f});
+
+    sim.write_sensors_flat(gpu_batch_->host_inputs(), static_cast<size_t>(agent_count));
+
+    const int in_count = agent_count * num_inputs_;
+    gpu_batch_->pack_inputs_async(in_count);
+    gpu_batch_->launch_inference_async();
+    gpu_batch_->start_unpack_async();
+    gpu_batch_->finish_unpack();
+
+    if (!gpu_batch_->ok()) {
+        spdlog::warn("GPU inference failed; falling back to CPU inference");
+        gpu_batch_.reset();
+        use_gpu_ = false;
+        return false;
+    }
+
+    const float* flat_out = gpu_batch_->host_outputs();
+    for (int i = 0; i < agent_count; ++i) {
+        if (!sim.agents()[i]->alive()) {
+            continue;
+        }
+        if (num_outputs_ >= 2) {
+            actions[i] = Vec2{
+                flat_out[i * num_outputs_ + 0] * 2.0f - 1.0f,
+                flat_out[i * num_outputs_ + 1] * 2.0f - 1.0f
+            };
+        }
+    }
+    return true;
+}
+#endif
 
 void EvolutionManager::evaluate_generation(SimulationManager& sim) {
     build_networks();
 
     float dt = 1.0f / static_cast<float>(config_.target_fps);
+    int last_tick = 0;
+    int agent_count = static_cast<int>(std::min(sim.agents().size(), networks_.size()));
+    std::vector<Vec2> actions(sim.agents().size(), {0.0f, 0.0f});
+
+    int max_threads = 1;
+#ifdef MOONAI_OPENMP_ENABLED
+    max_threads = omp_get_max_threads();
+#endif
+    std::vector<std::vector<float>> thread_sensor_bufs(max_threads,
+        std::vector<float>(SensorInput::SIZE));
+    std::vector<std::vector<float>> thread_output_bufs(max_threads,
+        std::vector<float>(num_outputs_));
 
 #ifdef MOONAI_ENABLE_CUDA
-    if (use_gpu_ && gpu_batch_) {
-        gpu_batch_->upload_network_data(
-            build_gpu_network_data(networks_, config_.activation_function));
-
-        int agent_count = static_cast<int>(
-            std::min(sim.agents().size(), networks_.size()));
-        std::vector<float> flat_in(agent_count * num_inputs_);
-
+    if (prepare_gpu_generation()) {
         for (int tick = 0; tick < config_.generation_ticks; ++tick) {
-            // Pack sensor inputs for all agents
-            for (int i = 0; i < agent_count; ++i) {
-                auto sv = sim.get_sensors(static_cast<size_t>(i)).to_vector();
-                std::copy(sv.begin(), sv.end(),
-                          flat_in.data() + i * num_inputs_);
+            if (!infer_actions_gpu(sim, actions)) {
+                break;
             }
-            gpu_batch_->pack_inputs(flat_in);
-
-            // GPU neural inference
-            moonai::gpu::batch_neural_inference(*gpu_batch_);
-
-            // Unpack outputs and apply actions
-            std::vector<float> flat_out;
-            gpu_batch_->unpack_outputs(flat_out);
 
             for (int i = 0; i < agent_count; ++i) {
                 if (!sim.agents()[i]->alive()) continue;
-                Vec2 direction{
-                    flat_out[i * 2 + 0] * 2.0f - 1.0f,
-                    flat_out[i * 2 + 1] * 2.0f - 1.0f
-                };
-                sim.apply_action(static_cast<size_t>(i), direction, dt);
+                sim.apply_action(static_cast<size_t>(i), actions[i], dt);
             }
 
             sim.tick(dt);
+            last_tick = tick + 1;
 
+            if (tick_callback_) tick_callback_(tick, sim);
             if (sim.alive_prey() == 0 || sim.alive_predators() == 0) break;
         }
 
-        compute_fitness(sim);
-        return;
+        if (use_gpu_) {
+            compute_fitness(sim);
+            return;
+        }
     }
 #endif
 
     // CPU path (OpenMP-parallelized)
     auto t0 = std::chrono::steady_clock::now();
-    int last_tick = 0;
-    for (int tick = 0; tick < config_.generation_ticks; ++tick) {
+    for (int tick = last_tick; tick < config_.generation_ticks; ++tick) {
         // Parallel compute phase: sensor + NN per agent (read-only on shared state)
-        int agent_count = static_cast<int>(
-            std::min(sim.agents().size(), networks_.size()));
-        std::vector<Vec2> actions(sim.agents().size(), {0.0f, 0.0f});
+        std::fill(actions.begin(), actions.end(), Vec2{0.0f, 0.0f});
 
         #pragma omp parallel for schedule(dynamic) if(MOONAI_OPENMP_ENABLED)
         for (int i = 0; i < agent_count; ++i) {
             if (!sim.agents()[i]->alive()) continue;
 
-            auto sensors = sim.get_sensors(static_cast<size_t>(i));
-            auto output = networks_[i]->activate(sensors.to_vector());
+            int tid = 0;
+#ifdef MOONAI_OPENMP_ENABLED
+            tid = omp_get_thread_num();
+#endif
+            float* sensor_buf = thread_sensor_bufs[tid].data();
+            float* output_buf = thread_output_bufs[tid].data();
 
-            Vec2 direction{0.0f, 0.0f};
-            if (output.size() >= 2) {
-                direction.x = output[0] * 2.0f - 1.0f;
-                direction.y = output[1] * 2.0f - 1.0f;
+            sim.get_sensors(static_cast<size_t>(i)).write_to(sensor_buf);
+            networks_[i]->activate_into(sensor_buf, num_inputs_,
+                                        output_buf, num_outputs_);
+
+            if (num_outputs_ >= 2) {
+                actions[i] = Vec2{
+                    output_buf[0] * 2.0f - 1.0f,
+                    output_buf[1] * 2.0f - 1.0f
+                };
             }
-            actions[i] = direction;
         }
 
         // Sequential apply phase
@@ -320,93 +405,50 @@ void EvolutionManager::build_networks() {
 
 void EvolutionManager::compute_fitness(const SimulationManager& sim) {
     const auto& agents = sim.agents();
+    bool use_lua = lua_runtime_ && lua_runtime_->callbacks().has_fitness_fn;
 
-#ifdef MOONAI_ENABLE_CUDA
-    if (use_gpu_ && gpu_batch_) {
-        // Pre-compute normalized stats on CPU, then evaluate fitness on GPU
-        std::vector<moonai::gpu::GpuAgentStats> stats(population_.size());
-        for (size_t i = 0; i < population_.size() && i < agents.size(); ++i) {
-            const auto& agent = agents[i];
-            float age_ratio = static_cast<float>(agent->age()) /
-                              static_cast<float>(config_.generation_ticks);
-            float kills_or_food = (agent->type() == AgentType::Predator)
-                ? static_cast<float>(agent->kills())
-                : static_cast<float>(agent->food_eaten());
-            float energy_ratio = std::max(0.0f, agent->energy()) / config_.initial_energy;
-            float alive_bonus  = agent->alive() ? 1.0f : 0.0f;
-            float max_dist = agent->speed()
-                * static_cast<float>(config_.generation_ticks)
-                / static_cast<float>(config_.target_fps);
-            float dist_ratio = (max_dist > 0.0f)
-                ? std::min(agent->distance_traveled() / max_dist, 1.0f)
-                : 0.0f;
-            float complexity = static_cast<float>(population_[i].complexity());
-            stats[i] = {age_ratio, kills_or_food, energy_ratio,
-                        alive_bonus, dist_ratio, complexity};
-        }
-
-        gpu_batch_->pack_agent_stats(stats);
-
-        moonai::gpu::GpuFitnessWeights weights{
-            config_.fitness_survival_weight,
-            config_.fitness_kill_weight,
-            config_.fitness_energy_weight,
-            config_.fitness_distance_weight,
-            config_.complexity_penalty_weight
-        };
-        moonai::gpu::batch_fitness_eval(*gpu_batch_, weights);
-
-        std::vector<float> fitness_out;
-        gpu_batch_->unpack_fitness(fitness_out);
-        for (size_t i = 0; i < population_.size(); ++i) {
-            population_[i].set_fitness(fitness_out[i]);
-        }
-        return;
-    }
-#endif
-
-    // CPU fitness evaluation
     for (size_t i = 0; i < population_.size() && i < agents.size(); ++i) {
         const auto& agent = agents[i];
-        float fitness = 0.0f;
 
-        // Survival fitness: how many ticks the agent survived
-        float survival = static_cast<float>(agent->age()) /
-                         static_cast<float>(config_.generation_ticks);
-        fitness += config_.fitness_survival_weight * survival;
-
-        // Kill/food fitness (depending on agent type)
-        if (agent->type() == AgentType::Predator) {
-            fitness += config_.fitness_kill_weight * static_cast<float>(agent->kills());
-        } else {
-            // Prey: reward for food eaten
-            fitness += config_.fitness_kill_weight * static_cast<float>(agent->food_eaten());
-        }
-
-        // Energy fitness: remaining energy ratio
+        // Pre-compute normalized stats (used by both Lua and default paths)
+        float age_ratio = static_cast<float>(agent->age()) /
+                          static_cast<float>(config_.generation_ticks);
+        float kills_or_food = (agent->type() == AgentType::Predator)
+            ? static_cast<float>(agent->kills())
+            : static_cast<float>(agent->food_eaten());
         float energy_ratio = std::max(0.0f, agent->energy()) / config_.initial_energy;
-        fitness += config_.fitness_energy_weight * energy_ratio;
-
-        // Bonus: alive at end of generation
-        if (agent->alive()) {
-            fitness += 1.0f;
-        }
-
-        // Distance fitness: reward exploration
+        float alive_bonus  = agent->alive() ? 1.0f : 0.0f;
         float max_dist = agent->speed()
             * static_cast<float>(config_.generation_ticks)
             / static_cast<float>(config_.target_fps);
-        if (max_dist > 0.0f)
-            fitness += config_.fitness_distance_weight
-                       * std::min(agent->distance_traveled() / max_dist, 1.0f);
+        float dist_ratio = (max_dist > 0.0f)
+            ? std::min(agent->distance_traveled() / max_dist, 1.0f)
+            : 0.0f;
+        float complexity = static_cast<float>(population_[i].complexity());
 
-        // Complexity penalty: prefer simpler networks that achieve the same fitness
-        fitness -= config_.complexity_penalty_weight
-                   * static_cast<float>(population_[i].complexity());
-        fitness = std::max(0.0f, fitness);
+        float fitness;
+        if (use_lua) {
+            fitness = lua_runtime_->call_fitness(
+                age_ratio, kills_or_food, energy_ratio,
+                alive_bonus, dist_ratio, complexity, config_);
+        } else {
+            fitness = default_fitness(age_ratio, kills_or_food, energy_ratio,
+                                      alive_bonus, dist_ratio, complexity);
+        }
 
         population_[i].set_fitness(fitness);
     }
+}
+
+float EvolutionManager::default_fitness(float age_ratio, float kills_or_food,
+    float energy_ratio, float alive_bonus, float dist_ratio, float complexity) const {
+    float f = config_.fitness_survival_weight * age_ratio
+            + config_.fitness_kill_weight     * kills_or_food
+            + config_.fitness_energy_weight   * energy_ratio
+            + alive_bonus
+            + config_.fitness_distance_weight * dist_ratio
+            - config_.complexity_penalty_weight * complexity;
+    return std::max(0.0f, f);
 }
 
 void EvolutionManager::speciate() {
@@ -697,6 +739,24 @@ bool EvolutionManager::load_checkpoint(const std::string& path, Random& rng) {
 const Genome* EvolutionManager::genome_at(int idx) const {
     if (idx < 0 || idx >= static_cast<int>(population_.size())) return nullptr;
     return &population_[idx];
+}
+
+void EvolutionManager::assign_species_ids(SimulationManager& sim) const {
+    const auto& agents = sim.agents();
+    // Build genome pointer → species ID map
+    std::unordered_map<const Genome*, int> genome_species;
+    for (const auto& s : species_) {
+        for (const auto* g : s.members()) {
+            genome_species[g] = s.id();
+        }
+    }
+    // Population index matches agent index
+    for (size_t i = 0; i < population_.size() && i < agents.size(); ++i) {
+        auto it = genome_species.find(&population_[i]);
+        if (it != genome_species.end()) {
+            agents[i]->set_species_id(it->second);
+        }
+    }
 }
 
 } // namespace moonai

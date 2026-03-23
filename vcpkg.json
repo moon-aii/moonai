@@ -7,6 +7,8 @@
     "sfml",
     "nlohmann-json",
     "spdlog",
+    "lua",
+    "sol2",
     {
       "name": "gtest",
       "host": true

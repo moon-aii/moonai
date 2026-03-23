@@ -61,8 +61,36 @@ bool VisualizationManager::initialize() {
     return true;
 }
 
+void VisualizationManager::set_experiments(const std::vector<std::string>& names) {
+    experiment_names_ = names;
+    if (!names.empty()) {
+        experiment_select_mode_ = true;
+        experiment_scroll_offset_ = 0;
+        experiment_hover_index_ = -1;
+    }
+}
+
+void VisualizationManager::enter_experiment_select_mode() {
+    if (!experiment_names_.empty()) {
+        experiment_select_mode_ = true;
+        experiment_scroll_offset_ = 0;
+        experiment_hover_index_ = -1;
+        paused_ = true;
+    }
+}
+
 void VisualizationManager::render(const SimulationManager& sim, const EvolutionManager& evolution) {
     if (!window_ || !running_) return;
+
+    // Experiment selector mode: render selector overlay only
+    if (experiment_select_mode_) {
+        window_->clear(sf::Color(20, 20, 30));
+        overlay_.draw_experiment_selector(*window_, experiment_names_,
+                                           experiment_hover_index_,
+                                           experiment_scroll_offset_);
+        window_->display();
+        return;
+    }
 
     // Apply any pending click now that we have sim access
     if (pending_click_) {
@@ -128,6 +156,7 @@ void VisualizationManager::render(const SimulationManager& sim, const EvolutionM
     overlay_stats_.paused = paused_;
     overlay_stats_.fast_forward = fast_forward_;
     overlay_stats_.selected_agent = selected_agent_;
+    overlay_stats_.experiment_name = selected_experiment_name_;
 
     // Update selected agent info
     if (selected_agent_ >= 0 && selected_agent_ < static_cast<int>(agents.size())) {
@@ -158,6 +187,68 @@ void VisualizationManager::handle_events() {
         if (event->is<sf::Event::Closed>()) {
             running_ = false;
             return;
+        }
+
+        // Experiment selector mode input handling
+        if (experiment_select_mode_) {
+            if (const auto* key = event->getIf<sf::Event::KeyPressed>()) {
+                if (key->code == sf::Keyboard::Key::Escape) {
+                    if (selected_experiment_name_.empty()) {
+                        running_ = false;  // No experiment selected yet, quit
+                    } else {
+                        experiment_select_mode_ = false;  // Return to simulation
+                    }
+                }
+            }
+
+            // Scroll in selector
+            if (const auto* scroll = event->getIf<sf::Event::MouseWheelScrolled>()) {
+                int max_offset = std::max(0, static_cast<int>(experiment_names_.size()) - 15);
+                if (scroll->delta > 0) {
+                    experiment_scroll_offset_ = std::max(0, experiment_scroll_offset_ - 3);
+                } else {
+                    experiment_scroll_offset_ = std::min(max_offset, experiment_scroll_offset_ + 3);
+                }
+            }
+
+            // Mouse move for hover
+            if (const auto* moved = event->getIf<sf::Event::MouseMoved>()) {
+                sf::Vector2f view_size = window_->getDefaultView().getSize();
+                float panel_w = 400.0f;
+                float panel_h = std::min(view_size.y - 80.0f, 500.0f);
+                float panel_x = (view_size.x - panel_w) / 2.0f;
+                float panel_y = (view_size.y - panel_h) / 2.0f;
+                float list_y = panel_y + 56.0f;
+                float item_h = 28.0f;
+
+                float mx = static_cast<float>(moved->position.x);
+                float my = static_cast<float>(moved->position.y);
+
+                if (mx >= panel_x + 8.0f && mx <= panel_x + panel_w - 8.0f &&
+                    my >= list_y && my <= panel_y + panel_h) {
+                    int idx = static_cast<int>((my - list_y) / item_h) + experiment_scroll_offset_;
+                    if (idx >= 0 && idx < static_cast<int>(experiment_names_.size())) {
+                        experiment_hover_index_ = idx;
+                    } else {
+                        experiment_hover_index_ = -1;
+                    }
+                } else {
+                    experiment_hover_index_ = -1;
+                }
+            }
+
+            // Click to select
+            if (const auto* btn = event->getIf<sf::Event::MouseButtonReleased>()) {
+                if (btn->button == sf::Mouse::Button::Left && experiment_hover_index_ >= 0) {
+                    selected_experiment_name_ = experiment_names_[experiment_hover_index_];
+                    experiment_select_mode_ = false;
+                    experiment_selected_ = true;
+                    paused_ = false;
+                    spdlog::info("Selected experiment: {}", selected_experiment_name_);
+                }
+            }
+
+            continue;  // Skip normal event handling while in selector
         }
 
         // Key pressed
@@ -200,6 +291,12 @@ void VisualizationManager::handle_events() {
 
                 case sf::Keyboard::Key::H:
                     fast_forward_ = !fast_forward_;
+                    break;
+
+                case sf::Keyboard::Key::E:
+                    if (!experiment_names_.empty()) {
+                        enter_experiment_select_mode();
+                    }
                     break;
 
                 case sf::Keyboard::Key::S:

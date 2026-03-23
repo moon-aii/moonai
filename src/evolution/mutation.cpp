@@ -152,6 +152,14 @@ void Mutation::toggle_connection(Genome& genome, Random& rng) {
     conns[idx].enabled = !conns[idx].enabled;
 }
 
+void Mutation::delete_connection(Genome& genome, Random& rng) {
+    auto& conns = genome.connections();
+    if (conns.size() <= 1) return;  // Keep at least one connection
+
+    int idx = rng.next_int(0, static_cast<int>(conns.size()) - 1);
+    conns.erase(conns.begin() + idx);
+}
+
 void Mutation::mutate(Genome& genome, Random& rng,
                       const SimulationConfig& config,
                       InnovationTracker& tracker) {
@@ -163,6 +171,9 @@ void Mutation::mutate(Genome& genome, Random& rng,
     }
     if (rng.next_bool(config.add_node_rate)) {
         add_node(genome, rng, tracker, config.max_hidden_nodes);
+    }
+    if (rng.next_bool(config.delete_connection_rate)) {
+        delete_connection(genome, rng);
     }
 
     // Safety: ensure at least one connection is enabled to prevent degenerate networks

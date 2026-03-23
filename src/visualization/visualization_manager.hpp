@@ -9,6 +9,8 @@
 #include <SFML/System/Clock.hpp>
 
 #include <memory>
+#include <string>
+#include <vector>
 #include <unordered_map>
 #include <cstdint>
 
@@ -52,6 +54,14 @@ public:
         const std::vector<float>& vals,
         const std::unordered_map<std::uint32_t, int>& idx_map);
 
+    // Experiment selector
+    void set_experiments(const std::vector<std::string>& names);
+    bool in_experiment_select_mode() const { return experiment_select_mode_; }
+    const std::string& selected_experiment() const { return selected_experiment_name_; }
+    bool experiment_was_selected() const { return experiment_selected_; }
+    void clear_experiment_selected() { experiment_selected_ = false; }
+    void enter_experiment_select_mode();
+
 private:
     void handle_mouse_click(float world_x, float world_y, const SimulationManager& sim);
     void update_camera();
@@ -91,6 +101,14 @@ private:
     // Window dimensions
     unsigned int window_width_ = 1280;
     unsigned int window_height_ = 720;
+
+    // Experiment selector state
+    bool experiment_select_mode_ = false;
+    bool experiment_selected_ = false;
+    std::vector<std::string> experiment_names_;
+    std::string selected_experiment_name_;
+    int experiment_hover_index_ = -1;
+    int experiment_scroll_offset_ = 0;
 };
 
 } // namespace moonai
