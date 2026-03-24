@@ -49,6 +49,26 @@ public:
     void pack_inputs_async(const float* flat_inputs, int count);
     // Launch H2D using the existing pinned host input buffer.
     void pack_inputs_async(int count);
+    void upload_agent_states_async(const GpuAgentState* agents, int agent_count);
+    void upload_tick_state_async(
+        const GpuAgentState* agents,
+        int agent_count,
+        int agent_cols,
+        int agent_rows,
+        float agent_cell_size,
+        const int* agent_cell_offsets,
+        int agent_cell_count,
+        const GpuGridEntry* agent_entries,
+        int agent_entry_count,
+        int food_cols,
+        int food_rows,
+        float food_cell_size,
+        const int* food_cell_offsets,
+        int food_cell_count,
+        const GpuGridEntry* food_entries,
+        int food_entry_count);
+    void launch_sensor_build_async(float world_width, float world_height,
+                                   float max_energy, bool has_walls);
     // Launch kernel on the stream.
     void launch_inference_async();
     // Async D2H into pinned host buffer.
@@ -56,6 +76,17 @@ public:
     // Block until stream completes, then copy from pinned buffer to dst.
     void finish_unpack();
     void finish_unpack(float* dst, int count);
+    void upload_resident_food_states_async(const GpuFoodState* food, int food_count);
+    void launch_resident_sensor_build_async(float world_width, float world_height,
+                                            float max_energy, bool has_walls);
+    void launch_resident_tick_async(float dt, float world_width, float world_height,
+                                    bool has_walls, float energy_drain_per_tick,
+                                    int target_fps, float food_pickup_range,
+                                    float attack_range, float energy_gain_from_food,
+                                    float energy_gain_from_kill, float food_respawn_rate,
+                                    std::uint64_t seed, int tick_index);
+    void download_agent_states(std::vector<GpuAgentState>& agents);
+    void download_food_states(std::vector<GpuFoodState>& food);
     bool ok() const { return !had_error_; }
 
     float*       host_inputs()       { return h_pinned_in_; }
@@ -63,6 +94,18 @@ public:
 
     // ── Kernel-facing accessors (device pointers) ────────────────────────
     const GpuNetDesc* d_descs()       const { return d_descs_; }
+    const GpuAgentState* d_agent_states() const { return d_agent_states_; }
+    GpuAgentState* d_agent_states() { return d_agent_states_; }
+    const GpuFoodState* d_food_states() const { return d_food_states_; }
+    GpuFoodState* d_food_states() { return d_food_states_; }
+    const int* d_agent_cell_offsets() const { return d_agent_cell_offsets_; }
+    const GpuGridEntry* d_agent_grid_entries() const { return d_agent_grid_entries_; }
+    const int* d_food_cell_offsets() const { return d_food_cell_offsets_; }
+    const GpuGridEntry* d_food_grid_entries() const { return d_food_grid_entries_; }
+    int* d_agent_cell_counts() { return d_agent_cell_counts_; }
+    int* d_food_cell_counts() { return d_food_cell_counts_; }
+    unsigned int* d_agent_cell_ids() { return d_agent_cell_ids_; }
+    unsigned int* d_food_cell_ids() { return d_food_cell_ids_; }
     float*            d_node_vals()         { return d_node_vals_; }
     const uint8_t*    d_node_types()  const { return d_node_types_; }
     const int*        d_eval_order()  const { return d_eval_order_; }
@@ -76,6 +119,19 @@ public:
     void*             stream_handle() const { return stream_; }
 
     int num_agents()       const { return num_agents_; }
+    int food_count()       const { return food_count_; }
+    int agent_cell_count() const { return agent_cell_count_; }
+    int agent_grid_entry_count() const { return agent_grid_entry_count_; }
+    int food_cell_count()  const { return food_cell_count_; }
+    int food_grid_entry_count() const { return food_grid_entry_count_; }
+    int agent_cols() const { return agent_cols_; }
+    int agent_rows() const { return agent_rows_; }
+    float agent_cell_size() const { return agent_cell_size_; }
+    int food_cols() const { return food_cols_; }
+    int food_rows() const { return food_rows_; }
+    float food_cell_size() const { return food_cell_size_; }
+    int agent_bin_stride() const { return num_agents_; }
+    int food_bin_stride() const { return food_count_; }
     int num_inputs()       const { return num_inputs_; }
     int num_outputs()      const { return num_outputs_; }
     int activation_fn_id() const { return activation_fn_id_; }
@@ -85,6 +141,16 @@ private:
     GpuNetDesc*    d_descs_     = nullptr;  // [num_agents]
     float*         d_inputs_    = nullptr;  // [num_agents * num_inputs]
     float*         d_outputs_   = nullptr;  // [num_agents * num_outputs]
+    GpuAgentState* d_agent_states_ = nullptr; // [num_agents]
+    GpuFoodState*  d_food_states_ = nullptr;
+    int*           d_agent_cell_offsets_ = nullptr;
+    GpuGridEntry*  d_agent_grid_entries_ = nullptr;
+    int*           d_food_cell_offsets_ = nullptr;
+    GpuGridEntry*  d_food_grid_entries_ = nullptr;
+    int*           d_agent_cell_counts_ = nullptr;
+    int*           d_food_cell_counts_ = nullptr;
+    unsigned int*  d_agent_cell_ids_ = nullptr;
+    unsigned int*  d_food_cell_ids_ = nullptr;
 
     // Pinned host memory (required for cudaMemcpyAsync)
     float*         h_pinned_in_  = nullptr;
@@ -114,6 +180,26 @@ private:
     int capacity_out_indices_ = 0;
 
     int num_agents_;
+    int food_capacity_ = 0;
+    int food_count_ = 0;
+    int agent_cell_capacity_ = 0;
+    int agent_entry_capacity_ = 0;
+    int food_cell_capacity_ = 0;
+    int food_entry_capacity_ = 0;
+    int agent_bin_capacity_ = 0;
+    int food_bin_capacity_ = 0;
+    int agent_bin_ids_capacity_ = 0;
+    int food_bin_ids_capacity_ = 0;
+    int agent_cell_count_ = 0;
+    int agent_grid_entry_count_ = 0;
+    int food_cell_count_ = 0;
+    int food_grid_entry_count_ = 0;
+    int agent_cols_ = 0;
+    int agent_rows_ = 0;
+    float agent_cell_size_ = 1.0f;
+    int food_cols_ = 0;
+    int food_rows_ = 0;
+    float food_cell_size_ = 1.0f;
     int num_inputs_;
     int num_outputs_;
     int activation_fn_id_ = 0;  // 0=sigmoid, 1=tanh, 2=relu
@@ -124,6 +210,17 @@ private:
 
 // ── Free functions (implemented in neural_inference.cu / gpu_batch.cu) ────
 void batch_neural_inference(GpuBatch& batch);  // launches on batch's stream
+void batch_build_sensors(GpuBatch& batch, float world_width, float world_height,
+                         float max_energy, bool has_walls);
+void batch_build_sensors_resident(GpuBatch& batch, float world_width, float world_height,
+                                  float max_energy, bool has_walls);
+void batch_simulate_tick_resident(GpuBatch& batch, float dt, float world_width,
+                                  float world_height, bool has_walls,
+                                  float energy_drain_per_tick, int target_fps,
+                                  float food_pickup_range, float attack_range,
+                                  float energy_gain_from_food, float energy_gain_from_kill,
+                                  float food_respawn_rate, std::uint64_t seed,
+                                  int tick_index);
 bool init_cuda();
 void print_device_info();
 

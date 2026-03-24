@@ -2,6 +2,35 @@
 
 namespace moonai::gpu {
 
+struct GpuAgentState {
+    float pos_x;
+    float pos_y;
+    float vel_x;
+    float vel_y;
+    float speed;
+    float vision_range;
+    float energy;
+    float distance_traveled;
+    int age;
+    int kills;
+    int food_eaten;
+    unsigned int id;
+    unsigned int type;
+    unsigned int alive;
+};
+
+struct GpuFoodState {
+    float pos_x;
+    float pos_y;
+    unsigned int active;
+};
+
+struct GpuGridEntry {
+    unsigned int id;
+    float pos_x;
+    float pos_y;
+};
+
 // Per-agent network descriptor for CSR-packed flat GPU layout
 struct GpuNetDesc {
     int num_nodes;   // total node count (input+bias+hidden+output)

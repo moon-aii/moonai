@@ -10,6 +10,7 @@
 #include <vector>
 #include <memory>
 #include <functional>
+#include <cstddef>
 
 namespace moonai {
 
@@ -31,11 +32,18 @@ public:
     void reset();
 
     int current_tick() const { return current_tick_; }
+    std::vector<std::unique_ptr<Agent>>& agents() { return agents_; }
     const std::vector<std::unique_ptr<Agent>>& agents() const { return agents_; }
+    Environment& environment() { return environment_; }
     const Environment& environment() const { return environment_; }
+    const SpatialGrid& spatial_grid() const { return grid_; }
+    const SpatialGrid& food_grid() const { return food_grid_; }
 
     int alive_predators() const { return alive_predators_; }
     int alive_prey() const { return alive_prey_; }
+    const std::vector<std::size_t>& alive_agent_indices() const { return alive_indices_; }
+    const std::vector<std::size_t>& alive_predator_indices() const { return alive_predator_indices_; }
+    const std::vector<std::size_t>& alive_prey_indices() const { return alive_prey_indices_; }
 
     // Interaction events that occurred during the last tick() call
     const std::vector<SimEvent>& last_events() const { return last_events_; }
@@ -46,8 +54,21 @@ public:
 
     // Apply neural network output to an agent
     void apply_action(size_t agent_index, Vec2 direction, float dt);
+    void set_neighbor_cache_enabled(bool enabled) { neighbor_cache_enabled_ = enabled; }
+    void refresh_state();
 
 private:
+    void initialize(bool log_initialization);
+
+    struct QueryCache {
+        std::vector<std::vector<AgentId>> nearby_agents;
+        std::vector<std::vector<AgentId>> nearby_food;
+        bool valid = false;
+    };
+
+    void rebuild_alive_indices();
+    void invalidate_neighbor_cache();
+    void rebuild_neighbor_cache(float radius);
     void rebuild_spatial_grid();
     void rebuild_food_grid();
     void process_energy(float dt);
@@ -62,6 +83,11 @@ private:
     SpatialGrid food_grid_;
     std::vector<std::unique_ptr<Agent>> agents_;
     std::vector<SimEvent> last_events_;
+    std::vector<std::size_t> alive_indices_;
+    std::vector<std::size_t> alive_predator_indices_;
+    std::vector<std::size_t> alive_prey_indices_;
+    QueryCache neighbor_cache_;
+    bool neighbor_cache_enabled_ = true;
     int current_tick_ = 0;
     int alive_predators_ = 0;
     int alive_prey_ = 0;

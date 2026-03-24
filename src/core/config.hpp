@@ -88,6 +88,8 @@ struct ConfigError {
 std::map<std::string, SimulationConfig> load_all_configs_lua(const std::string& filepath);
 
 // ── JSON output (for config snapshots in output dirs) ───────────────────
+nlohmann::json config_to_json(const SimulationConfig& config);
+std::string fingerprint_config(const SimulationConfig& config);
 void save_config(const SimulationConfig& config, const std::string& filepath);
 
 // ── Validation ──────────────────────────────────────────────────────────

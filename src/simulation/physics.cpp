@@ -1,4 +1,5 @@
 #include "simulation/physics.hpp"
+#include "core/profiler.hpp"
 #include "simulation/environment.hpp"
 #include "simulation/predator.hpp"
 
@@ -54,8 +55,38 @@ SensorInput Physics::build_sensors(
     float max_energy,
     bool has_walls) {
 
+    thread_local std::vector<AgentId> nearby_ids;
+    thread_local std::vector<AgentId> nearby_food_ids;
+    const Vec2 pos = agent.position();
+    const float vision = agent.vision_range();
+    grid.query_radius_into(pos, vision, nearby_ids);
+    food_grid.query_radius_into(pos, vision, nearby_food_ids);
+
+    return build_sensors_from_candidates(
+        agent,
+        agents,
+        food,
+        nearby_ids,
+        nearby_food_ids,
+        world_width,
+        world_height,
+        max_energy,
+        has_walls);
+}
+
+SensorInput Physics::build_sensors_from_candidates(
+    const Agent& agent,
+    const std::vector<std::unique_ptr<Agent>>& agents,
+    const std::vector<Food>& food,
+    const std::vector<AgentId>& nearby_agent_ids,
+    const std::vector<AgentId>& nearby_food_ids,
+    float world_width, float world_height,
+    float max_energy,
+    bool has_walls) {
+
     SensorInput s;
     float vision = agent.vision_range();
+    float vision_sq = vision * vision;
     Vec2 pos = agent.position();
 
     // Wrap-aware difference: takes the shortest path across world boundaries.
@@ -69,69 +100,65 @@ SensorInput Physics::build_sensors(
         return d;
     };
 
-    // Query nearby agents from spatial grid
-    auto nearby_ids = grid.query_radius(pos, vision);
-
-    float nearest_pred_dist = std::numeric_limits<float>::max();
-    float nearest_prey_dist = std::numeric_limits<float>::max();
+    float nearest_pred_dist_sq = std::numeric_limits<float>::max();
+    float nearest_prey_dist_sq = std::numeric_limits<float>::max();
     Vec2 nearest_pred_dir = {0.0f, 0.0f};
     Vec2 nearest_prey_dir = {0.0f, 0.0f};
     int local_predators = 0;
     int local_prey = 0;
 
-    for (AgentId nid : nearby_ids) {
+    for (AgentId nid : nearby_agent_ids) {
         if (nid >= agents.size()) continue;
         const auto& other = agents[nid];
         if (!other->alive() || other->id() == agent.id()) continue;
 
         Vec2 diff = wrap_diff(other->position() - pos);
-        float dist = diff.length();
-        if (dist > vision) continue;
+        float dist_sq = diff.x * diff.x + diff.y * diff.y;
+        if (dist_sq > vision_sq) continue;
 
         if (other->type() == AgentType::Predator) {
             ++local_predators;
-            if (dist < nearest_pred_dist) {
-                nearest_pred_dist = dist;
+            if (dist_sq < nearest_pred_dist_sq) {
+                nearest_pred_dist_sq = dist_sq;
                 nearest_pred_dir = diff;
             }
         } else {
             ++local_prey;
-            if (dist < nearest_prey_dist) {
-                nearest_prey_dist = dist;
+            if (dist_sq < nearest_prey_dist_sq) {
+                nearest_prey_dist_sq = dist_sq;
                 nearest_prey_dir = diff;
             }
         }
     }
 
     // Nearest predator
-    if (nearest_pred_dist < std::numeric_limits<float>::max()) {
-        s.nearest_predator_dist = nearest_pred_dist / vision;
+    if (nearest_pred_dist_sq < std::numeric_limits<float>::max()) {
+        s.nearest_predator_dist = std::sqrt(nearest_pred_dist_sq) / vision;
         s.nearest_predator_angle = normalize_angle(nearest_pred_dir.x, nearest_pred_dir.y);
     }
 
     // Nearest prey
-    if (nearest_prey_dist < std::numeric_limits<float>::max()) {
-        s.nearest_prey_dist = nearest_prey_dist / vision;
+    if (nearest_prey_dist_sq < std::numeric_limits<float>::max()) {
+        s.nearest_prey_dist = std::sqrt(nearest_prey_dist_sq) / vision;
         s.nearest_prey_angle = normalize_angle(nearest_prey_dir.x, nearest_prey_dir.y);
     }
 
     // Nearest food (use spatial grid for O(1) per agent instead of O(n))
-    float nearest_food_d = std::numeric_limits<float>::max();
+    float nearest_food_dist_sq = std::numeric_limits<float>::max();
     Vec2 nearest_food_dir = {0.0f, 0.0f};
-    auto nearby_food_ids = food_grid.query_radius(pos, vision);
     for (AgentId fi : nearby_food_ids) {
         if (fi >= food.size()) continue;
         const auto& f = food[fi];
         if (!f.active) continue;
         Vec2 diff = wrap_diff(f.position - pos);
-        float dist = diff.length();
-        if (dist < nearest_food_d) {
-            nearest_food_d = dist;
+        float dist_sq = diff.x * diff.x + diff.y * diff.y;
+        if (dist_sq < nearest_food_dist_sq) {
+            nearest_food_dist_sq = dist_sq;
             nearest_food_dir = diff;
         }
     }
-    if (nearest_food_d < std::numeric_limits<float>::max()) {
-        s.nearest_food_dist = nearest_food_d / vision;
+    if (nearest_food_dist_sq < std::numeric_limits<float>::max()) {
+        s.nearest_food_dist = std::sqrt(nearest_food_dist_sq) / vision;
         s.nearest_food_angle = normalize_angle(nearest_food_dir.x, nearest_food_dir.y);
     }
 
@@ -160,35 +187,64 @@ SensorInput Physics::build_sensors(
     return s;
 }
 
-std::vector<AgentId> Physics::process_attacks(
+std::vector<Physics::KillEvent> Physics::process_attacks(
     std::vector<std::unique_ptr<Agent>>& agents,
     const SpatialGrid& grid,
     float attack_range) {
+    std::vector<std::size_t> predator_indices;
+    predator_indices.reserve(agents.size());
+    std::vector<std::vector<AgentId>> nearby_agent_ids(agents.size());
 
-    std::vector<AgentId> killed;
+    for (size_t i = 0; i < agents.size(); ++i) {
+        if (!agents[i]->alive() || agents[i]->type() != AgentType::Predator) {
+            continue;
+        }
+        predator_indices.push_back(i);
+        grid.query_radius_into(agents[i]->position(), attack_range, nearby_agent_ids[i]);
+    }
 
-    for (auto& agent : agents) {
-        if (!agent->alive() || agent->type() != AgentType::Predator) continue;
+    return process_attacks_from_candidates(agents, nearby_agent_ids, predator_indices, attack_range);
+}
+
+std::vector<Physics::KillEvent> Physics::process_attacks_from_candidates(
+    std::vector<std::unique_ptr<Agent>>& agents,
+    const std::vector<std::vector<AgentId>>& nearby_agent_ids,
+    const std::vector<std::size_t>& predator_indices,
+    float attack_range) {
+    std::vector<KillEvent> kills;
+    const float attack_range_sq = attack_range * attack_range;
+
+    for (std::size_t predator_index : predator_indices) {
+        if (predator_index >= agents.size()) {
+            continue;
+        }
+        auto& agent = agents[predator_index];
+        if (!agent->alive() || agent->type() != AgentType::Predator) {
+            continue;
+        }
 
         auto* predator = static_cast<Predator*>(agent.get());
-        auto nearby = grid.query_radius(predator->position(), attack_range);
+        const auto& nearby = nearby_agent_ids[predator_index];
+        MOONAI_PROFILE_INC(ProfileCounter::AttackChecks,
+                           static_cast<std::int64_t>(nearby.size()));
 
         for (AgentId nid : nearby) {
             if (nid >= agents.size()) continue;
             auto& target = agents[nid];
             if (!target->alive() || target->type() != AgentType::Prey) continue;
 
-            float dist = predator->position().distance_to(target->position());
-            if (dist <= attack_range) {
+            Vec2 diff = target->position() - predator->position();
+            float dist_sq = diff.x * diff.x + diff.y * diff.y;
+            if (dist_sq <= attack_range_sq) {
                 target->set_alive(false);
                 predator->add_kill();
-                killed.push_back(target->id());
+                kills.push_back({predator->id(), target->id()});
                 break;  // one kill per tick per predator
             }
         }
     }
 
-    return killed;
+    return kills;
 }
 
 } // namespace moonai

@@ -512,3 +512,69 @@ TEST_F(GpuTest, EvaluateGenerationMatchesCpuAndCallbacks) {
             << "Fitness mismatch at genome " << i;
     }
 }
+
+TEST_F(GpuTest, EvaluateGenerationMatchesCpuResidentHeadlessPath) {
+    SimulationConfig config;
+    config.predator_count = 250;
+    config.prey_count = 750;
+    config.food_count = 1000;
+    config.generation_ticks = 4;
+    config.seed = 1337;
+    config.target_fps = 30;
+
+    Random cpu_rng(config.seed);
+    Random gpu_rng_a(config.seed);
+    Random gpu_rng_b(config.seed);
+    SimulationManager cpu_sim(config);
+    SimulationManager gpu_sim_a(config);
+    SimulationManager gpu_sim_b(config);
+    EvolutionManager cpu_evo(config, cpu_rng);
+    EvolutionManager gpu_evo_a(config, gpu_rng_a);
+    EvolutionManager gpu_evo_b(config, gpu_rng_b);
+
+    cpu_sim.initialize();
+    gpu_sim_a.initialize();
+    gpu_sim_b.initialize();
+    cpu_evo.initialize(SensorInput::SIZE, 2);
+    gpu_evo_a.initialize(SensorInput::SIZE, 2);
+    gpu_evo_b.initialize(SensorInput::SIZE, 2);
+    gpu_evo_a.enable_gpu(true);
+    gpu_evo_b.enable_gpu(true);
+    ASSERT_TRUE(gpu_evo_a.gpu_enabled()) << "GPU resident path was not enabled";
+    ASSERT_TRUE(gpu_evo_b.gpu_enabled()) << "GPU resident path was not enabled";
+
+    cpu_evo.evaluate_generation(cpu_sim);
+    gpu_evo_a.evaluate_generation(gpu_sim_a);
+    gpu_evo_b.evaluate_generation(gpu_sim_b);
+
+    EXPECT_EQ(gpu_sim_a.alive_predators(), gpu_sim_b.alive_predators());
+    EXPECT_EQ(gpu_sim_a.alive_prey(), gpu_sim_b.alive_prey());
+    EXPECT_LE(std::abs(cpu_sim.alive_predators() - gpu_sim_a.alive_predators()), 1);
+    EXPECT_LE(std::abs(cpu_sim.alive_prey() - gpu_sim_a.alive_prey()), 1);
+
+    for (size_t i = 0; i < cpu_evo.population().size(); i += 17) {
+        EXPECT_NEAR(gpu_evo_a.population()[i].fitness(), gpu_evo_b.population()[i].fitness(), 1e-4f)
+            << "Resident deterministic fitness mismatch at genome " << i;
+        EXPECT_NEAR(cpu_evo.population()[i].fitness(), gpu_evo_a.population()[i].fitness(), 1e-3f)
+            << "Resident CPU/GPU fitness mismatch at genome " << i;
+    }
+
+    for (size_t i = 0; i < gpu_sim_a.agents().size(); i += 19) {
+        const auto& gpu_agent_a = gpu_sim_a.agents()[i];
+        const auto& gpu_agent_b = gpu_sim_b.agents()[i];
+        EXPECT_EQ(gpu_agent_a->alive(), gpu_agent_b->alive()) << "Resident alive mismatch at agent " << i;
+        EXPECT_NEAR(gpu_agent_a->position().x, gpu_agent_b->position().x, 1e-5f);
+        EXPECT_NEAR(gpu_agent_a->position().y, gpu_agent_b->position().y, 1e-5f);
+        EXPECT_NEAR(gpu_agent_a->energy(), gpu_agent_b->energy(), 1e-5f);
+        EXPECT_EQ(gpu_agent_a->kills(), gpu_agent_b->kills());
+        EXPECT_EQ(gpu_agent_a->food_eaten(), gpu_agent_b->food_eaten());
+    }
+
+    for (size_t i = 0; i < cpu_sim.agents().size(); i += 19) {
+        const auto& cpu_agent = cpu_sim.agents()[i];
+        const auto& gpu_agent = gpu_sim_a.agents()[i];
+        EXPECT_NEAR(cpu_agent->position().x, gpu_agent->position().x, 1.0f);
+        EXPECT_NEAR(cpu_agent->position().y, gpu_agent->position().y, 1.0f);
+        EXPECT_NEAR(cpu_agent->energy(), gpu_agent->energy(), 1.0f);
+    }
+}

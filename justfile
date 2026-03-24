@@ -52,10 +52,11 @@ setup-ubuntu:
         nvidia-cuda-toolkit \
         python3-pandas python3-matplotlib
 
-# Set up Python environment for analysis
+# Set up Python environments for simulation and profiler analysis
 [group('setup')]
 setup-python:
     cd analysis && uv sync
+    cd profiler && uv sync
 
 # Full first-time setup
 [group('setup')]
@@ -153,29 +154,23 @@ run-experiment name: release
 
 # ─── Analysis ───────────────────────────────────────────────────────────────
 
-# Plot fitness curves from a run directory
+# Generate the self-contained HTML analysis report from output/
 [group('analysis')]
-plot run_dir="output":
-    cd analysis && uv run python cli.py plot {{justfile_directory()}}/{{run_dir}}
+analyse:
+    cd analysis && uv run moonai-analysis
 
-# Plot fitness and save to file
+# Generate the self-contained HTML profiler report from output/profiles/
 [group('analysis')]
-plot-save run_dir="output" output_path="analysis/output/fitness_plot.png":
-    cd analysis && uv run python cli.py plot {{justfile_directory()}}/{{run_dir}} \
-        -o {{justfile_directory()}}/{{output_path}}
-
-# Generate all plots and print results summary (single post-run step)
-[group('analysis')]
-report:
-    cd analysis && uv run python cli.py report
+analyse-profile:
+    cd profiler && uv run moonai-profiler
 
 # Full experiment pipeline: run all experiments → generate report
 [group('experiment')]
-experiment-pipeline: experiments report
+experiment-pipeline: experiments analyse
 
 # Validate GPU/CPU output parity: same stats.csv results with and without GPU
-[group('analysis')]
-cuda-validate:
+[group('gpu')]
+gpu-validate:
     #!/usr/bin/env bash
     set -e
     just build-type=release configure
@@ -190,8 +185,8 @@ cuda-validate:
       && echo "MATCH" || echo "DIFFER (float rounding expected between GPU/CPU paths)"
 
 # Benchmark GPU vs CPU wall-clock time on the large-population condition
-[group('analysis')]
-cuda-bench:
+[group('gpu')]
+gpu-bench:
     #!/usr/bin/env bash
     just build-type=release configure
     just build-type=release build
@@ -210,10 +205,12 @@ cuda-bench:
 clean:
     rm -rf build/
 
-# Remove build and output directories
+# Remove build, output, and all generated report artifacts
 [group('clean')]
 clean-all: clean
     rm -rf output/
+    rm -rf analysis/output/
+    rm -rf profiler/output/
 
 # ─── Development ────────────────────────────────────────────────────────────
 
@@ -241,16 +238,20 @@ bench-nn: release
     ./build/linux-release/moonai config.lua \
         --experiment pop_large_seed42 --headless -g 1 -v 2>&1 | grep -E "CPU eval|GPU eval|CUDA"
 
+# Run the built-in profiler on the baseline experiment
+[group('dev')]
+profile: release
+    ./build/linux-release/moonai_profiler profiler.lua \
+        --suite baseline
+
+# Full profiler pipeline: run profiler -> generate profiler report
+[group('dev')]
+profile-pipeline: profile analyse-profile
+
 # Run visual mode briefly and capture FPS from stdout (requires display)
 [group('dev')]
 bench-fps: build
     timeout 10 ./build/linux-debug/moonai config.lua --experiment default 2>&1 | grep -i fps || true
-
-# Profile with perf (Linux only — requires perf installed)
-[group('dev')]
-profile: release
-    perf record -g ./build/linux-release/moonai config.lua --experiment default --headless -g 20
-    perf report
 
 # Build with AddressSanitizer and run headless for 5 generations
 [group('dev')]

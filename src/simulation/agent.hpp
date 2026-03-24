@@ -33,6 +33,12 @@ public:
     int species_id() const { return species_id_; }
 
     void set_position(Vec2 pos) { position_ = pos; }
+    void set_velocity(Vec2 vel) { velocity_ = vel; }
+    void set_energy(float energy) { energy_ = energy; }
+    void set_age(int age) { age_ = age; }
+    void set_distance_traveled(float distance) { distance_traveled_ = distance; }
+    void set_kills(int kills) { kills_ = kills; }
+    void set_food_eaten(int food_eaten) { food_eaten_ = food_eaten; }
     void set_species_id(int id) { species_id_ = id; }
     void set_alive(bool alive) { alive_ = alive; }
     void add_fitness(float amount) { fitness_ += amount; }

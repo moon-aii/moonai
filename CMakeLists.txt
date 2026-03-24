@@ -53,12 +53,22 @@ endif()
 # ── Main executable ──────────────────────────────────────────────────────────
 add_executable(moonai src/main.cpp)
 
+add_executable(moonai_profiler src/profiler_main.cpp)
+
 target_link_libraries(moonai PRIVATE
     moonai_core
     moonai_simulation
     moonai_evolution
     moonai_data
 )
+
+target_link_libraries(moonai_profiler PRIVATE
+    moonai_core_profiler
+    moonai_simulation_profiler
+    moonai_evolution_profiler
+    moonai_data_profiler
+)
+target_compile_definitions(moonai_profiler PRIVATE MOONAI_BUILD_PROFILER)
 
 target_link_libraries(moonai PRIVATE moonai_visualization)
 
@@ -70,6 +80,12 @@ if(MOONAI_ENABLE_CUDA)
 
     target_link_libraries(moonai PRIVATE moonai_gpu)
     target_compile_definitions(moonai PRIVATE MOONAI_ENABLE_CUDA)
+
+    target_link_libraries(moonai_evolution_profiler PRIVATE moonai_gpu_profiler)
+    target_compile_definitions(moonai_evolution_profiler PRIVATE MOONAI_ENABLE_CUDA)
+
+    target_link_libraries(moonai_profiler PRIVATE moonai_gpu_profiler)
+    target_compile_definitions(moonai_profiler PRIVATE MOONAI_ENABLE_CUDA)
 endif()
 
 # ── Copy runtime assets to build directory ───────────────────────────────────
@@ -80,6 +96,16 @@ add_custom_command(TARGET moonai POST_BUILD
         ${CMAKE_SOURCE_DIR}/config.lua
         $<TARGET_FILE_DIR:moonai>/config.lua
     COMMENT "Copying config.lua to build directory"
+)
+
+add_custom_command(TARGET moonai_profiler POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_SOURCE_DIR}/config.lua
+        $<TARGET_FILE_DIR:moonai_profiler>/config.lua
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_SOURCE_DIR}/profiler.lua
+        $<TARGET_FILE_DIR:moonai_profiler>/profiler.lua
+    COMMENT "Copying profiler configs to build directory"
 )
 
 # ── Tests ────────────────────────────────────────────────────────────────────

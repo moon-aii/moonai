@@ -1,5 +1,7 @@
 #include "evolution/genome.hpp"
 
+#include "core/profiler.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <nlohmann/json.hpp>
@@ -55,41 +57,87 @@ int Genome::complexity() const {
     return static_cast<int>(nodes_.size() + connections_.size());
 }
 
+void Genome::sort_connections_by_innovation() {
+    std::sort(connections_.begin(), connections_.end(),
+              [](const ConnectionGene& lhs, const ConnectionGene& rhs) {
+                  return lhs.innovation < rhs.innovation;
+              });
+}
+
 float Genome::compatibility_distance(const Genome& a, const Genome& b,
                                      float c1, float c2, float c3) {
-    const auto& conns_a = a.connections();
-    const auto& conns_b = b.connections();
+    MOONAI_PROFILE_INC(ProfileCounter::CompatibilityChecks);
+    const auto& raw_conns_a = a.connections();
+    const auto& raw_conns_b = b.connections();
+
+    auto by_innovation = [](const ConnectionGene& lhs, const ConnectionGene& rhs) {
+        return lhs.innovation < rhs.innovation;
+    };
+    auto is_sorted_by_innovation = [](const std::vector<ConnectionGene>& conns) {
+        for (std::size_t idx = 1; idx < conns.size(); ++idx) {
+            if (conns[idx - 1].innovation > conns[idx].innovation) {
+                return false;
+            }
+        }
+        return true;
+    };
+    const bool sorted_a = is_sorted_by_innovation(raw_conns_a);
+    const bool sorted_b = is_sorted_by_innovation(raw_conns_b);
+
+    std::vector<ConnectionGene> sorted_copy_a;
+    std::vector<ConnectionGene> sorted_copy_b;
+    if (!sorted_a) {
+        sorted_copy_a = raw_conns_a;
+        std::sort(sorted_copy_a.begin(), sorted_copy_a.end(), by_innovation);
+    }
+    if (!sorted_b) {
+        sorted_copy_b = raw_conns_b;
+        std::sort(sorted_copy_b.begin(), sorted_copy_b.end(), by_innovation);
+    }
+
+    const auto& conns_a = sorted_a ? raw_conns_a : sorted_copy_a;
+    const auto& conns_b = sorted_b ? raw_conns_b : sorted_copy_b;
 
     if (conns_a.empty() && conns_b.empty()) return 0.0f;
-
-    std::map<std::uint32_t, const ConnectionGene*> map_a, map_b;
-    for (const auto& c : conns_a) map_a[c.innovation] = &c;
-    for (const auto& c : conns_b) map_b[c.innovation] = &c;
 
     int excess = 0, disjoint = 0, matching = 0;
     float weight_diff = 0.0f;
 
-    std::uint32_t max_a = 0;
-    for (const auto& c : conns_a) if (c.innovation > max_a) max_a = c.innovation;
-    std::uint32_t max_b = 0;
-    for (const auto& c : conns_b) if (c.innovation > max_b) max_b = c.innovation;
-
-    std::uint32_t max_innov = std::max(max_a, max_b);
-    std::uint32_t min_max = std::min(max_a, max_b);
-
-    for (std::uint32_t i = 0; i <= max_innov; ++i) {
-        bool in_a = map_a.count(i) > 0;
-        bool in_b = map_b.count(i) > 0;
-
-        if (in_a && in_b) {
+    std::size_t i = 0;
+    std::size_t j = 0;
+    while (i < conns_a.size() && j < conns_b.size()) {
+        const auto innov_a = conns_a[i].innovation;
+        const auto innov_b = conns_b[j].innovation;
+        if (innov_a == innov_b) {
             ++matching;
-            weight_diff += std::abs(map_a[i]->weight - map_b[i]->weight);
-        } else if (in_a || in_b) {
-            if (i > min_max) {
-                ++excess;
-            } else {
-                ++disjoint;
-            }
+            weight_diff += std::abs(conns_a[i].weight - conns_b[j].weight);
+            ++i;
+            ++j;
+        } else if (innov_a < innov_b) {
+            ++disjoint;
+            ++i;
+        } else {
+            ++disjoint;
+            ++j;
+        }
+    }
+
+    const auto max_a = conns_a.empty() ? 0U : conns_a.back().innovation;
+    const auto max_b = conns_b.empty() ? 0U : conns_b.back().innovation;
+    const auto min_max = std::min(max_a, max_b);
+
+    for (; i < conns_a.size(); ++i) {
+        if (conns_a[i].innovation > min_max) {
+            ++excess;
+        } else {
+            ++disjoint;
+        }
+    }
+    for (; j < conns_b.size(); ++j) {
+        if (conns_b[j].innovation > min_max) {
+            ++excess;
+        } else {
+            ++disjoint;
         }
     }
 

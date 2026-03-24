@@ -21,9 +21,9 @@ The platform enables researchers to:
 
 - **NEAT Implementation** - Evolves both topology and weights of neural networks simultaneously
 - **Real-Time Visualization** - SFML-based rendering with interactive controls and live NN activation display
-- **GPU Acceleration** - CUDA backend for batch neural inference — auto-enabled for populations >= 1000 agents, uses pinned host buffers, and falls back to the CPU path on runtime GPU failures
-- **Cross-Platform** - Runs on Linux and Windows with identical behavior
-- **Reproducible Experiments** - Seeded RNG with deterministic simulation for scientific rigor
+- **GPU Acceleration** - CUDA backend for GPU-resident sensing, inference, and headless tick processing at large populations, with runtime CPU fallback on GPU failures
+- **Cross-Platform** - Runs on Linux and Windows with matched features and stable runtime behavior
+- **Reproducible Experiments** - Seeded RNG with deterministic behavior within each execution backend; CPU and GPU runs are kept numerically close but are not bit-exact twins
 - **Lua Scripting** - Config, custom fitness functions, and generation hooks — all in Lua without recompilation
 - **Data Export** - CSV/JSON output (including optional per-tick trajectories) compatible with Python analysis tools
 
@@ -56,7 +56,7 @@ The system follows a modular architecture with four primary subsystems, each bui
 | `src/evolution/` | `moonai_evolution` | NEAT genome, neural network, speciation, mutation, crossover |
 | `src/visualization/` | `moonai_visualization` | SFML window, renderer, UI overlay |
 | `src/data/` | `moonai_data` | CSV logger, metrics collector |
-| `src/gpu/` | `moonai_gpu` | CUDA kernels and batch runtime for neural inference (pinned host buffers + runtime CPU fallback) |
+| `src/gpu/` | `moonai_gpu` | CUDA kernels and batch runtime for GPU-resident sensing, inference, and headless tick execution (with runtime CPU fallback) |
 
 ## Prerequisites
 
@@ -148,7 +148,7 @@ Mode selection happens at runtime via flags — no need to rebuild:
 | `just run-server` | Headless + CPU-only (for servers without a display or GPU) |
 | `just run-config <path>` | Run with a custom config file |
 
-CUDA is enabled at runtime when available and the population is at least 1000 agents. If GPU upload or inference fails during execution, MoonAI disables the CUDA path and continues with CPU inference.
+CUDA is enabled at runtime when available and the population is at least 1000 agents. In headless runs, the fast path keeps sensing, inference, and tick processing on the GPU for the whole generation. If GPU upload, sensing, inference, or resident tick execution fails during runtime, MoonAI disables the CUDA path and continues with CPU execution.
 
 ### Visualization Controls
 
@@ -307,33 +307,89 @@ just experiments            # 66 conditions × 5 seeds × 200 generations → ou
 just run-experiment baseline_seed42
 ```
 
-**4. Set up Python and generate report**
+**4. Set up Python and generate analysis**
 ```bash
-just setup-python           # installs pandas, matplotlib, networkx via uv
-just report                 # reads output/, writes analysis/output/*.png + summary.md
+just setup-python           # installs simulation + profiler analysis dependencies via uv
+just analyse                # reads output/, writes a self-contained HTML report
+just analyse-profile        # reads output/profiles/, writes a profiler HTML report
 ```
 
-### Analysis CLI (`analysis/cli.py`)
+### Analysis
 
-All analysis is accessed through a single entry point (`analysis/` contains its own `pyproject.toml`):
+The Python analysis tool has a single mode: it always generates one self-contained HTML report for all qualifying runs in `output/`.
 
 ```bash
-cd analysis && uv run python cli.py <command> [options]
+just analyse
 ```
 
-| Command | Description |
-|---------|-------------|
-| `plot <run_dir>` | Fitness and complexity curves for one run |
-| `population <run_dir>` | Predator/prey counts over generations |
-| `species <run_dir>` | Species count and size distribution |
-| `complexity <run_dir>` | Genome node/connection count over generations |
-| `compare <run_dirs...>` | Overlay one metric across multiple runs (`--metric`, `--smooth`) |
-| `genome <run_dir>` | Neural network topology of the best genome (`-g` for generation) |
-| `report` | Generate complete report: all plots + summary table |
+Internally this runs the packaged analysis entry point from `analysis/`:
 
-All commands accept `-o <path>` to save as PNG instead of displaying interactively. Run `cd analysis && uv run python cli.py <command> --help` for full options.
+```bash
+cd analysis && uv run moonai-analysis
+```
 
-The library modules (`plot_fitness.py`, `plot_population.py`, `plot_species.py`, `plot_complexity.py`, `compare_experiments.py`, `analyze_genome.py`, `report.py`) expose their functions for import — all shared utilities live in `utils.py`.
+The analysis step is non-interactive and always writes a timestamped report to `analysis/output/`, for example `report_20260324_154233.html`.
+
+The generated HTML is fully self-contained: it embeds all plots and report data directly into a single file, including:
+
+- per-condition plots for fitness, population, species, complexity, and best-genome topology
+- cross-condition comparison plots using seed-aggregated statistics
+- the grouped summary table at the final sampled generation
+- skipped-run information for incomplete or invalid runs
+- inline styling and navigation so the report opens directly in a browser without side files
+
+The analysis code is structured as a small package under `analysis/moonai_analysis/`:
+
+- `pipeline.py` orchestrates the full analysis run
+- `io.py` discovers runs and loads CSV/JSON data
+- `labels.py` groups runs into experiment conditions
+- `plots.py` generates embedded per-condition and comparison figures
+- `genome.py` renders embedded best-genome topology diagrams
+- `summary.py` prepares structured summary data for the report
+- `html_report.py` renders the final self-contained HTML document
+- `templates/report.html.j2` defines the HTML report layout
+
+### Profiler output and analysis
+
+Profiler runs now use the dedicated `moonai_profiler` entry point with a separate
+`profiler.lua` config. The standard `moonai` binary no longer owns profiler
+orchestration.
+
+```bash
+just profile
+```
+
+Each profiler suite writes to its own timestamped directory under `output/profiles/`
+by default. Every suite contains six raw run artifacts plus one suite-level
+aggregate artifact:
+
+| File | Contents |
+|------|----------|
+| `raw/*/profile.json` | Full raw run payload: run metadata, event/counter definitions, per-generation records, and summary statistics |
+| `profile_suite.json` | Suite manifest: six raw runs, dropped fastest/slowest runs, and aggregate timing/counter summaries from the remaining four runs |
+
+The profiler suite uses six fixed seeds from `profiler.lua`, drops the fastest and
+slowest runs by average generation time, and reports aggregate timing/counter data
+from the remaining four runs. Standard simulation builds do not include profiler
+instrumentation, so normal runtime overhead stays unchanged.
+
+To generate the standalone profiler report:
+
+```bash
+just analyse-profile
+```
+
+Internally this runs the packaged profiler entry point via `just analyse-profile`.
+
+The profiler writes a timestamped self-contained HTML report to `profiler/output/`, for example `profile_report_20260324_154233.html`.
+
+The profiler package lives under `profiler/moonai_profiler/` and includes:
+
+- `pipeline.py` for orchestration
+- `io.py` for discovering and validating `profile_suite.json` runs
+- `plots.py` for embedded timing charts
+- `html_report.py` for rendering
+- `templates/report.html.j2` for layout
 
 ### Experiment conditions
 
@@ -341,116 +397,15 @@ The library modules (`plot_fitness.py`, `plot_population.py`, `plot_species.py`,
 
 The default baseline is 2000 agents (500 predators, 1500 prey) on a 4300×2400 world with 1500 ticks/generation. Scaled experiments use `scale_base()` to maintain agent density by proportionally adjusting world size and food count. GPU is auto-enabled for populations >= 1000.
 
-#### Group A — Baseline sweeps (2K agents)
-
-| Condition | Override |
-|-----------|----------|
-| `baseline` | — (unmodified defaults) |
-| `mut_low` | `mutation_rate: 0.1` |
-| `mut_high` | `mutation_rate: 0.5` |
-| `mut_very_low` | `mutation_rate: 0.05` |
-| `mut_very_high` | `mutation_rate: 0.8` |
-| `pop_small` | 100 pred + 300 prey (400 total, scaled world) |
-| `pop_medium` | 250 pred + 750 prey (1K total, scaled world) |
-| `pop_large` | 1250 pred + 3750 prey (5K total, scaled world) |
-| `pop_huge` | 2500 pred + 7500 prey (10K total, scaled world) |
-| `pop_massive` | 5000 pred + 15000 prey (20K total, scaled world) |
-| `no_speciation` | `compatibility_threshold: 100` |
-| `tight_speciation` | `compatibility_threshold: 1.0` |
-| `tanh` | `activation_function: "tanh"` |
-| `relu` | `activation_function: "relu"` |
-| `crossover_low` | `crossover_rate: 0.25` |
-| `crossover_none` | `crossover_rate: 0.0` |
-
-#### Group B — Scale experiments (proportional world)
-
-| Condition | Total Agents | World (approx) |
-|-----------|-------------|-----------------|
-| `scale_1k` | 1,000 | 3040×1700 |
-| `scale_3k` | 3,000 | 5270×2940 |
-| `scale_5k` | 5,000 | 6800×3800 |
-| `scale_8k` | 8,000 | 8600×4800 |
-| `scale_10k` | 10,000 | 9600×5400 |
-| `scale_15k` | 15,000 | 11760×6615 |
-| `scale_20k` | 20,000 | 13580×7640 |
-
-#### Group C — Parameter sweeps at 5K
-
-| Condition | Override |
-|-----------|----------|
-| `s5k_mut_low` | `mutation_rate: 0.1` |
-| `s5k_mut_high` | `mutation_rate: 0.5` |
-| `s5k_mut_very_high` | `mutation_rate: 0.8` |
-| `s5k_tanh` | `activation_function: "tanh"` |
-| `s5k_relu` | `activation_function: "relu"` |
-| `s5k_no_spec` | `compatibility_threshold: 100` |
-| `s5k_tight_spec` | `compatibility_threshold: 1.0` |
-| `s5k_crossover_low` | `crossover_rate: 0.25` |
-| `s5k_crossover_none` | `crossover_rate: 0.0` |
-
-#### Group D — Parameter sweeps at 10K
-
-| Condition | Override |
-|-----------|----------|
-| `s10k_mut_low` | `mutation_rate: 0.1` |
-| `s10k_mut_high` | `mutation_rate: 0.5` |
-| `s10k_tanh` | `activation_function: "tanh"` |
-| `s10k_relu` | `activation_function: "relu"` |
-| `s10k_no_spec` | `compatibility_threshold: 100` |
-| `s10k_crossover_low` | `crossover_rate: 0.25` |
-
-#### Group E — World density (5K agents, varying world size)
-
-| Condition | World | Density |
-|-----------|-------|---------|
-| `dense_5k` | 3000×1700 | Very high — constant encounters |
-| `normal_5k` | 6800×3800 | Proportional (same as scale_5k) |
-| `sparse_5k` | 12000×6750 | Low — agents rarely meet |
-| `vast_5k` | 15000×8400 | Extremely sparse |
-
-#### Group F — Generation length
-
-| Condition | Base | Ticks |
-|-----------|------|-------|
-| `ticks_500_2k` | 2K | 500 |
-| `ticks_2000_2k` | 2K | 2000 |
-| `ticks_3000_2k` | 2K | 3000 |
-| `ticks_500_5k` | 5K | 500 |
-| `ticks_2000_5k` | 5K | 2000 |
-| `ticks_3000_5k` | 5K | 3000 |
-
-#### Group G — Energy / resource dynamics
-
-| Condition | Base | Override |
-|-----------|------|----------|
-| `energy_scarce_2k` | 2K | `initial_energy: 75, food_respawn_rate: 0.01` |
-| `energy_abundant_2k` | 2K | `initial_energy: 300, food_respawn_rate: 0.05` |
-| `energy_scarce_5k` | 5K | `initial_energy: 75, food_respawn_rate: 0.01` |
-| `energy_abundant_5k` | 5K | `initial_energy: 300, food_respawn_rate: 0.05` |
-| `energy_extreme_5k` | 5K | `initial_energy: 50, food_respawn_rate: 0.005, energy_drain: 0.15` |
-| `energy_rich_5k` | 5K | `initial_energy: 500, food_respawn_rate: 0.08, energy_drain: 0.03` |
-
-#### Group H — Agent speed / interaction range (5K)
-
-| Condition | Override |
-|-----------|----------|
-| `fast_agents_5k` | `predator_speed: 6.0, prey_speed: 7.0` |
-| `slow_agents_5k` | `predator_speed: 2.5, prey_speed: 3.0` |
-| `wide_vision_5k` | `vision_range: 300` |
-| `narrow_vision_5k` | `vision_range: 80` |
-| `long_attack_5k` | `attack_range: 40` |
-| `short_attack_5k` | `attack_range: 10` |
-
-#### Group I — Topology complexity
-
-| Condition | Base | Override |
-|-----------|------|----------|
-| `high_complexity_5k` | 5K | `add_node_rate: 0.1, add_connection_rate: 0.15` |
-| `low_complexity_5k` | 5K | `add_node_rate: 0.01, add_connection_rate: 0.02` |
-| `no_growth_5k` | 5K | `add_node_rate: 0.0, add_connection_rate: 0.0` |
-| `high_complexity_10k` | 10K | `add_node_rate: 0.1, add_connection_rate: 0.15` |
-| `max_hidden_small_5k` | 5K | `max_hidden_nodes: 10` |
-| `max_hidden_large_5k` | 5K | `max_hidden_nodes: 50` |
+- Group A — Baseline sweeps (2K agents)
+- Group B — Scale experiments (proportional world)
+- Group C — Parameter sweeps at 5K
+- Group D — Parameter sweeps at 10K
+- Group E — World density (5K agents, varying world size)
+- Group F — Generation length
+- Group G — Energy / resource dynamics
+- Group H — Agent speed / interaction range (5K)
+- Group I — Topology complexity
 
 ### Large-scale experiments
 
@@ -459,7 +414,7 @@ Experiments with 5K+ agents require significant compute. Recommendations:
 - **GPU strongly recommended** for populations >= 2000 (auto-enabled when CUDA is available)
 - **Release build** (`just release`) for 2-5x faster simulation
 - **Headless mode** (`--headless`) disables rendering for maximum throughput
-- **Visual mode** can also use CUDA inference now, but headless mode still gives the best throughput because rendering stays on the CPU/SFML side
+- **Visual mode** can still use CUDA-assisted sensing/inference, but headless mode gives the best throughput because rendering stays on the CPU/SFML side and the full resident GPU path is only used there
 - **Memory**: ~4 GB RAM for 10K agents, ~8 GB for 20K agents
 - **VRAM**: ~512 MB for 10K agents, ~1 GB for 20K agents
 - Running all 330 experiments sequentially takes significant time; use `--experiment` to run specific conditions or parallelize across machines
@@ -479,11 +434,17 @@ just lint
 # Benchmark NN forward-pass timing (requires release build)
 just bench-nn
 
+# Run the dedicated profiler suite entry point
+just profile
+
+# Generate the standalone profiler HTML report
+just analyse-profile
+
+# Run profiler and then build the profiler report
+just profile-pipeline
+
 # Quick FPS benchmark in visual mode (requires display)
 just bench-fps
-
-# Profile with perf (Linux, requires perf installed)
-just profile
 
 # Build with AddressSanitizer + UBSan and run 5 headless generations
 just check-memory
@@ -491,6 +452,9 @@ just check-memory
 # Run GPU tests locally (requires CUDA)
 just test-gpu
 ```
+
+The dedicated profiler writes one `profile_suite.json` file per suite under a unique
+directory in `output/profiles/` by default when invoked through `just profile`.
 
 ## Project Structure
 
@@ -510,7 +474,8 @@ moonai/
 │   ├── data/                   # CSV/JSON logger, metrics collector
 │   └── gpu/                    # CUDA kernels (auto-detected; disabled at runtime by --no-gpu)
 ├── tests/                      # Google Test unit tests
-├── analysis/                   # Python analysis (self-contained: pyproject.toml + cli.py entry point)
+├── analysis/                   # Python simulation analysis package and generated report output
+├── profiler/                   # Python profiler analysis package and generated report output
 ├── docs/                       # Project documents (PDFs + LLD LaTeX source)
 ├── web/                        # GitHub Pages website
 └── .github/workflows/          # CI/CD pipelines

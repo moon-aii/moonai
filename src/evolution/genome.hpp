@@ -51,6 +51,7 @@ public:
 
     // Genome complexity (nodes + connections)
     int complexity() const;
+    void sort_connections_by_innovation();
 
     static float compatibility_distance(const Genome& a, const Genome& b,
                                         float c1, float c2, float c3);

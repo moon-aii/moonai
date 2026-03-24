@@ -1,5 +1,6 @@
 #include "core/config.hpp"
 #include "core/lua_runtime.hpp"
+#include "core/profiler.hpp"
 #include "core/random.hpp"
 #include "simulation/simulation_manager.hpp"
 #include "simulation/physics.hpp"
@@ -26,6 +27,7 @@ namespace moonai::gpu {
 #include <cstdio>
 #include <cstdlib>
 #include <cmath>
+#include <filesystem>
 #include <fstream>
 #include <map>
 #include <sstream>
@@ -154,6 +156,7 @@ int main(int argc, char* argv[]) {
     }
 
     spdlog::set_level(args.verbose ? spdlog::level::debug : spdlog::level::info);
+    moonai::Profiler::instance().set_enabled(false);
     spdlog::info("MoonAI v{}.{}.{}", 0, 3, 0);
     {
         std::string features = " +vis";
@@ -252,7 +255,6 @@ int main(int argc, char* argv[]) {
             moonai::Logger logger(cfg.output_dir, cfg.seed, name);
             logger.initialize(cfg);
             moonai::MetricsCollector metrics;
-
             if (cfg.tick_log_enabled) {
                 int gen = 0;
                 evolution.set_tick_callback([&](int tick, const moonai::SimulationManager& sim) {
@@ -274,6 +276,7 @@ int main(int argc, char* argv[]) {
                 m.num_species = static_cast<int>(evolution.species().size());
 
                 if (gen % cfg.log_interval == 0) {
+                    MOONAI_PROFILE_SCOPE(moonai::ProfileEvent::Logging);
                     logger.log_generation(m.generation, m.predator_count, m.prey_count,
                                           m.best_fitness, m.avg_fitness, m.num_species,
                                           m.avg_genome_complexity);
@@ -478,7 +481,6 @@ int main(int argc, char* argv[]) {
     // ── Main loop state ─────────────────────────────────────────────
     int generation = resumed ? p_evolution->generation() : 0;
     float dt = 1.0f / static_cast<float>(config.target_fps);
-
     // ── Experiment selector loop (GUI multi-config) ──────────────────
     auto reinit_for_experiment = [&](const std::string& exp_name) {
         auto it = all_configs.find(exp_name);
@@ -608,6 +610,7 @@ int main(int argc, char* argv[]) {
 #ifdef MOONAI_ENABLE_CUDA
                     if (visual_gpu_ready && p_evolution->infer_actions_gpu(*p_simulation, gpu_actions)) {
                         used_gpu = true;
+                        MOONAI_PROFILE_MARK_GPU_USED(true);
                         for (size_t i = 0; i < p_simulation->agents().size() && i < networks.size(); ++i) {
                             if (!p_simulation->agents()[i]->alive()) continue;
                             p_simulation->apply_action(i, gpu_actions[i], dt);
@@ -617,6 +620,8 @@ int main(int argc, char* argv[]) {
                     }
 #endif
                     if (!used_gpu) {
+                        MOONAI_PROFILE_MARK_CPU_USED(true);
+                        MOONAI_PROFILE_SCOPE(moonai::ProfileEvent::CpuEvalTotal);
                         for (size_t i = 0; i < p_simulation->agents().size() && i < networks.size(); ++i) {
                             if (!p_simulation->agents()[i]->alive()) continue;
 
@@ -632,6 +637,7 @@ int main(int argc, char* argv[]) {
                         }
                     }
                     p_simulation->tick(dt);
+                    MOONAI_PROFILE_INC(moonai::ProfileCounter::TicksExecuted);
                     ++tick;
 
                     // Per-tick logging (visual path)
@@ -682,6 +688,7 @@ int main(int argc, char* argv[]) {
 
         // Log
         if (generation % config.log_interval == 0) {
+            MOONAI_PROFILE_SCOPE(moonai::ProfileEvent::Logging);
             logger->log_generation(m.generation, m.predator_count, m.prey_count,
                                    m.best_fitness, m.avg_fitness,
                                    m.num_species, m.avg_genome_complexity);

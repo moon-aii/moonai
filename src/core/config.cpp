@@ -2,6 +2,7 @@
 
 #include <fstream>
 #include <cstdio>
+#include <sstream>
 #include <spdlog/spdlog.h>
 
 #define SOL_ALL_SAFETIES_ON 1
@@ -10,6 +11,15 @@
 namespace moonai {
 
 namespace {
+
+std::uint64_t fnv1a_64(const std::string& value) {
+    std::uint64_t hash = 1469598103934665603ull;
+    for (unsigned char ch : value) {
+        hash ^= static_cast<std::uint64_t>(ch);
+        hash *= 1099511628211ull;
+    }
+    return hash;
+}
 
 // Read a Lua table field into a C++ variable (silently skips if absent)
 template<typename T>
@@ -193,9 +203,8 @@ std::map<std::string, SimulationConfig> load_all_configs_lua(const std::string& 
 
 // ── JSON output (for config snapshots) ──────────────────────────────────
 
-void save_config(const SimulationConfig& config, const std::string& filepath) {
+nlohmann::json config_to_json(const SimulationConfig& config) {
     nlohmann::json j;
-
     j["grid_width"] = config.grid_width;
     j["grid_height"] = config.grid_height;
     j["boundary_mode"] = (config.boundary_mode == BoundaryMode::Wrap) ? "wrap" : "clamp";
@@ -238,6 +247,19 @@ void save_config(const SimulationConfig& config, const std::string& filepath) {
     j["activation_function"] = config.activation_function;
     j["tick_log_enabled"] = config.tick_log_enabled;
     j["tick_log_interval"] = config.tick_log_interval;
+
+    return j;
+}
+
+std::string fingerprint_config(const SimulationConfig& config) {
+    const std::string payload = config_to_json(config).dump();
+    std::ostringstream oss;
+    oss << std::hex << fnv1a_64(payload);
+    return oss.str();
+}
+
+void save_config(const SimulationConfig& config, const std::string& filepath) {
+    const nlohmann::json j = config_to_json(config);
 
     std::ofstream file(filepath);
     file << j.dump(4);

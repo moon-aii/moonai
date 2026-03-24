@@ -1,5 +1,6 @@
 #include "evolution/evolution_manager.hpp"
 #include "evolution/crossover.hpp"
+#include "core/profiler.hpp"
 #include "simulation/physics.hpp"
 #include "core/lua_runtime.hpp"
 
@@ -23,6 +24,83 @@
 namespace {
 
 constexpr int kGpuMinPopulation = 1000;
+
+std::vector<moonai::gpu::GpuAgentState> build_gpu_agent_states(
+    const moonai::SimulationManager& sim,
+    int agent_count) {
+    std::vector<moonai::gpu::GpuAgentState> states(static_cast<size_t>(agent_count));
+    for (int i = 0; i < agent_count; ++i) {
+        const auto& agent = sim.agents()[i];
+        const auto position = agent->position();
+        const auto velocity = agent->velocity();
+        states[static_cast<size_t>(i)] = moonai::gpu::GpuAgentState{
+            position.x,
+            position.y,
+            velocity.x,
+            velocity.y,
+            agent->speed(),
+            agent->vision_range(),
+            agent->energy(),
+            agent->distance_traveled(),
+            agent->age(),
+            agent->kills(),
+            agent->food_eaten(),
+            agent->id(),
+            static_cast<unsigned int>(agent->type() == moonai::AgentType::Predator ? 0 : 1),
+            static_cast<unsigned int>(agent->alive() ? 1 : 0)
+        };
+    }
+    return states;
+}
+
+void build_gpu_grid_data(const moonai::SpatialGrid& grid,
+                         std::vector<int>& cell_offsets,
+                         std::vector<moonai::gpu::GpuGridEntry>& entries) {
+    std::vector<moonai::SpatialGrid::FlatEntry> flat_entries;
+    grid.flatten(cell_offsets, flat_entries);
+    entries.resize(flat_entries.size());
+    for (size_t i = 0; i < flat_entries.size(); ++i) {
+        entries[i] = moonai::gpu::GpuGridEntry{flat_entries[i].id, flat_entries[i].x, flat_entries[i].y};
+    }
+}
+
+std::vector<moonai::gpu::GpuFoodState> build_gpu_food_states(const moonai::SimulationManager& sim) {
+    const auto& food = sim.environment().food();
+    std::vector<moonai::gpu::GpuFoodState> states(food.size());
+    for (size_t i = 0; i < food.size(); ++i) {
+        states[i] = moonai::gpu::GpuFoodState{
+            food[i].position.x,
+            food[i].position.y,
+            static_cast<unsigned int>(food[i].active ? 1 : 0)
+        };
+    }
+    return states;
+}
+
+void sync_gpu_state_to_simulation(const std::vector<moonai::gpu::GpuAgentState>& agent_states,
+                                  const std::vector<moonai::gpu::GpuFoodState>& food_states,
+                                  moonai::SimulationManager& sim) {
+    auto& agents = sim.agents();
+    for (size_t i = 0; i < agents.size() && i < agent_states.size(); ++i) {
+        const auto& src = agent_states[i];
+        auto& dst = agents[i];
+        dst->set_position({src.pos_x, src.pos_y});
+        dst->set_velocity({src.vel_x, src.vel_y});
+        dst->set_energy(src.energy);
+        dst->set_age(src.age);
+        dst->set_distance_traveled(src.distance_traveled);
+        dst->set_kills(src.kills);
+        dst->set_food_eaten(src.food_eaten);
+        dst->set_alive(src.alive != 0U);
+    }
+
+    auto& food = sim.environment().mutable_food();
+    for (size_t i = 0; i < food.size() && i < food_states.size(); ++i) {
+        food[i].position = {food_states[i].pos_x, food_states[i].pos_y};
+        food[i].active = food_states[i].active != 0U;
+    }
+    sim.refresh_state();
+}
 
 }
 
@@ -210,6 +288,7 @@ void EvolutionManager::enable_gpu(bool use_gpu) {
 
 #ifdef MOONAI_ENABLE_CUDA
 bool EvolutionManager::prepare_gpu_generation() {
+    MOONAI_PROFILE_SCOPE(ProfileEvent::PrepareGpuGeneration);
     if (!use_gpu_ || !gpu_batch_) {
         return false;
     }
@@ -240,13 +319,50 @@ bool EvolutionManager::infer_actions_gpu(const SimulationManager& sim, std::vect
     }
     std::fill(actions.begin(), actions.end(), Vec2{0.0f, 0.0f});
 
-    sim.write_sensors_flat(gpu_batch_->host_inputs(), static_cast<size_t>(agent_count));
-
-    const int in_count = agent_count * num_inputs_;
-    gpu_batch_->pack_inputs_async(in_count);
-    gpu_batch_->launch_inference_async();
-    gpu_batch_->start_unpack_async();
-    gpu_batch_->finish_unpack();
+    {
+        MOONAI_PROFILE_SCOPE(ProfileEvent::GpuSensorFlatten);
+        auto agent_states = build_gpu_agent_states(sim, agent_count);
+        std::vector<int> agent_cell_offsets;
+        std::vector<moonai::gpu::GpuGridEntry> agent_entries;
+        std::vector<int> food_cell_offsets;
+        std::vector<moonai::gpu::GpuGridEntry> food_entries;
+        build_gpu_grid_data(sim.spatial_grid(), agent_cell_offsets, agent_entries);
+        build_gpu_grid_data(sim.food_grid(), food_cell_offsets, food_entries);
+        gpu_batch_->upload_tick_state_async(
+            agent_states.data(),
+            agent_count,
+            sim.spatial_grid().cols(),
+            sim.spatial_grid().rows(),
+            sim.spatial_grid().cell_size(),
+            agent_cell_offsets.data(),
+            static_cast<int>(agent_cell_offsets.size()),
+            agent_entries.data(),
+            static_cast<int>(agent_entries.size()),
+            sim.food_grid().cols(),
+            sim.food_grid().rows(),
+            sim.food_grid().cell_size(),
+            food_cell_offsets.data(),
+            static_cast<int>(food_cell_offsets.size()),
+            food_entries.data(),
+            static_cast<int>(food_entries.size()));
+        gpu_batch_->launch_sensor_build_async(
+            static_cast<float>(config_.grid_width),
+            static_cast<float>(config_.grid_height),
+            config_.initial_energy,
+            config_.boundary_mode == BoundaryMode::Clamp);
+    }
+    {
+        MOONAI_PROFILE_SCOPE(ProfileEvent::GpuLaunch);
+        gpu_batch_->launch_inference_async();
+    }
+    {
+        MOONAI_PROFILE_SCOPE(ProfileEvent::GpuStartUnpack);
+        gpu_batch_->start_unpack_async();
+    }
+    {
+        MOONAI_PROFILE_SCOPE(ProfileEvent::GpuFinishUnpack);
+        gpu_batch_->finish_unpack();
+    }
 
     if (!gpu_batch_->ok()) {
         spdlog::warn("GPU inference failed; falling back to CPU inference");
@@ -255,16 +371,19 @@ bool EvolutionManager::infer_actions_gpu(const SimulationManager& sim, std::vect
         return false;
     }
 
-    const float* flat_out = gpu_batch_->host_outputs();
-    for (int i = 0; i < agent_count; ++i) {
-        if (!sim.agents()[i]->alive()) {
-            continue;
-        }
-        if (num_outputs_ >= 2) {
-            actions[i] = Vec2{
-                flat_out[i * num_outputs_ + 0] * 2.0f - 1.0f,
-                flat_out[i * num_outputs_ + 1] * 2.0f - 1.0f
-            };
+    {
+        MOONAI_PROFILE_SCOPE(ProfileEvent::GpuOutputConvert);
+        const float* flat_out = gpu_batch_->host_outputs();
+        for (int i = 0; i < agent_count; ++i) {
+            if (!sim.agents()[i]->alive()) {
+                continue;
+            }
+            if (num_outputs_ >= 2) {
+                actions[i] = Vec2{
+                    flat_out[i * num_outputs_ + 0] * 2.0f - 1.0f,
+                    flat_out[i * num_outputs_ + 1] * 2.0f - 1.0f
+                };
+            }
         }
     }
     return true;
@@ -278,36 +397,125 @@ void EvolutionManager::evaluate_generation(SimulationManager& sim) {
     int last_tick = 0;
     int agent_count = static_cast<int>(std::min(sim.agents().size(), networks_.size()));
     std::vector<Vec2> actions(sim.agents().size(), {0.0f, 0.0f});
-
-    int max_threads = 1;
-#ifdef MOONAI_OPENMP_ENABLED
-    max_threads = omp_get_max_threads();
-#endif
-    std::vector<std::vector<float>> thread_sensor_bufs(max_threads,
-        std::vector<float>(SensorInput::SIZE));
-    std::vector<std::vector<float>> thread_output_bufs(max_threads,
-        std::vector<float>(num_outputs_));
+    std::vector<float> sensor_values(static_cast<size_t>(agent_count * num_inputs_), 0.0f);
+    std::vector<float> output_values(static_cast<size_t>(agent_count * num_outputs_), 0.0f);
 
 #ifdef MOONAI_ENABLE_CUDA
     if (prepare_gpu_generation()) {
+        sim.set_neighbor_cache_enabled(false);
+        MOONAI_PROFILE_MARK_GPU_USED(true);
+        if (!tick_callback_ && !config_.tick_log_enabled) {
+            auto agent_states = build_gpu_agent_states(sim, agent_count);
+            auto food_states = build_gpu_food_states(sim);
+            std::vector<int> agent_cell_offsets;
+            std::vector<moonai::gpu::GpuGridEntry> agent_entries;
+            std::vector<int> food_cell_offsets;
+            std::vector<moonai::gpu::GpuGridEntry> food_entries;
+            build_gpu_grid_data(sim.spatial_grid(), agent_cell_offsets, agent_entries);
+            build_gpu_grid_data(sim.food_grid(), food_cell_offsets, food_entries);
+            gpu_batch_->upload_tick_state_async(
+                agent_states.data(),
+                agent_count,
+                sim.spatial_grid().cols(),
+                sim.spatial_grid().rows(),
+                sim.spatial_grid().cell_size(),
+                agent_cell_offsets.data(),
+                static_cast<int>(agent_cell_offsets.size()),
+                agent_entries.data(),
+                static_cast<int>(agent_entries.size()),
+                sim.food_grid().cols(),
+                sim.food_grid().rows(),
+                sim.food_grid().cell_size(),
+                food_cell_offsets.data(),
+                static_cast<int>(food_cell_offsets.size()),
+                food_entries.data(),
+                static_cast<int>(food_entries.size()));
+            gpu_batch_->upload_resident_food_states_async(food_states.data(), static_cast<int>(food_states.size()));
+
+            for (int tick = 0; tick < config_.generation_ticks; ++tick) {
+                {
+                    MOONAI_PROFILE_SCOPE(ProfileEvent::GpuResidentSensorBuild);
+                    gpu_batch_->launch_resident_sensor_build_async(
+                        static_cast<float>(config_.grid_width),
+                        static_cast<float>(config_.grid_height),
+                        config_.initial_energy,
+                        config_.boundary_mode == BoundaryMode::Clamp);
+                }
+                {
+                    MOONAI_PROFILE_SCOPE(ProfileEvent::GpuResidentTick);
+                    gpu_batch_->launch_inference_async();
+                    gpu_batch_->launch_resident_tick_async(
+                        dt,
+                        static_cast<float>(config_.grid_width),
+                        static_cast<float>(config_.grid_height),
+                        config_.boundary_mode == BoundaryMode::Clamp,
+                        config_.energy_drain_per_tick,
+                        config_.target_fps,
+                        config_.food_pickup_range,
+                        config_.attack_range,
+                        config_.energy_gain_from_food,
+                        config_.energy_gain_from_kill,
+                        config_.food_respawn_rate,
+                        config_.seed,
+                        tick);
+                }
+                MOONAI_PROFILE_INC(ProfileCounter::TicksExecuted);
+            }
+
+            if (use_gpu_) {
+                {
+                    MOONAI_PROFILE_SCOPE(ProfileEvent::GpuFinishUnpack);
+                    gpu_batch_->finish_unpack();
+                }
+                if (!gpu_batch_->ok()) {
+                    spdlog::warn("GPU resident simulation failed; falling back to CPU inference");
+                    gpu_batch_.reset();
+                    use_gpu_ = false;
+                } else {
+                    gpu_batch_->download_agent_states(agent_states);
+                    gpu_batch_->download_food_states(food_states);
+                    if (!gpu_batch_->ok()) {
+                        spdlog::warn("GPU state download failed; falling back to CPU inference");
+                        gpu_batch_.reset();
+                        use_gpu_ = false;
+                    } else {
+                        sync_gpu_state_to_simulation(agent_states, food_states, sim);
+                        sim.set_neighbor_cache_enabled(true);
+                        compute_fitness(sim);
+                        return;
+                    }
+                }
+            }
+        }
+
         for (int tick = 0; tick < config_.generation_ticks; ++tick) {
             if (!infer_actions_gpu(sim, actions)) {
                 break;
             }
 
-            for (int i = 0; i < agent_count; ++i) {
-                if (!sim.agents()[i]->alive()) continue;
-                sim.apply_action(static_cast<size_t>(i), actions[i], dt);
+            {
+                MOONAI_PROFILE_SCOPE(ProfileEvent::ApplyActions);
+                for (std::size_t i : sim.alive_agent_indices()) {
+                    if (static_cast<int>(i) >= agent_count) {
+                        continue;
+                    }
+                    sim.apply_action(i, actions[i], dt);
+                }
             }
 
             sim.tick(dt);
             last_tick = tick + 1;
+            MOONAI_PROFILE_INC(ProfileCounter::TicksExecuted);
 
-            if (tick_callback_) tick_callback_(tick, sim);
+            if (tick_callback_) {
+                MOONAI_PROFILE_SCOPE(ProfileEvent::TickCallback);
+                tick_callback_(tick, sim);
+            }
             if (sim.alive_prey() == 0 || sim.alive_predators() == 0) break;
         }
 
         if (use_gpu_) {
+            sim.set_neighbor_cache_enabled(true);
             compute_fitness(sim);
             return;
         }
@@ -315,58 +523,66 @@ void EvolutionManager::evaluate_generation(SimulationManager& sim) {
 #endif
 
     // CPU path (OpenMP-parallelized)
-    auto t0 = std::chrono::steady_clock::now();
+    sim.set_neighbor_cache_enabled(true);
+    MOONAI_PROFILE_MARK_CPU_USED(true);
+    MOONAI_PROFILE_SCOPE(ProfileEvent::CpuEvalTotal);
     for (int tick = last_tick; tick < config_.generation_ticks; ++tick) {
         // Parallel compute phase: sensor + NN per agent (read-only on shared state)
         std::fill(actions.begin(), actions.end(), Vec2{0.0f, 0.0f});
+        std::fill(sensor_values.begin(), sensor_values.end(), 0.0f);
+        std::fill(output_values.begin(), output_values.end(), 0.0f);
 
-        #pragma omp parallel for schedule(dynamic) if(MOONAI_OPENMP_ENABLED)
-        for (int i = 0; i < agent_count; ++i) {
-            if (!sim.agents()[i]->alive()) continue;
+        {
+            MOONAI_PROFILE_SCOPE(ProfileEvent::CpuSensorBuild);
+            #pragma omp parallel for schedule(dynamic) if(MOONAI_OPENMP_ENABLED)
+            for (int i = 0; i < agent_count; ++i) {
+                if (!sim.agents()[i]->alive()) continue;
+                sim.get_sensors(static_cast<size_t>(i)).write_to(
+                    sensor_values.data() + static_cast<size_t>(i * num_inputs_));
+            }
+        }
 
-            int tid = 0;
-#ifdef MOONAI_OPENMP_ENABLED
-            tid = omp_get_thread_num();
-#endif
-            float* sensor_buf = thread_sensor_bufs[tid].data();
-            float* output_buf = thread_output_bufs[tid].data();
+        {
+            MOONAI_PROFILE_SCOPE(ProfileEvent::CpuNnActivate);
+            #pragma omp parallel for schedule(dynamic) if(MOONAI_OPENMP_ENABLED)
+            for (int i = 0; i < agent_count; ++i) {
+                if (!sim.agents()[i]->alive()) continue;
 
-            sim.get_sensors(static_cast<size_t>(i)).write_to(sensor_buf);
-            networks_[i]->activate_into(sensor_buf, num_inputs_,
-                                        output_buf, num_outputs_);
+                float* sensor_buf = sensor_values.data() + static_cast<size_t>(i * num_inputs_);
+                float* output_buf = output_values.data() + static_cast<size_t>(i * num_outputs_);
+                networks_[i]->activate_into(sensor_buf, num_inputs_, output_buf, num_outputs_);
 
-            if (num_outputs_ >= 2) {
-                actions[i] = Vec2{
-                    output_buf[0] * 2.0f - 1.0f,
-                    output_buf[1] * 2.0f - 1.0f
-                };
+                if (num_outputs_ >= 2) {
+                    actions[i] = Vec2{
+                        output_buf[0] * 2.0f - 1.0f,
+                        output_buf[1] * 2.0f - 1.0f
+                    };
+                }
             }
         }
 
         // Sequential apply phase
-        for (size_t i = 0; i < sim.agents().size(); ++i) {
-            if (!sim.agents()[i]->alive()) continue;
-            sim.apply_action(i, actions[i], dt);
+        {
+            MOONAI_PROFILE_SCOPE(ProfileEvent::ApplyActions);
+            for (std::size_t i : sim.alive_agent_indices()) {
+                sim.apply_action(i, actions[i], dt);
+            }
         }
 
         sim.tick(dt);
         last_tick = tick + 1;
+        MOONAI_PROFILE_INC(ProfileCounter::TicksExecuted);
 
-        if (tick_callback_) tick_callback_(tick, sim);
+        if (tick_callback_) {
+            MOONAI_PROFILE_SCOPE(ProfileEvent::TickCallback);
+            tick_callback_(tick, sim);
+        }
 
         // Early exit if all prey or all predators are dead
         if (sim.alive_prey() == 0 || sim.alive_predators() == 0) {
             break;
         }
     }
-    auto t1 = std::chrono::steady_clock::now();
-    double ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
-    int total_nn_calls = last_tick * static_cast<int>(networks_.size());
-    if (total_nn_calls > 0) {
-        spdlog::debug("CPU eval: {} ticks, ~{} NN calls, {:.1f} ms ({:.2f} µs/call)",
-                      last_tick, total_nn_calls, ms, ms * 1000.0 / total_nn_calls);
-    }
-
     // Compute fitness from simulation results
     compute_fitness(sim);
 }
@@ -396,6 +612,7 @@ void EvolutionManager::evolve() {
 }
 
 void EvolutionManager::build_networks() {
+    MOONAI_PROFILE_SCOPE(ProfileEvent::BuildNetworks);
     networks_.clear();
     networks_.reserve(population_.size());
     for (const auto& genome : population_) {
@@ -404,6 +621,7 @@ void EvolutionManager::build_networks() {
 }
 
 void EvolutionManager::compute_fitness(const SimulationManager& sim) {
+    MOONAI_PROFILE_SCOPE(ProfileEvent::ComputeFitness);
     const auto& agents = sim.agents();
     bool use_lua = lua_runtime_ && lua_runtime_->callbacks().has_fitness_fn;
 
@@ -452,6 +670,11 @@ float EvolutionManager::default_fitness(float age_ratio, float kills_or_food,
 }
 
 void EvolutionManager::speciate() {
+    MOONAI_PROFILE_SCOPE(ProfileEvent::Speciate);
+    for (auto& genome : population_) {
+        genome.sort_connections_by_innovation();
+    }
+
     // Clear stale member pointers first (they point into the previous generation's
     // population which was freed in reproduce()), then update the representative
     // from the now-empty members (keeps the existing representative if no members).
@@ -492,6 +715,7 @@ void EvolutionManager::speciate() {
 }
 
 void EvolutionManager::remove_stagnant_species() {
+    MOONAI_PROFILE_SCOPE(ProfileEvent::RemoveStagnantSpecies);
     if (species_.size() <= 2) return;  // Always keep at least 2 species
 
     species_.erase(
@@ -513,6 +737,7 @@ void EvolutionManager::remove_stagnant_species() {
 }
 
 void EvolutionManager::reproduce() {
+    MOONAI_PROFILE_SCOPE(ProfileEvent::Reproduce);
     std::vector<Genome> new_population;
     int target_size = static_cast<int>(population_.size());
 
