@@ -31,10 +31,25 @@ def run_analysis(input_dir: Path, output_dir: Path) -> None:
                 "generation_count": run.generation_count,
                 "avg_generation_ms": f"{run.avg_generation_ms:.2f}",
                 "top_event_name": run.top_event_name,
-                "top_event_ms": f"{run.top_event_ms:.2f}",
+                "top_event_total_ms": f"{run.top_event_ms:.2f}",
                 "top_event_avg_ms": f"{run.top_event_avg_ms:.2f}",
+                "top_event_nonzero_generation_count": str(
+                    run.top_event_nonzero_generation_count
+                ),
                 "path": str(run.path),
                 "run_meta": run.raw["run"],
+                "run_notes": run.raw.get("notes", []),
+                "summary_meta": {
+                    "cpu_generation_count": str(
+                        run.raw["summary"].get("cpu_generation_count", 0)
+                    ),
+                    "gpu_generation_count": str(
+                        run.raw["summary"].get("gpu_generation_count", 0)
+                    ),
+                    "path_count_note": str(
+                        run.raw["summary"].get("path_count_note", "")
+                    ),
+                },
                 "summary_events": _format_summary_mapping(
                     run.raw["summary"]["events"],
                     [
@@ -72,7 +87,10 @@ def run_analysis(input_dir: Path, output_dir: Path) -> None:
                     "generations": run.generation_count,
                     "avg_generation_ms": f"{run.avg_generation_ms:.2f}",
                     "top_event": run.top_event_name,
-                    "top_event_ms": f"{run.top_event_avg_ms:.2f}",
+                    "top_event_avg_ms": f"{run.top_event_avg_ms:.2f}",
+                    "top_event_nonzero_generation_count": str(
+                        run.top_event_nonzero_generation_count
+                    ),
                     "path": str(run.path),
                 }
                 for run in runs

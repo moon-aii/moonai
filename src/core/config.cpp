@@ -535,7 +535,7 @@ void print_usage(const char* program_name) {
         "      --set key=value       Override a config parameter (repeatable)\n"
         "      --validate            Validate config and exit\n"
         "      --profile             Enable built-in profiler (headless only, single JSON output)\n"
-        "      --profile-output <dir> Override profiler output root directory\n"
+        "      --profile-output <dir> Override profiler output root directory (default: output/profiles)\n"
         "\n"
         "  -h, --help                Show this help message\n",
         program_name

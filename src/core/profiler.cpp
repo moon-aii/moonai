@@ -7,6 +7,7 @@
 #include <ctime>
 
 #include <nlohmann/json.hpp>
+#include <spdlog/spdlog.h>
 
 namespace moonai {
 
@@ -194,18 +195,25 @@ void Profiler::start_run(const std::string& experiment_name,
     generation_active_ = false;
     generation_records_.clear();
 
-    const std::filesystem::path base_path(output_root_dir);
-    const std::string run_name = utc_timestamp_for_path(now)
-        + "_"
-        + sanitize_path_component(experiment_name)
-        + "_seed"
-        + std::to_string(seed_);
-    std::filesystem::path candidate = base_path / run_name;
-    for (int suffix = 2; std::filesystem::exists(candidate); ++suffix) {
-        candidate = base_path / (run_name + "_" + std::to_string(suffix));
+    try {
+        const std::filesystem::path base_path(output_root_dir);
+        const std::string run_name = utc_timestamp_for_path(now)
+            + "_"
+            + sanitize_path_component(experiment_name)
+            + "_seed"
+            + std::to_string(seed_);
+        std::filesystem::path candidate = base_path / run_name;
+        for (int suffix = 2; std::filesystem::exists(candidate); ++suffix) {
+            candidate = base_path / (run_name + "_" + std::to_string(suffix));
+        }
+        std::filesystem::create_directories(candidate);
+        output_dir_ = candidate.string();
+    } catch (const std::exception& e) {
+        output_dir_.clear();
+        set_enabled(false);
+        spdlog::error("Failed to initialize profiler output under '{}': {}", output_root_dir, e.what());
+        return;
     }
-    std::filesystem::create_directories(candidate);
-    output_dir_ = candidate.string();
 
     for (auto& duration : current_durations_ns_) {
         duration.store(0, std::memory_order_relaxed);
@@ -300,7 +308,13 @@ void Profiler::finish_run(std::int64_t run_total_ns) {
         return;
     }
 
-    std::filesystem::create_directories(output_dir_);
+    try {
+        std::filesystem::create_directories(output_dir_);
+    } catch (const std::exception& e) {
+        set_enabled(false);
+        spdlog::error("Failed to create profiler output directory '{}': {}", output_dir_, e.what());
+        return;
+    }
 
     nlohmann::json profile;
     profile["schema_version"] = 1;
@@ -328,6 +342,7 @@ void Profiler::finish_run(std::int64_t run_total_ns) {
         "Event durations are stored in milliseconds in both per-generation and summary sections.",
         "Events with measurement='accumulated' sum repeated scoped timings within a generation.",
         "Path-specific events can remain zero for generations that never execute that path.",
+        "cpu_generation_count and gpu_generation_count are non-exclusive; a fallback generation can increment both counts.",
         "Fields ending with nonzero_generation_count count generations where the recorded value was greater than zero.",
         "Use nonzero_generation_count and avg_ms_per_nonzero_generation when judging optional events."
     };
@@ -407,6 +422,7 @@ void Profiler::finish_run(std::int64_t run_total_ns) {
     summary["run_total_ms"] = static_cast<double>(run_total_ns) / 1'000'000.0;
     summary["cpu_generation_count"] = cpu_generations;
     summary["gpu_generation_count"] = gpu_generations;
+    summary["path_count_note"] = "cpu_generation_count and gpu_generation_count are non-exclusive; fallback generations can count toward both.";
 
     nlohmann::json durations_json;
     for (std::size_t i = 0; i < total_durations.size(); ++i) {
@@ -442,8 +458,16 @@ void Profiler::finish_run(std::int64_t run_total_ns) {
 
     const auto json_path = std::filesystem::path(output_dir_) / "profile.json";
     std::ofstream json(json_path);
-    if (json.is_open()) {
-        json << profile.dump(2) << "\n";
+    if (!json.is_open()) {
+        set_enabled(false);
+        spdlog::error("Failed to open profiler output file '{}' for writing", json_path.string());
+        return;
+    }
+    json << profile.dump(2) << "\n";
+    json.flush();
+    if (!json) {
+        set_enabled(false);
+        spdlog::error("Failed to write profiler output file '{}'", json_path.string());
     }
 }
 

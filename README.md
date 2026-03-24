@@ -257,7 +257,7 @@ experiments["adaptive"] = extend(moonai_defaults, {
 | `--name <name>` | Override output directory name |
 | `--validate` | Load + validate config, print result, exit |
 | `--profile` | Enable built-in headless profiler |
-| `--profile-output <dir>` | Override profiler output root directory |
+| `--profile-output <dir>` | Override profiler output root directory (default: `output/profiles`) |
 | `--set key=value` | Override any param after Lua load (repeatable) |
 
 ### Examples
@@ -359,13 +359,13 @@ The built-in profiler is intentionally **headless-only**. Use `--headless --prof
 just profile
 ```
 
-Each profiled run now writes to its own timestamped directory under `output/profiles/` by default and produces a single raw artifact:
+Each profiled run now writes to its own timestamped directory under `output/profiles/` by default and produces a single raw artifact. When `--profile-output <dir>` is supplied, that directory is treated as the root instead:
 
 | File | Contents |
 |------|----------|
 | `profile.json` | Full profiler payload: run metadata, event/counter definitions, per-generation records, and summary statistics |
 
-`profile.json` is the single source of truth for profiler data. The old split CSV + JSON profiler output is gone. Summary fields use `nonzero_generation_count` and `avg_*_per_nonzero_generation` for optional paths so zero-valued generations are not mislabeled as active executions.
+`profile.json` is the single source of truth for profiler data. The old split CSV + JSON profiler output is gone. Summary fields use `nonzero_generation_count` and `avg_*_per_nonzero_generation` for optional paths so zero-valued generations are not mislabeled as active executions. The `cpu_generation_count` and `gpu_generation_count` summary fields are non-exclusive because a generation can start on GPU and fall back to CPU.
 
 To generate the standalone profiler report:
 

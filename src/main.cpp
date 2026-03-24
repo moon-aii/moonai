@@ -39,7 +39,7 @@ namespace {
     std::string profile_output_root_for(const moonai::CLIArgs& args,
                                         const std::string& run_dir) {
         if (args.profile_output_dir.empty()) {
-            return (std::filesystem::path(run_dir) / "profile").string();
+            return (std::filesystem::path(run_dir).parent_path() / "profiles").string();
         }
         return args.profile_output_dir;
     }
@@ -276,6 +276,7 @@ int main(int argc, char* argv[]) {
             logger.initialize(cfg);
             moonai::MetricsCollector metrics;
             if (args.profile) {
+                moonai::Profiler::instance().set_enabled(true);
                 moonai::Profiler::instance().start_run(
                     name,
                     profile_output_root_for(args, logger.run_dir()),
@@ -287,6 +288,11 @@ int main(int argc, char* argv[]) {
                     !args.no_gpu,
                     kCudaCompiled,
                     kOpenmpCompiled);
+                if (!moonai::Profiler::instance().enabled()) {
+                    spdlog::error("Profiling requested but profiler setup failed.");
+                    ++failures;
+                    continue;
+                }
             }
 
             if (cfg.tick_log_enabled) {
@@ -376,6 +382,11 @@ int main(int argc, char* argv[]) {
                 const auto experiment_end = std::chrono::steady_clock::now();
                 moonai::Profiler::instance().finish_run(
                     std::chrono::duration_cast<std::chrono::nanoseconds>(experiment_end - experiment_start).count());
+                if (!moonai::Profiler::instance().enabled()) {
+                    spdlog::error("Profiler output finalization failed.");
+                    ++failures;
+                    continue;
+                }
                 spdlog::info("Profile output: {}", moonai::Profiler::instance().output_dir());
             }
         }
@@ -521,6 +532,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
     if (args.profile) {
+        moonai::Profiler::instance().set_enabled(true);
         moonai::Profiler::instance().start_run(
             selected_experiment.empty() ? output_name : selected_experiment,
             profile_output_root_for(args, logger->run_dir()),
@@ -532,6 +544,10 @@ int main(int argc, char* argv[]) {
             !args.no_gpu,
             kCudaCompiled,
             kOpenmpCompiled);
+        if (!moonai::Profiler::instance().enabled()) {
+            spdlog::error("Profiling requested but profiler setup failed.");
+            return 1;
+        }
     }
     moonai::VisualizationManager visualization(config);
     bool has_multi_config = all_configs.size() > 1 && args.experiment_name.empty();
@@ -592,6 +608,7 @@ int main(int argc, char* argv[]) {
         logger = std::make_unique<moonai::Logger>(config.output_dir, config.seed, output_name);
         logger->initialize(config);
         if (args.profile) {
+            moonai::Profiler::instance().set_enabled(true);
             moonai::Profiler::instance().start_run(
                 exp_name,
                 profile_output_root_for(args, logger->run_dir()),
@@ -603,6 +620,10 @@ int main(int argc, char* argv[]) {
                 !args.no_gpu,
                 kCudaCompiled,
                 kOpenmpCompiled);
+            if (!moonai::Profiler::instance().enabled()) {
+                spdlog::error("Profiling requested but profiler setup failed.");
+                return false;
+            }
             experiment_start = std::chrono::steady_clock::now();
         }
         generation = 0;
@@ -867,6 +888,10 @@ int main(int argc, char* argv[]) {
         const auto experiment_end = std::chrono::steady_clock::now();
         moonai::Profiler::instance().finish_run(
             std::chrono::duration_cast<std::chrono::nanoseconds>(experiment_end - experiment_start).count());
+        if (!moonai::Profiler::instance().enabled()) {
+            spdlog::error("Profiler output finalization failed.");
+            return 1;
+        }
         spdlog::info("Profile output: {}", moonai::Profiler::instance().output_dir());
     }
     return 0;

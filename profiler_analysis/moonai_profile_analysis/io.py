@@ -26,6 +26,7 @@ class ProfileRun:
     top_event_name: str
     top_event_ms: float
     top_event_avg_ms: float
+    top_event_nonzero_generation_count: int
     generations: pd.DataFrame
     raw: dict
 
@@ -111,15 +112,20 @@ def _build_profile_run(path: Path, payload: dict) -> ProfileRun:
     top_event_name = "generation_total"
     top_event_ms = 0.0
     top_event_avg_ms = 0.0
+    top_event_nonzero_generation_count = 0
     for name, event_summary in summary_events.items():
         if name == "generation_total":
             continue
-        avg_ms = float(event_summary.get("avg_ms_per_generation", 0.0) or 0.0)
+        avg_ms = float(event_summary.get("avg_ms_per_nonzero_generation", 0.0) or 0.0)
         total_ms = float(event_summary.get("total_ms", 0.0) or 0.0)
+        nonzero_generation_count = int(
+            event_summary.get("nonzero_generation_count", 0) or 0
+        )
         if avg_ms > top_event_avg_ms:
             top_event_name = name
             top_event_ms = total_ms
             top_event_avg_ms = avg_ms
+            top_event_nonzero_generation_count = nonzero_generation_count
 
     return ProfileRun(
         path=path.parent,
@@ -135,6 +141,7 @@ def _build_profile_run(path: Path, payload: dict) -> ProfileRun:
         top_event_name=top_event_name,
         top_event_ms=top_event_ms,
         top_event_avg_ms=top_event_avg_ms,
+        top_event_nonzero_generation_count=top_event_nonzero_generation_count,
         generations=frame,
         raw=payload,
     )
