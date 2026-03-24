@@ -287,6 +287,7 @@ __global__ void prey_food_kernel(
     }
 }
 
+template<bool HasWalls>
 __global__ void predator_attack_kernel(
     unsigned int* agent_alive,
     const unsigned int* agent_types,
@@ -310,18 +311,30 @@ __global__ void predator_attack_kernel(
         return;
     }
 
+    (void)has_walls;
+
+    const float self_x = agent_pos_x[idx];
+    const float self_y = agent_pos_y[idx];
     const float range_sq = attack_range * attack_range;
     const int cells_to_check = static_cast<int>(attack_range / agent_cell_size) + 1;
-    const int cx = sensor_clamp_index(static_cast<int>(agent_pos_x[idx] / agent_cell_size), 0, agent_cols - 1);
-    const int cy = sensor_clamp_index(static_cast<int>(agent_pos_y[idx] / agent_cell_size), 0, agent_rows - 1);
+    const int cx = sensor_clamp_index(static_cast<int>(self_x / agent_cell_size), 0, agent_cols - 1);
+    const int cy = sensor_clamp_index(static_cast<int>(self_y / agent_cell_size), 0, agent_rows - 1);
     for (int dy_cell = -cells_to_check; dy_cell <= cells_to_check; ++dy_cell) {
+        const int ny = cy + dy_cell;
+        if (ny < 0 || ny >= agent_rows) {
+            continue;
+        }
+        const int row_base = ny * agent_cols;
         for (int dx_cell = -cells_to_check; dx_cell <= cells_to_check; ++dx_cell) {
             const int nx = cx + dx_cell;
-            const int ny = cy + dy_cell;
-            if (nx < 0 || nx >= agent_cols || ny < 0 || ny >= agent_rows) {
+            if (nx < 0 || nx >= agent_cols) {
                 continue;
             }
-            const int cell = ny * agent_cols + nx;
+            if (!cell_may_intersect_radius<HasWalls>(nx, ny, agent_cell_size, self_x, self_y,
+                                                     attack_range, world_width, world_height)) {
+                continue;
+            }
+            const int cell = row_base + nx;
             const int start = agent_cell_offsets[cell];
             const int end = agent_cell_offsets[cell + 1];
             for (int slot = start; slot < end; ++slot) {
@@ -331,9 +344,9 @@ __global__ void predator_attack_kernel(
                     || agent_types[prey_idx] != 1U) {
                     continue;
                 }
-                float dx = agent_pos_x[prey_idx] - agent_pos_x[idx];
-                float dy = agent_pos_y[prey_idx] - agent_pos_y[idx];
-                sensor_apply_wrap(dx, dy, world_width, world_height, has_walls);
+                float dx = agent_pos_x[prey_idx] - self_x;
+                float dy = agent_pos_y[prey_idx] - self_y;
+                sensor_apply_wrap<HasWalls>(dx, dy, world_width, world_height);
                 if (dx * dx + dy * dy > range_sq) {
                     continue;
                 }
@@ -519,12 +532,21 @@ void launch_resident_tick_sequence(GpuBatch& batch, const ResidentTickParams& pa
             params.energy_gain_from_food, params.world_width, params.world_height, params.has_walls);
     }
     record_stage_end(batch, stream, GpuStageTiming::ResidentTickPreyFood);
-    predator_attack_kernel<<<agent_grid, kBlockSize, 0, stream>>>(
-        batch.d_agent_alive(), batch.d_agent_types(), batch.d_agent_pos_x(), batch.d_agent_pos_y(),
-        batch.d_agent_energy(), batch.d_agent_kills(), batch.num_agents(), batch.d_agent_cell_offsets(),
-        batch.d_agent_cell_ids(), batch.agent_cols(), batch.agent_rows(), batch.agent_cell_size(),
-        params.attack_range, params.energy_gain_from_kill,
-        params.world_width, params.world_height, params.has_walls);
+    if (params.has_walls) {
+        predator_attack_kernel<true><<<agent_grid, kBlockSize, 0, stream>>>(
+            batch.d_agent_alive(), batch.d_agent_types(), batch.d_agent_pos_x(), batch.d_agent_pos_y(),
+            batch.d_agent_energy(), batch.d_agent_kills(), batch.num_agents(), batch.d_agent_cell_offsets(),
+            batch.d_agent_cell_ids(), batch.agent_cols(), batch.agent_rows(), batch.agent_cell_size(),
+            params.attack_range, params.energy_gain_from_kill,
+            params.world_width, params.world_height, params.has_walls);
+    } else {
+        predator_attack_kernel<false><<<agent_grid, kBlockSize, 0, stream>>>(
+            batch.d_agent_alive(), batch.d_agent_types(), batch.d_agent_pos_x(), batch.d_agent_pos_y(),
+            batch.d_agent_energy(), batch.d_agent_kills(), batch.num_agents(), batch.d_agent_cell_offsets(),
+            batch.d_agent_cell_ids(), batch.agent_cols(), batch.agent_rows(), batch.agent_cell_size(),
+            params.attack_range, params.energy_gain_from_kill,
+            params.world_width, params.world_height, params.has_walls);
+    }
     record_stage_end(batch, stream, GpuStageTiming::ResidentTickPredatorAttack);
     respawn_food_kernel<<<food_grid, kBlockSize, 0, stream>>>(
         batch.d_food_pos_x(), batch.d_food_pos_y(), batch.d_food_active(), batch.food_count(),
