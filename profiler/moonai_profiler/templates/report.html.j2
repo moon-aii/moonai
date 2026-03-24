@@ -19,11 +19,11 @@
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       font-family: "Source Sans 3", "Source Sans Pro", Calibri, "Helvetica Neue", Arial, sans-serif;
-      font-size: 11pt;
+      font-size: 12pt;
       line-height: 1.6;
       color: var(--ink);
       background: var(--bg);
-      max-width: 52em;
+      max-width: 60em;
       margin: 0 auto;
       padding: 2em 1.5em 4em;
     }
@@ -164,7 +164,7 @@
     /* Figures */
     .figure-grid {
       display: grid;
-      grid-template-columns: repeat(2, 1fr);
+      grid-template-columns: 1fr;
       gap: 1.5em;
       margin: 1em 0;
     }
@@ -248,7 +248,7 @@
     /* Print */
     @media print {
       body {
-        font-size: 10pt;
+        font-size: 11pt;
         padding: 0;
         max-width: none;
       }
@@ -259,13 +259,11 @@
       details { border: none; }
       details > summary { display: none; }
       details > .details-body { display: block !important; }
-      .figure-grid { grid-template-columns: 1fr; }
       a { color: var(--ink); text-decoration: none; }
     }
 
     @media (max-width: 700px) {
       body { padding: 1em; }
-      .figure-grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -320,7 +318,6 @@
           <th>Avg Gen (ms)</th>
           <th>Top Event</th>
           <th>Top Event Avg (ms/active gen)</th>
-          <th>Path</th>
         </tr>
       </thead>
       <tbody>
@@ -332,7 +329,6 @@
           <td>{{ row.avg_generation_ms }}</td>
           <td>{{ row.top_event }} ({{ row.top_event_nonzero_generation_count }} active)</td>
           <td>{{ row.top_event_avg_ms }}</td>
-          <td><code>{{ row.path }}</code></td>
         </tr>
         {% endfor %}
       </tbody>

@@ -43,7 +43,7 @@ def _render_generation_comparison(runs: list[ProfileRun]) -> Chart:
     ax.bar(labels, values, color=colors)
     ax.set_ylabel("Average generation time (ms)")
     ax.set_title("Average Generation Wall Time (IQR-trimmed)")
-    ax.tick_params(axis="x", rotation=35)
+    ax.tick_params(axis="x", rotation=35, labelsize=6)
     ax.grid(axis="y", alpha=0.25)
     fig.tight_layout()
     return Chart(
@@ -87,7 +87,7 @@ def _render_hotspot_comparison(runs: list[ProfileRun]) -> Chart:
     ax.bar(labels, values, color="#c97b63")
     ax.set_ylabel("Average hotspot time per active generation (ms)")
     ax.set_title("Top Non-Generation Hotspot Per Run (IQR-trimmed)")
-    ax.tick_params(axis="x", rotation=35)
+    ax.tick_params(axis="x", rotation=35, labelsize=6)
     ax.grid(axis="y", alpha=0.25)
     for index, run in enumerate(runs):
         ax.text(
@@ -119,8 +119,14 @@ def _render_generation_timeline(run: ProfileRun) -> Chart:
             linewidth=2,
         )
     else:
-        ax.text(0.5, 0.5, "generation_total not available", ha="center", va="center",
-                transform=ax.transAxes)
+        ax.text(
+            0.5,
+            0.5,
+            "generation_total not available",
+            ha="center",
+            va="center",
+            transform=ax.transAxes,
+        )
     ax.set_xlabel("Generation")
     ax.set_ylabel("Generation wall time (ms)")
     ax.set_title(f"Generation Wall Time - {run.label}")
@@ -166,8 +172,7 @@ def _render_top_event_breakdown(run: ProfileRun) -> Chart:
     pairs = [
         (name, stats["avg_ms_per_nonzero_generation"])
         for name, stats in run.trimmed_summary_events.items()
-        if name != "generation_total"
-        and stats["avg_ms_per_nonzero_generation"] > 0.0
+        if name != "generation_total" and stats["avg_ms_per_nonzero_generation"] > 0.0
     ]
     pairs.sort(key=lambda item: item[1], reverse=True)
     pairs = pairs[:8]
@@ -191,8 +196,7 @@ def _top_event_names(run: ProfileRun, limit: int) -> list[str]:
     pairs = [
         (name, stats["avg_ms_per_nonzero_generation"])
         for name, stats in run.trimmed_summary_events.items()
-        if name != "generation_total"
-        and stats["avg_ms_per_nonzero_generation"] > 0.0
+        if name != "generation_total" and stats["avg_ms_per_nonzero_generation"] > 0.0
     ]
     pairs.sort(key=lambda item: item[1], reverse=True)
     return [name for name, _ in pairs[:limit]]

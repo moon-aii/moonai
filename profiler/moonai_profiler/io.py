@@ -36,7 +36,7 @@ class ProfileRun:
 
     @property
     def label(self) -> str:
-        return f"{self.experiment_name} [{self.mode}]"
+        return f"{self.name} [{self.mode}]"
 
 
 def discover_profiles(input_dir: Path) -> tuple[list[ProfileRun], list[SkippedProfile]]:
@@ -168,12 +168,14 @@ def _build_profile_run(path: Path, payload: dict) -> ProfileRun:
     )
 
 
-def _compute_trimmed_event_summary(trimmed: pd.DataFrame) -> dict[str, dict[str, float]]:
+def _compute_trimmed_event_summary(
+    trimmed: pd.DataFrame,
+) -> dict[str, dict[str, float]]:
     result: dict[str, dict[str, float]] = {}
     event_cols = [c for c in trimmed.columns if c.startswith("event::")]
     n = len(trimmed)
     for col in event_cols:
-        name = col[len("event::"):]
+        name = col[len("event::") :]
         series = trimmed[col]
         total = float(series.sum())
         nonzero = int((series > 0).sum())
@@ -186,12 +188,14 @@ def _compute_trimmed_event_summary(trimmed: pd.DataFrame) -> dict[str, dict[str,
     return result
 
 
-def _compute_trimmed_counter_summary(trimmed: pd.DataFrame) -> dict[str, dict[str, float]]:
+def _compute_trimmed_counter_summary(
+    trimmed: pd.DataFrame,
+) -> dict[str, dict[str, float]]:
     result: dict[str, dict[str, float]] = {}
     counter_cols = [c for c in trimmed.columns if c.startswith("counter::")]
     n = len(trimmed)
     for col in counter_cols:
-        name = col[len("counter::"):]
+        name = col[len("counter::") :]
         series = trimmed[col]
         total = float(series.sum())
         nonzero = int((series > 0).sum())

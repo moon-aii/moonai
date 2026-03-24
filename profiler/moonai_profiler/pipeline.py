@@ -88,7 +88,6 @@ def run_analysis(input_dir: Path, output_dir: Path) -> None:
                     "top_event_nonzero_generation_count": str(
                         run.top_event_nonzero_generation_count
                     ),
-                    "path": str(run.path),
                 }
                 for run in runs
             ],
