@@ -24,7 +24,6 @@ __device__ __forceinline__ float apply_activation(float sum, int activation_fn_i
 __global__ void neural_forward_kernel(
     const GpuNetDesc* __restrict__ descs,
     float* __restrict__            node_vals,
-    const uint8_t* __restrict__    node_types,
     const int* __restrict__        eval_order,
     const int* __restrict__        conn_ptr,
     const int* __restrict__        in_count,
@@ -48,20 +47,14 @@ __global__ void neural_forward_kernel(
     // ── Initialize node values ───────────────────────────────────────────
     // Input nodes: sequential assignment from d_inputs row for this agent.
     // Bias nodes: 1.0f. Hidden/Output nodes: 0.0f (cleared before forward pass).
-    int input_counter = 0;
-    for (int i = 0; i < desc.num_nodes; ++i) {
-        uint8_t t = node_types[desc.node_off + i];
-        if (t == 0) {  // Input
-            node_vals[desc.node_off + i] =
-                (input_counter < num_inputs)
-                    ? inputs[agent_idx * num_inputs + input_counter]
-                    : 0.0f;
-            ++input_counter;
-        } else if (t == 1) {  // Bias
-            node_vals[desc.node_off + i] = 1.0f;
-        } else {
-            node_vals[desc.node_off + i] = 0.0f;
-        }
+    const int node_base = desc.node_off;
+    const int input_base = agent_idx * num_inputs;
+    for (int i = 0; i < desc.num_inputs; ++i) {
+        node_vals[node_base + i] = (i < num_inputs) ? inputs[input_base + i] : 0.0f;
+    }
+    node_vals[node_base + desc.num_inputs] = 1.0f;
+    for (int i = desc.num_inputs + 1; i < desc.num_nodes; ++i) {
+        node_vals[node_base + i] = 0.0f;
     }
 
     // ── Forward pass (topological order) ────────────────────────────────
@@ -96,7 +89,6 @@ void batch_neural_inference(GpuBatch& batch) {
     neural_forward_kernel<<<grid_size, kInferenceBlockSize, 0, stream>>>(
         batch.d_descs(),
         batch.d_node_vals(),
-        batch.d_node_types(),
         batch.d_eval_order(),
         batch.d_conn_ptr(),
         batch.d_in_count(),
