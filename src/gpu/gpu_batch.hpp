@@ -7,6 +7,7 @@
 #include "gpu/gpu_types.hpp"
 
 #include <cstdint>
+#include <cstddef>
 #include <string>
 #include <vector>
 
@@ -25,6 +26,22 @@ struct GpuNetworkData {
     std::vector<float>      conn_w;      // flat: edge weight per edge
     std::vector<int>        out_indices; // flat: output node positions per agent
     int activation_fn_id = 0;           // 0=sigmoid, 1=tanh, 2=relu
+};
+
+struct ResidentTickParams {
+    float dt = 0.0f;
+    float world_width = 0.0f;
+    float world_height = 0.0f;
+    bool has_walls = false;
+    float energy_drain_per_tick = 0.0f;
+    int target_fps = 0;
+    float food_pickup_range = 0.0f;
+    float attack_range = 0.0f;
+    float max_energy = 0.0f;
+    float energy_gain_from_food = 0.0f;
+    float energy_gain_from_kill = 0.0f;
+    float food_respawn_rate = 0.0f;
+    std::uint64_t seed = 0;
 };
 
 // RAII wrapper owning all device memory for a generation's batch inference.
@@ -53,20 +70,14 @@ public:
     void upload_tick_state_async(
         const GpuAgentState* agents,
         int agent_count,
+        const GpuFoodState* food,
+        int food_count,
         int agent_cols,
         int agent_rows,
         float agent_cell_size,
-        const int* agent_cell_offsets,
-        int agent_cell_count,
-        const GpuGridEntry* agent_entries,
-        int agent_entry_count,
         int food_cols,
         int food_rows,
-        float food_cell_size,
-        const int* food_cell_offsets,
-        int food_cell_count,
-        const GpuGridEntry* food_entries,
-        int food_entry_count);
+        float food_cell_size);
     void launch_sensor_build_async(float world_width, float world_height,
                                    float max_energy, bool has_walls);
     // Launch kernel on the stream.
@@ -79,12 +90,14 @@ public:
     void upload_resident_food_states_async(const GpuFoodState* food, int food_count);
     void launch_resident_sensor_build_async(float world_width, float world_height,
                                             float max_energy, bool has_walls);
-    void launch_resident_tick_async(float dt, float world_width, float world_height,
-                                    bool has_walls, float energy_drain_per_tick,
-                                    int target_fps, float food_pickup_range,
-                                    float attack_range, float energy_gain_from_food,
-                                    float energy_gain_from_kill, float food_respawn_rate,
-                                    std::uint64_t seed, int tick_index);
+    void prepare_resident_tick_graph(const ResidentTickParams& params);
+    void launch_resident_inference_tick_async(float dt, float world_width, float world_height,
+                                              bool has_walls, float energy_drain_per_tick,
+                                              int target_fps, float food_pickup_range,
+                                              float attack_range, float max_energy,
+                                              float energy_gain_from_food,
+                                              float energy_gain_from_kill, float food_respawn_rate,
+                                              std::uint64_t seed, int tick_index);
     void download_agent_states(std::vector<GpuAgentState>& agents);
     void download_food_states(std::vector<GpuFoodState>& food);
     bool ok() const { return !had_error_; }
@@ -99,11 +112,13 @@ public:
     const GpuFoodState* d_food_states() const { return d_food_states_; }
     GpuFoodState* d_food_states() { return d_food_states_; }
     const int* d_agent_cell_offsets() const { return d_agent_cell_offsets_; }
-    const GpuGridEntry* d_agent_grid_entries() const { return d_agent_grid_entries_; }
     const int* d_food_cell_offsets() const { return d_food_cell_offsets_; }
-    const GpuGridEntry* d_food_grid_entries() const { return d_food_grid_entries_; }
+    int* d_agent_cell_offsets() { return d_agent_cell_offsets_; }
+    int* d_food_cell_offsets() { return d_food_cell_offsets_; }
     int* d_agent_cell_counts() { return d_agent_cell_counts_; }
     int* d_food_cell_counts() { return d_food_cell_counts_; }
+    int* d_agent_cell_write_counts() { return d_agent_cell_write_counts_; }
+    int* d_food_cell_write_counts() { return d_food_cell_write_counts_; }
     unsigned int* d_agent_cell_ids() { return d_agent_cell_ids_; }
     unsigned int* d_food_cell_ids() { return d_food_cell_ids_; }
     float*            d_node_vals()         { return d_node_vals_; }
@@ -135,8 +150,61 @@ public:
     int num_inputs()       const { return num_inputs_; }
     int num_outputs()      const { return num_outputs_; }
     int activation_fn_id() const { return activation_fn_id_; }
+    const float* d_agent_pos_x() const { return d_agent_pos_x_; }
+    const float* d_agent_pos_y() const { return d_agent_pos_y_; }
+    const float* d_agent_vel_x() const { return d_agent_vel_x_; }
+    const float* d_agent_vel_y() const { return d_agent_vel_y_; }
+    const float* d_agent_speed() const { return d_agent_speed_; }
+    const float* d_agent_vision() const { return d_agent_vision_; }
+    const float* d_agent_energy() const { return d_agent_energy_; }
+    const float* d_agent_distance_traveled() const { return d_agent_distance_traveled_; }
+    const int* d_agent_age() const { return d_agent_age_; }
+    const int* d_agent_kills() const { return d_agent_kills_; }
+    const int* d_agent_food_eaten() const { return d_agent_food_eaten_; }
+    const unsigned int* d_agent_ids() const { return d_agent_ids_; }
+    const unsigned int* d_agent_types() const { return d_agent_types_; }
+    const unsigned int* d_agent_alive() const { return d_agent_alive_; }
+    float* d_agent_pos_x() { return d_agent_pos_x_; }
+    float* d_agent_pos_y() { return d_agent_pos_y_; }
+    float* d_agent_vel_x() { return d_agent_vel_x_; }
+    float* d_agent_vel_y() { return d_agent_vel_y_; }
+    float* d_agent_speed() { return d_agent_speed_; }
+    float* d_agent_vision() { return d_agent_vision_; }
+    float* d_agent_energy() { return d_agent_energy_; }
+    float* d_agent_distance_traveled() { return d_agent_distance_traveled_; }
+    int* d_agent_age() { return d_agent_age_; }
+    int* d_agent_kills() { return d_agent_kills_; }
+    int* d_agent_food_eaten() { return d_agent_food_eaten_; }
+    unsigned int* d_agent_ids() { return d_agent_ids_; }
+    unsigned int* d_agent_types() { return d_agent_types_; }
+    unsigned int* d_agent_alive() { return d_agent_alive_; }
+    const float* d_food_pos_x() const { return d_food_pos_x_; }
+    const float* d_food_pos_y() const { return d_food_pos_y_; }
+    const unsigned int* d_food_active() const { return d_food_active_; }
+    float* d_food_pos_x() { return d_food_pos_x_; }
+    float* d_food_pos_y() { return d_food_pos_y_; }
+    unsigned int* d_food_active() { return d_food_active_; }
+    const int* d_inference_agent_indices() const { return d_inference_agent_indices_; }
+    int* d_tick_index() { return d_tick_index_; }
+    void* d_scan_temp_storage() const { return d_scan_temp_storage_; }
+    int* host_tick_index() { return h_tick_index_; }
+    size_t agent_scan_temp_bytes() const { return agent_scan_temp_bytes_; }
+    size_t food_scan_temp_bytes() const { return food_scan_temp_bytes_; }
+    int inference_bucket_count() const { return static_cast<int>(inference_bucket_offsets_.size()); }
+    int inference_bucket_start(int bucket_index) const { return inference_bucket_offsets_[static_cast<size_t>(bucket_index)]; }
+    int inference_bucket_size(int bucket_index) const { return inference_bucket_sizes_[static_cast<size_t>(bucket_index)]; }
+    bool ensure_scan_temp_storage(size_t bytes);
 
 private:
+    friend void batch_prepare_resident_tick_graph(GpuBatch& batch, const ResidentTickParams& params);
+    friend void batch_simulate_tick_resident(GpuBatch& batch, float dt, float world_width,
+                                             float world_height, bool has_walls,
+                                             float energy_drain_per_tick, int target_fps,
+                                             float food_pickup_range, float attack_range,
+                                             float energy_gain_from_food, float energy_gain_from_kill,
+                                             float food_respawn_rate, std::uint64_t seed,
+                                             int tick_index);
+
     // Device arrays (allocated in constructor, freed in destructor)
     GpuNetDesc*    d_descs_     = nullptr;  // [num_agents]
     float*         d_inputs_    = nullptr;  // [num_agents * num_inputs]
@@ -144,17 +212,41 @@ private:
     GpuAgentState* d_agent_states_ = nullptr; // [num_agents]
     GpuFoodState*  d_food_states_ = nullptr;
     int*           d_agent_cell_offsets_ = nullptr;
-    GpuGridEntry*  d_agent_grid_entries_ = nullptr;
     int*           d_food_cell_offsets_ = nullptr;
-    GpuGridEntry*  d_food_grid_entries_ = nullptr;
     int*           d_agent_cell_counts_ = nullptr;
     int*           d_food_cell_counts_ = nullptr;
+    int*           d_agent_cell_write_counts_ = nullptr;
+    int*           d_food_cell_write_counts_ = nullptr;
     unsigned int*  d_agent_cell_ids_ = nullptr;
     unsigned int*  d_food_cell_ids_ = nullptr;
+
+    float*         d_agent_pos_x_ = nullptr;
+    float*         d_agent_pos_y_ = nullptr;
+    float*         d_agent_vel_x_ = nullptr;
+    float*         d_agent_vel_y_ = nullptr;
+    float*         d_agent_speed_ = nullptr;
+    float*         d_agent_vision_ = nullptr;
+    float*         d_agent_energy_ = nullptr;
+    float*         d_agent_distance_traveled_ = nullptr;
+    int*           d_agent_age_ = nullptr;
+    int*           d_agent_kills_ = nullptr;
+    int*           d_agent_food_eaten_ = nullptr;
+    unsigned int*  d_agent_ids_ = nullptr;
+    unsigned int*  d_agent_types_ = nullptr;
+    unsigned int*  d_agent_alive_ = nullptr;
+
+    float*         d_food_pos_x_ = nullptr;
+    float*         d_food_pos_y_ = nullptr;
+    unsigned int*  d_food_active_ = nullptr;
+
+    int*           d_inference_agent_indices_ = nullptr;
+    int*           d_tick_index_ = nullptr;
+    void*          d_scan_temp_storage_ = nullptr;
 
     // Pinned host memory (required for cudaMemcpyAsync)
     float*         h_pinned_in_  = nullptr;
     float*         h_pinned_out_ = nullptr;
+    int*           h_tick_index_ = nullptr;
 
     // Single CUDA stream (stored as void* to keep CUDA types out of header)
     void*          stream_ = nullptr;
@@ -183,13 +275,14 @@ private:
     int food_capacity_ = 0;
     int food_count_ = 0;
     int agent_cell_capacity_ = 0;
-    int agent_entry_capacity_ = 0;
     int food_cell_capacity_ = 0;
-    int food_entry_capacity_ = 0;
     int agent_bin_capacity_ = 0;
     int food_bin_capacity_ = 0;
+    int agent_write_capacity_ = 0;
+    int food_write_capacity_ = 0;
     int agent_bin_ids_capacity_ = 0;
     int food_bin_ids_capacity_ = 0;
+    int inference_agent_indices_capacity_ = 0;
     int agent_cell_count_ = 0;
     int agent_grid_entry_count_ = 0;
     int food_cell_count_ = 0;
@@ -204,8 +297,18 @@ private:
     int num_outputs_;
     int activation_fn_id_ = 0;  // 0=sigmoid, 1=tanh, 2=relu
     bool had_error_ = false;
+    bool resident_graph_valid_ = false;
+    ResidentTickParams resident_tick_params_{};
+    void* resident_tick_graph_ = nullptr;
+    void* resident_tick_graph_exec_ = nullptr;
+    std::vector<int> inference_bucket_offsets_;
+    std::vector<int> inference_bucket_sizes_;
+    size_t scan_temp_storage_bytes_ = 0;
+    size_t agent_scan_temp_bytes_ = 0;
+    size_t food_scan_temp_bytes_ = 0;
 
     bool validate_copy_count(int count, int capacity, const char* label);
+    void invalidate_resident_graph();
 };
 
 // ── Free functions (implemented in neural_inference.cu / gpu_batch.cu) ────
@@ -214,6 +317,8 @@ void batch_build_sensors(GpuBatch& batch, float world_width, float world_height,
                          float max_energy, bool has_walls);
 void batch_build_sensors_resident(GpuBatch& batch, float world_width, float world_height,
                                   float max_energy, bool has_walls);
+void batch_rebuild_compact_bins(GpuBatch& batch);
+void batch_prepare_resident_tick_graph(GpuBatch& batch, const ResidentTickParams& params);
 void batch_simulate_tick_resident(GpuBatch& batch, float dt, float world_width,
                                   float world_height, bool has_walls,
                                   float energy_drain_per_tick, int target_fps,

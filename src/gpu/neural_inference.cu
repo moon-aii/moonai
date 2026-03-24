@@ -5,6 +5,8 @@ namespace moonai::gpu {
 
 namespace {
 
+constexpr int kInferenceBlockSize = 128;
+
 __device__ __forceinline__ float apply_activation(float sum, int activation_fn_id) {
     if (activation_fn_id == 1) {
         return tanhf(sum);
@@ -29,16 +31,19 @@ __global__ void neural_forward_kernel(
     const int* __restrict__        conn_from,
     const float* __restrict__      conn_w,
     const int* __restrict__        out_indices,
+    const int* __restrict__        agent_indices,
     const float* __restrict__      inputs,
     float* __restrict__            outputs,
-    int               num_agents,
+    int               agent_count,
     int               num_inputs,
     int               activation_fn_id
 ) {
-    int agent_idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (agent_idx >= num_agents) return;
+    const int sorted_idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (sorted_idx >= agent_count) return;
 
-    const GpuNetDesc& desc = descs[agent_idx];
+    const int agent_idx = agent_indices != nullptr ? agent_indices[sorted_idx] : sorted_idx;
+
+    const GpuNetDesc& desc = descs[sorted_idx];
 
     // ── Initialize node values ───────────────────────────────────────────
     // Input nodes: sequential assignment from d_inputs row for this agent.
@@ -84,23 +89,11 @@ __global__ void neural_forward_kernel(
 
 // Launches kernel on the batch's stream.
 void batch_neural_inference(GpuBatch& batch) {
-    int n = batch.num_agents();
-    int min_grid_size = 0;
-    int block_size = 0;
-    CUDA_CHECK(cudaOccupancyMaxPotentialBlockSize(
-        &min_grid_size,
-        &block_size,
-        neural_forward_kernel,
-        0,
-        0));
-    if (block_size <= 0) {
-        block_size = 256;
-    }
-    int grid_size = (n + block_size - 1) / block_size;
-
     cudaStream_t stream = static_cast<cudaStream_t>(batch.stream_handle());
 
-    neural_forward_kernel<<<grid_size, block_size, 0, stream>>>(
+    const int agent_count = batch.num_agents();
+    const int grid_size = (agent_count + kInferenceBlockSize - 1) / kInferenceBlockSize;
+    neural_forward_kernel<<<grid_size, kInferenceBlockSize, 0, stream>>>(
         batch.d_descs(),
         batch.d_node_vals(),
         batch.d_node_types(),
@@ -110,9 +103,10 @@ void batch_neural_inference(GpuBatch& batch) {
         batch.d_conn_from(),
         batch.d_conn_w(),
         batch.d_out_indices(),
+        batch.d_inference_agent_indices(),
         batch.d_inputs(),
         batch.d_outputs(),
-        n,
+        agent_count,
         batch.num_inputs(),
         batch.activation_fn_id()
     );

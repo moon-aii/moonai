@@ -1,9 +1,13 @@
 #include "gpu/gpu_batch.hpp"
 #include "gpu/cuda_utils.cuh"
 
+#include <cub/cub.cuh>
 #include <spdlog/spdlog.h>
 
+#include <algorithm>
+#include <exception>
 #include <limits>
+#include <tuple>
 
 namespace moonai::gpu {
 
@@ -45,6 +49,112 @@ bool memcpy_async_checked(void* dst, const void* src, size_t bytes,
     return check_cuda(cudaMemcpyAsync(dst, src, bytes, kind, stream), file, line);
 }
 
+__global__ void unpack_agent_states_kernel(
+    const GpuAgentState* __restrict__ src,
+    float* __restrict__ pos_x,
+    float* __restrict__ pos_y,
+    float* __restrict__ vel_x,
+    float* __restrict__ vel_y,
+    float* __restrict__ speed,
+    float* __restrict__ vision,
+    float* __restrict__ energy,
+    float* __restrict__ distance_traveled,
+    int* __restrict__ age,
+    int* __restrict__ kills,
+    int* __restrict__ food_eaten,
+    unsigned int* __restrict__ ids,
+    unsigned int* __restrict__ types,
+    unsigned int* __restrict__ alive,
+    int count) {
+    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= count) {
+        return;
+    }
+    const GpuAgentState state = src[idx];
+    pos_x[idx] = state.pos_x;
+    pos_y[idx] = state.pos_y;
+    vel_x[idx] = state.vel_x;
+    vel_y[idx] = state.vel_y;
+    speed[idx] = state.speed;
+    vision[idx] = state.vision_range;
+    energy[idx] = state.energy;
+    distance_traveled[idx] = state.distance_traveled;
+    age[idx] = state.age;
+    kills[idx] = state.kills;
+    food_eaten[idx] = state.food_eaten;
+    ids[idx] = state.id;
+    types[idx] = state.type;
+    alive[idx] = state.alive;
+}
+
+__global__ void pack_agent_states_kernel(
+    GpuAgentState* __restrict__ dst,
+    const float* __restrict__ pos_x,
+    const float* __restrict__ pos_y,
+    const float* __restrict__ vel_x,
+    const float* __restrict__ vel_y,
+    const float* __restrict__ speed,
+    const float* __restrict__ vision,
+    const float* __restrict__ energy,
+    const float* __restrict__ distance_traveled,
+    const int* __restrict__ age,
+    const int* __restrict__ kills,
+    const int* __restrict__ food_eaten,
+    const unsigned int* __restrict__ ids,
+    const unsigned int* __restrict__ types,
+    const unsigned int* __restrict__ alive,
+    int count) {
+    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= count) {
+        return;
+    }
+    dst[idx] = GpuAgentState{
+        pos_x[idx],
+        pos_y[idx],
+        vel_x[idx],
+        vel_y[idx],
+        speed[idx],
+        vision[idx],
+        energy[idx],
+        distance_traveled[idx],
+        age[idx],
+        kills[idx],
+        food_eaten[idx],
+        ids[idx],
+        types[idx],
+        alive[idx]
+    };
+}
+
+__global__ void unpack_food_states_kernel(
+    const GpuFoodState* __restrict__ src,
+    float* __restrict__ pos_x,
+    float* __restrict__ pos_y,
+    unsigned int* __restrict__ active,
+    int count) {
+    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= count) {
+        return;
+    }
+    const GpuFoodState state = src[idx];
+    pos_x[idx] = state.pos_x;
+    pos_y[idx] = state.pos_y;
+    active[idx] = state.active;
+}
+
+__global__ void pack_food_states_kernel(
+    GpuFoodState* __restrict__ dst,
+    const float* __restrict__ pos_x,
+    const float* __restrict__ pos_y,
+    const unsigned int* __restrict__ active,
+    int count) {
+    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= count) {
+        return;
+    }
+    dst[idx] = GpuFoodState{pos_x[idx], pos_y[idx], active[idx]};
+}
+
 } // namespace
 
 // ── Constructor / Destructor ─────────────────────────────────────────────────
@@ -55,14 +165,33 @@ GpuBatch::GpuBatch(int num_agents, int num_inputs, int num_outputs)
     , num_outputs_(num_outputs) {
     const size_t in_bytes = static_cast<size_t>(num_agents) * num_inputs * sizeof(float);
     const size_t out_bytes = static_cast<size_t>(num_agents) * num_outputs * sizeof(float);
+    const size_t agent_float_bytes = static_cast<size_t>(num_agents) * sizeof(float);
+    const size_t agent_int_bytes = static_cast<size_t>(num_agents) * sizeof(int);
+    const size_t agent_uint_bytes = static_cast<size_t>(num_agents) * sizeof(unsigned int);
 
     had_error_ |= !malloc_checked(&d_descs_, num_agents * sizeof(GpuNetDesc), __FILE__, __LINE__);
     had_error_ |= !malloc_checked(&d_inputs_, in_bytes, __FILE__, __LINE__);
     had_error_ |= !malloc_checked(&d_outputs_, out_bytes, __FILE__, __LINE__);
     had_error_ |= !malloc_checked(&d_agent_states_, num_agents * sizeof(GpuAgentState), __FILE__, __LINE__);
+    had_error_ |= !malloc_checked(&d_agent_pos_x_, agent_float_bytes, __FILE__, __LINE__);
+    had_error_ |= !malloc_checked(&d_agent_pos_y_, agent_float_bytes, __FILE__, __LINE__);
+    had_error_ |= !malloc_checked(&d_agent_vel_x_, agent_float_bytes, __FILE__, __LINE__);
+    had_error_ |= !malloc_checked(&d_agent_vel_y_, agent_float_bytes, __FILE__, __LINE__);
+    had_error_ |= !malloc_checked(&d_agent_speed_, agent_float_bytes, __FILE__, __LINE__);
+    had_error_ |= !malloc_checked(&d_agent_vision_, agent_float_bytes, __FILE__, __LINE__);
+    had_error_ |= !malloc_checked(&d_agent_energy_, agent_float_bytes, __FILE__, __LINE__);
+    had_error_ |= !malloc_checked(&d_agent_distance_traveled_, agent_float_bytes, __FILE__, __LINE__);
+    had_error_ |= !malloc_checked(&d_agent_age_, agent_int_bytes, __FILE__, __LINE__);
+    had_error_ |= !malloc_checked(&d_agent_kills_, agent_int_bytes, __FILE__, __LINE__);
+    had_error_ |= !malloc_checked(&d_agent_food_eaten_, agent_int_bytes, __FILE__, __LINE__);
+    had_error_ |= !malloc_checked(&d_agent_ids_, agent_uint_bytes, __FILE__, __LINE__);
+    had_error_ |= !malloc_checked(&d_agent_types_, agent_uint_bytes, __FILE__, __LINE__);
+    had_error_ |= !malloc_checked(&d_agent_alive_, agent_uint_bytes, __FILE__, __LINE__);
 
     had_error_ |= !malloc_host_checked(&h_pinned_in_, in_bytes, __FILE__, __LINE__);
     had_error_ |= !malloc_host_checked(&h_pinned_out_, out_bytes, __FILE__, __LINE__);
+    had_error_ |= !malloc_host_checked(&h_tick_index_, sizeof(int), __FILE__, __LINE__);
+    had_error_ |= !malloc_checked(&d_tick_index_, sizeof(int), __FILE__, __LINE__);
 
     cudaStream_t s = nullptr;
     had_error_ |= !check_cuda(cudaStreamCreate(&s), __FILE__, __LINE__);
@@ -70,6 +199,8 @@ GpuBatch::GpuBatch(int num_agents, int num_inputs, int num_outputs)
 }
 
 GpuBatch::~GpuBatch() {
+    invalidate_resident_graph();
+
     // Device arrays
     if (d_descs_)       cudaFree(d_descs_);
     if (d_inputs_)      cudaFree(d_inputs_);
@@ -77,17 +208,38 @@ GpuBatch::~GpuBatch() {
     if (d_agent_states_) cudaFree(d_agent_states_);
     if (d_food_states_) cudaFree(d_food_states_);
     if (d_agent_cell_offsets_) cudaFree(d_agent_cell_offsets_);
-    if (d_agent_grid_entries_) cudaFree(d_agent_grid_entries_);
     if (d_food_cell_offsets_) cudaFree(d_food_cell_offsets_);
-    if (d_food_grid_entries_) cudaFree(d_food_grid_entries_);
     if (d_agent_cell_counts_) cudaFree(d_agent_cell_counts_);
     if (d_food_cell_counts_) cudaFree(d_food_cell_counts_);
+    if (d_agent_cell_write_counts_) cudaFree(d_agent_cell_write_counts_);
+    if (d_food_cell_write_counts_) cudaFree(d_food_cell_write_counts_);
     if (d_agent_cell_ids_) cudaFree(d_agent_cell_ids_);
     if (d_food_cell_ids_) cudaFree(d_food_cell_ids_);
+    if (d_agent_pos_x_) cudaFree(d_agent_pos_x_);
+    if (d_agent_pos_y_) cudaFree(d_agent_pos_y_);
+    if (d_agent_vel_x_) cudaFree(d_agent_vel_x_);
+    if (d_agent_vel_y_) cudaFree(d_agent_vel_y_);
+    if (d_agent_speed_) cudaFree(d_agent_speed_);
+    if (d_agent_vision_) cudaFree(d_agent_vision_);
+    if (d_agent_energy_) cudaFree(d_agent_energy_);
+    if (d_agent_distance_traveled_) cudaFree(d_agent_distance_traveled_);
+    if (d_agent_age_) cudaFree(d_agent_age_);
+    if (d_agent_kills_) cudaFree(d_agent_kills_);
+    if (d_agent_food_eaten_) cudaFree(d_agent_food_eaten_);
+    if (d_agent_ids_) cudaFree(d_agent_ids_);
+    if (d_agent_types_) cudaFree(d_agent_types_);
+    if (d_agent_alive_) cudaFree(d_agent_alive_);
+    if (d_food_pos_x_) cudaFree(d_food_pos_x_);
+    if (d_food_pos_y_) cudaFree(d_food_pos_y_);
+    if (d_food_active_) cudaFree(d_food_active_);
+    if (d_inference_agent_indices_) cudaFree(d_inference_agent_indices_);
+    if (d_tick_index_) cudaFree(d_tick_index_);
+    if (d_scan_temp_storage_) cudaFree(d_scan_temp_storage_);
 
     // Pinned host memory
     if (h_pinned_in_)   cudaFreeHost(h_pinned_in_);
     if (h_pinned_out_)  cudaFreeHost(h_pinned_out_);
+    if (h_tick_index_)  cudaFreeHost(h_tick_index_);
 
     // Stream
     if (stream_)        cudaStreamDestroy(static_cast<cudaStream_t>(stream_));
@@ -101,6 +253,36 @@ GpuBatch::~GpuBatch() {
     if (d_conn_from_)   cudaFree(d_conn_from_);
     if (d_conn_w_)      cudaFree(d_conn_w_);
     if (d_out_indices_) cudaFree(d_out_indices_);
+}
+
+void GpuBatch::invalidate_resident_graph() {
+    resident_graph_valid_ = false;
+    if (resident_tick_graph_exec_) {
+        cudaGraphExecDestroy(static_cast<cudaGraphExec_t>(resident_tick_graph_exec_));
+        resident_tick_graph_exec_ = nullptr;
+    }
+    if (resident_tick_graph_) {
+        cudaGraphDestroy(static_cast<cudaGraph_t>(resident_tick_graph_));
+        resident_tick_graph_ = nullptr;
+    }
+}
+
+bool GpuBatch::ensure_scan_temp_storage(size_t bytes) {
+    if (bytes <= scan_temp_storage_bytes_) {
+        return true;
+    }
+    if (d_scan_temp_storage_) {
+        cudaFree(d_scan_temp_storage_);
+        d_scan_temp_storage_ = nullptr;
+        scan_temp_storage_bytes_ = 0;
+    }
+    if (!malloc_checked(reinterpret_cast<unsigned char**>(&d_scan_temp_storage_), bytes,
+                        __FILE__, __LINE__)) {
+        had_error_ = true;
+        return false;
+    }
+    scan_temp_storage_bytes_ = bytes;
+    return true;
 }
 
 // ── upload_network_data ───────────────────────────────────────────────────────
@@ -186,30 +368,129 @@ void GpuBatch::upload_network_data(const GpuNetworkData& data) {
         return;
     }
 
-    // ── Upload to device (async on batch stream) ──────────────────────
-    had_error_ |= !memcpy_async_checked(d_descs_, data.descs.data(),
+    std::vector<int> ordered_agents(static_cast<size_t>(num_agents_));
+    for (int i = 0; i < num_agents_; ++i) {
+        ordered_agents[static_cast<size_t>(i)] = i;
+    }
+    std::sort(ordered_agents.begin(), ordered_agents.end(), [&](int lhs, int rhs) {
+        const GpuNetDesc& a = data.descs[static_cast<size_t>(lhs)];
+        const GpuNetDesc& b = data.descs[static_cast<size_t>(rhs)];
+        return std::tie(a.num_eval, a.num_nodes, a.num_outputs, lhs)
+            < std::tie(b.num_eval, b.num_nodes, b.num_outputs, rhs);
+    });
+    inference_bucket_offsets_.clear();
+    inference_bucket_sizes_.clear();
+    if (!ordered_agents.empty()) {
+        int bucket_start = 0;
+        for (int i = 1; i <= num_agents_; ++i) {
+            const bool bucket_break = (i == num_agents_)
+                || data.descs[static_cast<size_t>(ordered_agents[static_cast<size_t>(bucket_start)])].num_eval
+                    != data.descs[static_cast<size_t>(ordered_agents[static_cast<size_t>(i)])].num_eval
+                || data.descs[static_cast<size_t>(ordered_agents[static_cast<size_t>(bucket_start)])].num_nodes
+                    != data.descs[static_cast<size_t>(ordered_agents[static_cast<size_t>(i)])].num_nodes;
+            if (bucket_break) {
+                inference_bucket_offsets_.push_back(bucket_start);
+                inference_bucket_sizes_.push_back(i - bucket_start);
+                bucket_start = i;
+            }
+        }
+    }
+
+    std::vector<GpuNetDesc> reordered_descs(static_cast<size_t>(num_agents_));
+    std::vector<uint8_t> reordered_node_types(static_cast<size_t>(total_nodes));
+    std::vector<int> reordered_eval_order(static_cast<size_t>(total_eval));
+    std::vector<int> reordered_conn_ptr(static_cast<size_t>(total_eval));
+    std::vector<int> reordered_in_count(static_cast<size_t>(total_eval));
+    std::vector<int> reordered_conn_from(static_cast<size_t>(total_conn));
+    std::vector<float> reordered_conn_w(static_cast<size_t>(total_conn));
+    std::vector<int> reordered_out_indices(static_cast<size_t>(total_out));
+    int next_node_off = 0;
+    int next_eval_off = 0;
+    int next_conn_off = 0;
+    int next_out_off = 0;
+    for (int sorted_idx = 0; sorted_idx < num_agents_; ++sorted_idx) {
+        const int agent_idx = ordered_agents[static_cast<size_t>(sorted_idx)];
+        const GpuNetDesc& src = data.descs[static_cast<size_t>(agent_idx)];
+        GpuNetDesc dst = src;
+        dst.node_off = next_node_off;
+        dst.eval_off = next_eval_off;
+        dst.conn_off = next_conn_off;
+        dst.out_off = next_out_off;
+        reordered_descs[static_cast<size_t>(sorted_idx)] = dst;
+
+        std::copy_n(data.node_types.begin() + src.node_off, src.num_nodes,
+                    reordered_node_types.begin() + next_node_off);
+        std::copy_n(data.in_count.begin() + src.eval_off, src.num_eval,
+                    reordered_in_count.begin() + next_eval_off);
+        std::copy_n(data.conn_from.begin() + src.conn_off,
+                    src.num_eval > 0 ? (data.conn_ptr[static_cast<size_t>(src.eval_off + src.num_eval - 1)]
+                        + data.in_count[static_cast<size_t>(src.eval_off + src.num_eval - 1)]) : 0,
+                    reordered_conn_from.begin() + next_conn_off);
+        std::copy_n(data.conn_w.begin() + src.conn_off,
+                    src.num_eval > 0 ? (data.conn_ptr[static_cast<size_t>(src.eval_off + src.num_eval - 1)]
+                        + data.in_count[static_cast<size_t>(src.eval_off + src.num_eval - 1)]) : 0,
+                    reordered_conn_w.begin() + next_conn_off);
+        std::copy_n(data.out_indices.begin() + src.out_off, src.num_outputs,
+                    reordered_out_indices.begin() + next_out_off);
+
+        for (int eval_idx = 0; eval_idx < src.num_eval; ++eval_idx) {
+            reordered_eval_order[static_cast<size_t>(next_eval_off + eval_idx)] =
+                data.eval_order[static_cast<size_t>(src.eval_off + eval_idx)];
+            reordered_conn_ptr[static_cast<size_t>(next_eval_off + eval_idx)] =
+                data.conn_ptr[static_cast<size_t>(src.eval_off + eval_idx)];
+        }
+
+        next_node_off += src.num_nodes;
+        next_eval_off += src.num_eval;
+        next_conn_off += (src.num_eval > 0)
+            ? data.conn_ptr[static_cast<size_t>(src.eval_off + src.num_eval - 1)]
+                + data.in_count[static_cast<size_t>(src.eval_off + src.num_eval - 1)]
+            : 0;
+        next_out_off += src.num_outputs;
+    }
+
+    had_error_ |= !memcpy_async_checked(d_descs_, reordered_descs.data(),
         n * sizeof(GpuNetDesc), cudaMemcpyHostToDevice, s, __FILE__, __LINE__);
-    had_error_ |= !memcpy_async_checked(d_node_types_, data.node_types.data(),
+    had_error_ |= !memcpy_async_checked(d_node_types_, reordered_node_types.data(),
         total_nodes * sizeof(uint8_t), cudaMemcpyHostToDevice, s, __FILE__, __LINE__);
-    had_error_ |= !memcpy_async_checked(d_eval_order_, data.eval_order.data(),
+    had_error_ |= !memcpy_async_checked(d_eval_order_, reordered_eval_order.data(),
         total_eval * sizeof(int), cudaMemcpyHostToDevice, s, __FILE__, __LINE__);
-    had_error_ |= !memcpy_async_checked(d_conn_ptr_, data.conn_ptr.data(),
+    had_error_ |= !memcpy_async_checked(d_conn_ptr_, reordered_conn_ptr.data(),
         total_eval * sizeof(int), cudaMemcpyHostToDevice, s, __FILE__, __LINE__);
-    had_error_ |= !memcpy_async_checked(d_in_count_, data.in_count.data(),
+    had_error_ |= !memcpy_async_checked(d_in_count_, reordered_in_count.data(),
         total_eval * sizeof(int), cudaMemcpyHostToDevice, s, __FILE__, __LINE__);
     if (total_conn > 0) {
-        had_error_ |= !memcpy_async_checked(d_conn_from_, data.conn_from.data(),
+        had_error_ |= !memcpy_async_checked(d_conn_from_, reordered_conn_from.data(),
             total_conn * sizeof(int), cudaMemcpyHostToDevice, s, __FILE__, __LINE__);
-        had_error_ |= !memcpy_async_checked(d_conn_w_, data.conn_w.data(),
+        had_error_ |= !memcpy_async_checked(d_conn_w_, reordered_conn_w.data(),
             total_conn * sizeof(float), cudaMemcpyHostToDevice, s, __FILE__, __LINE__);
     }
     if (total_out > 0) {
-        had_error_ |= !memcpy_async_checked(d_out_indices_, data.out_indices.data(),
+        had_error_ |= !memcpy_async_checked(d_out_indices_, reordered_out_indices.data(),
             total_out * sizeof(int), cudaMemcpyHostToDevice, s, __FILE__, __LINE__);
+    }
+
+    if (num_agents_ > inference_agent_indices_capacity_) {
+        if (d_inference_agent_indices_) {
+            cudaFree(d_inference_agent_indices_);
+            d_inference_agent_indices_ = nullptr;
+        }
+        had_error_ |= !malloc_checked(&d_inference_agent_indices_,
+            static_cast<size_t>(num_agents_) * sizeof(int), __FILE__, __LINE__);
+        if (!had_error_) {
+            inference_agent_indices_capacity_ = num_agents_;
+        }
+    }
+    if (!had_error_ && !ordered_agents.empty()) {
+        had_error_ |= !memcpy_async_checked(d_inference_agent_indices_, ordered_agents.data(),
+            static_cast<size_t>(num_agents_) * sizeof(int), cudaMemcpyHostToDevice, s, __FILE__, __LINE__);
     }
 
     // Ensure upload completes before first inference tick
     had_error_ |= !check_cuda(cudaStreamSynchronize(s), __FILE__, __LINE__);
+    if (!had_error_) {
+        invalidate_resident_graph();
+    }
 }
 
 // ── Per-tick I/O ─────────────────────────────────────────────────────────────
@@ -251,35 +532,28 @@ void GpuBatch::upload_agent_states_async(const GpuAgentState* agents, int agent_
     had_error_ |= !memcpy_async_checked(d_agent_states_, agents,
         static_cast<size_t>(agent_count) * sizeof(GpuAgentState), cudaMemcpyHostToDevice,
         s, __FILE__, __LINE__);
+    invalidate_resident_graph();
 }
 
 void GpuBatch::upload_tick_state_async(
     const GpuAgentState* agents,
     int agent_count,
+    const GpuFoodState* food,
+    int food_count,
     int agent_cols,
     int agent_rows,
     float agent_cell_size,
-    const int* agent_cell_offsets,
-    int agent_cell_count,
-    const GpuGridEntry* agent_entries,
-    int agent_entry_count,
     int food_cols,
     int food_rows,
-    float food_cell_size,
-    const int* food_cell_offsets,
-    int food_cell_count,
-    const GpuGridEntry* food_entries,
-    int food_entry_count) {
+    float food_cell_size) {
     if (had_error_) {
         return;
     }
     if (agent_count != num_agents_ || agents == nullptr
+        || food_count < 0 || (food_count > 0 && food == nullptr)
         || agent_cols <= 0 || agent_rows <= 0 || agent_cell_size <= 0.0f
-        || agent_cell_count <= 0 || agent_cell_offsets == nullptr
-        || agent_entry_count < 0 || (agent_entry_count > 0 && agent_entries == nullptr)
         || food_cols <= 0 || food_rows <= 0 || food_cell_size <= 0.0f
-        || food_cell_count <= 0 || food_cell_offsets == nullptr
-        || food_entry_count < 0 || (food_entry_count > 0 && food_entries == nullptr)) {
+        ) {
         had_error_ = true;
         return;
     }
@@ -313,61 +587,92 @@ void GpuBatch::upload_tick_state_async(
         }
     };
 
-    realloc_if_needed(&d_agent_cell_offsets_, agent_cell_count, agent_cell_capacity_, sizeof(int));
-    realloc_if_needed(&d_agent_grid_entries_, agent_entry_count, agent_entry_capacity_, sizeof(GpuGridEntry));
-    realloc_if_needed(&d_food_cell_offsets_, food_cell_count, food_cell_capacity_, sizeof(int));
-    realloc_if_needed(&d_food_grid_entries_, food_entry_count, food_entry_capacity_, sizeof(GpuGridEntry));
     int agent_cell_bins = 0;
     int food_cell_bins = 0;
-    int agent_bin_ids_capacity = 0;
-    int food_bin_ids_capacity = 0;
     if (!checked_product(agent_cols, agent_rows, &agent_cell_bins)
-        || !checked_product(food_cols, food_rows, &food_cell_bins)
-        || !checked_product(agent_cell_bins, num_agents_, &agent_bin_ids_capacity)
-        || !checked_product(food_cell_bins, food_entry_count > 0 ? food_entry_count : 1,
-                            &food_bin_ids_capacity)) {
+        || !checked_product(food_cols, food_rows, &food_cell_bins)) {
         return;
     }
 
+    realloc_if_needed(&d_agent_cell_offsets_, agent_cell_bins + 1, agent_cell_capacity_, sizeof(int));
+    realloc_if_needed(&d_food_cell_offsets_, food_cell_bins + 1, food_cell_capacity_, sizeof(int));
     realloc_if_needed(&d_agent_cell_counts_, agent_cell_bins, agent_bin_capacity_, sizeof(int));
     realloc_if_needed(&d_food_cell_counts_, food_cell_bins, food_bin_capacity_, sizeof(int));
-    realloc_if_needed(&d_agent_cell_ids_, agent_bin_ids_capacity, agent_bin_ids_capacity_, sizeof(unsigned int));
-    realloc_if_needed(&d_food_cell_ids_, food_bin_ids_capacity, food_bin_ids_capacity_, sizeof(unsigned int));
+    realloc_if_needed(&d_agent_cell_write_counts_, agent_cell_bins, agent_write_capacity_, sizeof(int));
+    realloc_if_needed(&d_food_cell_write_counts_, food_cell_bins, food_write_capacity_, sizeof(int));
+    realloc_if_needed(&d_agent_cell_ids_, num_agents_, agent_bin_ids_capacity_, sizeof(unsigned int));
+    realloc_if_needed(&d_food_cell_ids_, food_count > 0 ? food_count : 1, food_bin_ids_capacity_, sizeof(unsigned int));
     if (had_error_) {
         return;
     }
 
     cudaStream_t s = static_cast<cudaStream_t>(stream_);
+    size_t agent_scan_bytes = 0;
+    size_t food_scan_bytes = 0;
+    CUDA_CHECK(cub::DeviceScan::InclusiveSum(nullptr, agent_scan_bytes,
+        d_agent_cell_counts_, d_agent_cell_offsets_ + 1, agent_cell_bins, s));
+    CUDA_CHECK(cub::DeviceScan::InclusiveSum(nullptr, food_scan_bytes,
+        d_food_cell_counts_, d_food_cell_offsets_ + 1, food_cell_bins, s));
+    agent_scan_temp_bytes_ = agent_scan_bytes;
+    food_scan_temp_bytes_ = food_scan_bytes;
+    if (!ensure_scan_temp_storage(std::max(agent_scan_bytes, food_scan_bytes))) {
+        return;
+    }
+
+    if (food_count > food_capacity_) {
+        if (d_food_states_) cudaFree(d_food_states_);
+        if (d_food_pos_x_) cudaFree(d_food_pos_x_);
+        if (d_food_pos_y_) cudaFree(d_food_pos_y_);
+        if (d_food_active_) cudaFree(d_food_active_);
+        d_food_states_ = nullptr;
+        d_food_pos_x_ = nullptr;
+        d_food_pos_y_ = nullptr;
+        d_food_active_ = nullptr;
+        had_error_ |= !malloc_checked(&d_food_states_, static_cast<size_t>(food_count) * sizeof(GpuFoodState), __FILE__, __LINE__);
+        had_error_ |= !malloc_checked(&d_food_pos_x_, static_cast<size_t>(food_count) * sizeof(float), __FILE__, __LINE__);
+        had_error_ |= !malloc_checked(&d_food_pos_y_, static_cast<size_t>(food_count) * sizeof(float), __FILE__, __LINE__);
+        had_error_ |= !malloc_checked(&d_food_active_, static_cast<size_t>(food_count) * sizeof(unsigned int), __FILE__, __LINE__);
+        food_capacity_ = had_error_ ? 0 : food_count;
+    }
+    if (had_error_) {
+        return;
+    }
+
     had_error_ |= !memcpy_async_checked(d_agent_states_, agents,
         static_cast<size_t>(agent_count) * sizeof(GpuAgentState), cudaMemcpyHostToDevice,
         s, __FILE__, __LINE__);
-    had_error_ |= !memcpy_async_checked(d_agent_cell_offsets_, agent_cell_offsets,
-        static_cast<size_t>(agent_cell_count) * sizeof(int), cudaMemcpyHostToDevice,
-        s, __FILE__, __LINE__);
-    if (agent_entry_count > 0) {
-        had_error_ |= !memcpy_async_checked(d_agent_grid_entries_, agent_entries,
-            static_cast<size_t>(agent_entry_count) * sizeof(GpuGridEntry), cudaMemcpyHostToDevice,
+    const int block_size = 256;
+    const int grid_size = (agent_count + block_size - 1) / block_size;
+    unpack_agent_states_kernel<<<grid_size, block_size, 0, s>>>(
+        d_agent_states_,
+        d_agent_pos_x_, d_agent_pos_y_, d_agent_vel_x_, d_agent_vel_y_,
+        d_agent_speed_, d_agent_vision_, d_agent_energy_, d_agent_distance_traveled_,
+        d_agent_age_, d_agent_kills_, d_agent_food_eaten_,
+        d_agent_ids_, d_agent_types_, d_agent_alive_,
+        agent_count);
+    had_error_ |= !check_cuda(cudaGetLastError(), __FILE__, __LINE__);
+    if (food_count > 0) {
+        had_error_ |= !memcpy_async_checked(d_food_states_, food,
+            static_cast<size_t>(food_count) * sizeof(GpuFoodState), cudaMemcpyHostToDevice,
             s, __FILE__, __LINE__);
-    }
-    had_error_ |= !memcpy_async_checked(d_food_cell_offsets_, food_cell_offsets,
-        static_cast<size_t>(food_cell_count) * sizeof(int), cudaMemcpyHostToDevice,
-        s, __FILE__, __LINE__);
-    if (food_entry_count > 0) {
-        had_error_ |= !memcpy_async_checked(d_food_grid_entries_, food_entries,
-            static_cast<size_t>(food_entry_count) * sizeof(GpuGridEntry), cudaMemcpyHostToDevice,
-            s, __FILE__, __LINE__);
+        const int food_grid_size = (food_count + block_size - 1) / block_size;
+        unpack_food_states_kernel<<<food_grid_size, block_size, 0, s>>>(
+            d_food_states_, d_food_pos_x_, d_food_pos_y_, d_food_active_, food_count);
+        had_error_ |= !check_cuda(cudaGetLastError(), __FILE__, __LINE__);
     }
 
-    agent_cell_count_ = agent_cell_count;
-    agent_grid_entry_count_ = agent_entry_count;
-    food_cell_count_ = food_cell_count;
-    food_grid_entry_count_ = food_entry_count;
+    agent_cell_count_ = agent_cell_bins;
+    agent_grid_entry_count_ = agent_count;
+    food_cell_count_ = food_cell_bins;
+    food_grid_entry_count_ = food_count;
     agent_cols_ = agent_cols;
     agent_rows_ = agent_rows;
     agent_cell_size_ = agent_cell_size;
     food_cols_ = food_cols;
     food_rows_ = food_rows;
     food_cell_size_ = food_cell_size;
+    food_count_ = food_count;
+    invalidate_resident_graph();
 }
 
 void GpuBatch::launch_sensor_build_async(float world_width, float world_height,
@@ -391,6 +696,22 @@ void GpuBatch::upload_resident_food_states_async(const GpuFoodState* food, int f
             cudaFree(d_food_states_);
             d_food_states_ = nullptr;
         }
+        if (d_food_pos_x_) {
+            cudaFree(d_food_pos_x_);
+            d_food_pos_x_ = nullptr;
+        }
+        if (d_food_pos_y_) {
+            cudaFree(d_food_pos_y_);
+            d_food_pos_y_ = nullptr;
+        }
+        if (d_food_active_) {
+            cudaFree(d_food_active_);
+            d_food_active_ = nullptr;
+        }
+        if (d_food_cell_ids_) {
+            cudaFree(d_food_cell_ids_);
+            d_food_cell_ids_ = nullptr;
+        }
         if (!malloc_checked(&d_food_states_, static_cast<size_t>(food_count) * sizeof(GpuFoodState),
                             __FILE__, __LINE__)) {
             had_error_ = true;
@@ -398,14 +719,29 @@ void GpuBatch::upload_resident_food_states_async(const GpuFoodState* food, int f
             return;
         }
         food_capacity_ = food_count;
+        if (food_count > 0) {
+            had_error_ |= !malloc_checked(&d_food_pos_x_, static_cast<size_t>(food_count) * sizeof(float), __FILE__, __LINE__);
+            had_error_ |= !malloc_checked(&d_food_pos_y_, static_cast<size_t>(food_count) * sizeof(float), __FILE__, __LINE__);
+            had_error_ |= !malloc_checked(&d_food_active_, static_cast<size_t>(food_count) * sizeof(unsigned int), __FILE__, __LINE__);
+            had_error_ |= !malloc_checked(&d_food_cell_ids_, static_cast<size_t>(food_count) * sizeof(unsigned int), __FILE__, __LINE__);
+            if (!had_error_) {
+                food_bin_ids_capacity_ = food_count;
+            }
+        }
     }
     cudaStream_t s = static_cast<cudaStream_t>(stream_);
     if (food_count > 0) {
         had_error_ |= !memcpy_async_checked(d_food_states_, food,
             static_cast<size_t>(food_count) * sizeof(GpuFoodState), cudaMemcpyHostToDevice,
             s, __FILE__, __LINE__);
+        const int block_size = 256;
+        const int grid_size = (food_count + block_size - 1) / block_size;
+        unpack_food_states_kernel<<<grid_size, block_size, 0, s>>>(
+            d_food_states_, d_food_pos_x_, d_food_pos_y_, d_food_active_, food_count);
+        had_error_ |= !check_cuda(cudaGetLastError(), __FILE__, __LINE__);
     }
     food_count_ = food_count;
+    invalidate_resident_graph();
 }
 
 void GpuBatch::launch_resident_sensor_build_async(float world_width, float world_height,
@@ -416,12 +752,57 @@ void GpuBatch::launch_resident_sensor_build_async(float world_width, float world
     batch_build_sensors_resident(*this, world_width, world_height, max_energy, has_walls);
 }
 
-void GpuBatch::launch_resident_tick_async(float dt, float world_width, float world_height,
-                                          bool has_walls, float energy_drain_per_tick,
-                                          int target_fps, float food_pickup_range,
-                                          float attack_range, float energy_gain_from_food,
-                                          float energy_gain_from_kill, float food_respawn_rate,
-                                          std::uint64_t seed, int tick_index) {
+void GpuBatch::prepare_resident_tick_graph(const ResidentTickParams& params) {
+    if (had_error_) {
+        return;
+    }
+    if (resident_graph_valid_
+        && resident_tick_params_.dt == params.dt
+        && resident_tick_params_.world_width == params.world_width
+        && resident_tick_params_.world_height == params.world_height
+        && resident_tick_params_.has_walls == params.has_walls
+        && resident_tick_params_.energy_drain_per_tick == params.energy_drain_per_tick
+        && resident_tick_params_.target_fps == params.target_fps
+        && resident_tick_params_.food_pickup_range == params.food_pickup_range
+        && resident_tick_params_.attack_range == params.attack_range
+        && resident_tick_params_.max_energy == params.max_energy
+        && resident_tick_params_.energy_gain_from_food == params.energy_gain_from_food
+        && resident_tick_params_.energy_gain_from_kill == params.energy_gain_from_kill
+        && resident_tick_params_.food_respawn_rate == params.food_respawn_rate
+        && resident_tick_params_.seed == params.seed) {
+        return;
+    }
+    invalidate_resident_graph();
+    resident_tick_params_ = params;
+    batch_prepare_resident_tick_graph(*this, params);
+}
+
+void GpuBatch::launch_resident_inference_tick_async(float dt, float world_width, float world_height,
+                                                    bool has_walls, float energy_drain_per_tick,
+                                                    int target_fps, float food_pickup_range,
+                                                    float attack_range, float max_energy,
+                                                    float energy_gain_from_food,
+                                                    float energy_gain_from_kill, float food_respawn_rate,
+                                                    std::uint64_t seed, int tick_index) {
+    if (had_error_) {
+        return;
+    }
+    ResidentTickParams params{
+        dt,
+        world_width,
+        world_height,
+        has_walls,
+        energy_drain_per_tick,
+        target_fps,
+        food_pickup_range,
+        attack_range,
+        max_energy,
+        energy_gain_from_food,
+        energy_gain_from_kill,
+        food_respawn_rate,
+        seed,
+    };
+    prepare_resident_tick_graph(params);
     if (had_error_) {
         return;
     }
@@ -434,6 +815,16 @@ void GpuBatch::launch_resident_tick_async(float dt, float world_width, float wor
 void GpuBatch::download_agent_states(std::vector<GpuAgentState>& agents) {
     agents.resize(static_cast<size_t>(num_agents_));
     cudaStream_t s = static_cast<cudaStream_t>(stream_);
+    const int block_size = 256;
+    const int grid_size = (num_agents_ + block_size - 1) / block_size;
+    pack_agent_states_kernel<<<grid_size, block_size, 0, s>>>(
+        d_agent_states_,
+        d_agent_pos_x_, d_agent_pos_y_, d_agent_vel_x_, d_agent_vel_y_,
+        d_agent_speed_, d_agent_vision_, d_agent_energy_, d_agent_distance_traveled_,
+        d_agent_age_, d_agent_kills_, d_agent_food_eaten_,
+        d_agent_ids_, d_agent_types_, d_agent_alive_,
+        num_agents_);
+    had_error_ |= !check_cuda(cudaGetLastError(), __FILE__, __LINE__);
     had_error_ |= !check_cuda(cudaStreamSynchronize(s), __FILE__, __LINE__);
     if (had_error_) {
         return;
@@ -446,6 +837,13 @@ void GpuBatch::download_agent_states(std::vector<GpuAgentState>& agents) {
 void GpuBatch::download_food_states(std::vector<GpuFoodState>& food) {
     food.resize(static_cast<size_t>(food_count_));
     cudaStream_t s = static_cast<cudaStream_t>(stream_);
+    if (food_count_ > 0) {
+        const int block_size = 256;
+        const int grid_size = (food_count_ + block_size - 1) / block_size;
+        pack_food_states_kernel<<<grid_size, block_size, 0, s>>>(
+            d_food_states_, d_food_pos_x_, d_food_pos_y_, d_food_active_, food_count_);
+        had_error_ |= !check_cuda(cudaGetLastError(), __FILE__, __LINE__);
+    }
     had_error_ |= !check_cuda(cudaStreamSynchronize(s), __FILE__, __LINE__);
     if (had_error_) {
         return;

@@ -53,17 +53,6 @@ std::vector<moonai::gpu::GpuAgentState> build_gpu_agent_states(
     return states;
 }
 
-void build_gpu_grid_data(const moonai::SpatialGrid& grid,
-                         std::vector<int>& cell_offsets,
-                         std::vector<moonai::gpu::GpuGridEntry>& entries) {
-    std::vector<moonai::SpatialGrid::FlatEntry> flat_entries;
-    grid.flatten(cell_offsets, flat_entries);
-    entries.resize(flat_entries.size());
-    for (size_t i = 0; i < flat_entries.size(); ++i) {
-        entries[i] = moonai::gpu::GpuGridEntry{flat_entries[i].id, flat_entries[i].x, flat_entries[i].y};
-    }
-}
-
 std::vector<moonai::gpu::GpuFoodState> build_gpu_food_states(const moonai::SimulationManager& sim) {
     const auto& food = sim.environment().food();
     std::vector<moonai::gpu::GpuFoodState> states(food.size());
@@ -322,29 +311,18 @@ bool EvolutionManager::infer_actions_gpu(const SimulationManager& sim, std::vect
     {
         MOONAI_PROFILE_SCOPE(ProfileEvent::GpuSensorFlatten);
         auto agent_states = build_gpu_agent_states(sim, agent_count);
-        std::vector<int> agent_cell_offsets;
-        std::vector<moonai::gpu::GpuGridEntry> agent_entries;
-        std::vector<int> food_cell_offsets;
-        std::vector<moonai::gpu::GpuGridEntry> food_entries;
-        build_gpu_grid_data(sim.spatial_grid(), agent_cell_offsets, agent_entries);
-        build_gpu_grid_data(sim.food_grid(), food_cell_offsets, food_entries);
+        auto food_states = build_gpu_food_states(sim);
         gpu_batch_->upload_tick_state_async(
             agent_states.data(),
             agent_count,
+            food_states.data(),
+            static_cast<int>(food_states.size()),
             sim.spatial_grid().cols(),
             sim.spatial_grid().rows(),
             sim.spatial_grid().cell_size(),
-            agent_cell_offsets.data(),
-            static_cast<int>(agent_cell_offsets.size()),
-            agent_entries.data(),
-            static_cast<int>(agent_entries.size()),
             sim.food_grid().cols(),
             sim.food_grid().rows(),
-            sim.food_grid().cell_size(),
-            food_cell_offsets.data(),
-            static_cast<int>(food_cell_offsets.size()),
-            food_entries.data(),
-            static_cast<int>(food_entries.size()));
+            sim.food_grid().cell_size());
         gpu_batch_->launch_sensor_build_async(
             static_cast<float>(config_.grid_width),
             static_cast<float>(config_.grid_height),
@@ -407,44 +385,37 @@ void EvolutionManager::evaluate_generation(SimulationManager& sim) {
         if (!tick_callback_ && !config_.tick_log_enabled) {
             auto agent_states = build_gpu_agent_states(sim, agent_count);
             auto food_states = build_gpu_food_states(sim);
-            std::vector<int> agent_cell_offsets;
-            std::vector<moonai::gpu::GpuGridEntry> agent_entries;
-            std::vector<int> food_cell_offsets;
-            std::vector<moonai::gpu::GpuGridEntry> food_entries;
-            build_gpu_grid_data(sim.spatial_grid(), agent_cell_offsets, agent_entries);
-            build_gpu_grid_data(sim.food_grid(), food_cell_offsets, food_entries);
             gpu_batch_->upload_tick_state_async(
                 agent_states.data(),
                 agent_count,
+                food_states.data(),
+                static_cast<int>(food_states.size()),
                 sim.spatial_grid().cols(),
                 sim.spatial_grid().rows(),
                 sim.spatial_grid().cell_size(),
-                agent_cell_offsets.data(),
-                static_cast<int>(agent_cell_offsets.size()),
-                agent_entries.data(),
-                static_cast<int>(agent_entries.size()),
                 sim.food_grid().cols(),
                 sim.food_grid().rows(),
-                sim.food_grid().cell_size(),
-                food_cell_offsets.data(),
-                static_cast<int>(food_cell_offsets.size()),
-                food_entries.data(),
-                static_cast<int>(food_entries.size()));
-            gpu_batch_->upload_resident_food_states_async(food_states.data(), static_cast<int>(food_states.size()));
+                sim.food_grid().cell_size());
+            gpu_batch_->prepare_resident_tick_graph({
+                dt,
+                static_cast<float>(config_.grid_width),
+                static_cast<float>(config_.grid_height),
+                config_.boundary_mode == BoundaryMode::Clamp,
+                config_.energy_drain_per_tick,
+                config_.target_fps,
+                config_.food_pickup_range,
+                config_.attack_range,
+                config_.initial_energy,
+                config_.energy_gain_from_food,
+                config_.energy_gain_from_kill,
+                config_.food_respawn_rate,
+                config_.seed,
+            });
 
             for (int tick = 0; tick < config_.generation_ticks; ++tick) {
                 {
-                    MOONAI_PROFILE_SCOPE(ProfileEvent::GpuResidentSensorBuild);
-                    gpu_batch_->launch_resident_sensor_build_async(
-                        static_cast<float>(config_.grid_width),
-                        static_cast<float>(config_.grid_height),
-                        config_.initial_energy,
-                        config_.boundary_mode == BoundaryMode::Clamp);
-                }
-                {
                     MOONAI_PROFILE_SCOPE(ProfileEvent::GpuResidentTick);
-                    gpu_batch_->launch_inference_async();
-                    gpu_batch_->launch_resident_tick_async(
+                    gpu_batch_->launch_resident_inference_tick_async(
                         dt,
                         static_cast<float>(config_.grid_width),
                         static_cast<float>(config_.grid_height),
@@ -453,6 +424,7 @@ void EvolutionManager::evaluate_generation(SimulationManager& sim) {
                         config_.target_fps,
                         config_.food_pickup_range,
                         config_.attack_range,
+                        config_.initial_energy,
                         config_.energy_gain_from_food,
                         config_.energy_gain_from_kill,
                         config_.food_respawn_rate,
