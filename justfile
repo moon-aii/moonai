@@ -205,10 +205,12 @@ gpu-bench:
 clean:
     rm -rf build/
 
-# Remove build and output directories
+# Remove build, output, and all generated report artifacts
 [group('clean')]
 clean-all: clean
     rm -rf output/
+    rm -rf analysis/output/
+    rm -rf profiler/output/
 
 # ─── Development ────────────────────────────────────────────────────────────
 
