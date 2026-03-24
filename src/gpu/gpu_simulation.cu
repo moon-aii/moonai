@@ -396,11 +396,9 @@ void rebuild_agent_bins(GpuBatch& batch, cudaStream_t stream, AgentBinMode mode)
             batch.d_agent_cell_counts());
     }
 
-    CUDA_CHECK(cudaMemsetAsync(batch.d_agent_cell_offsets(), 0, sizeof(int), stream));
-
     size_t agent_scan_bytes = batch.agent_scan_temp_bytes();
-    CUDA_CHECK(cub::DeviceScan::InclusiveSum(batch.d_scan_temp_storage(), agent_scan_bytes,
-        batch.d_agent_cell_counts(), batch.d_agent_cell_offsets() + 1, batch.agent_cell_count(), stream));
+    CUDA_CHECK(cub::DeviceScan::ExclusiveSum(batch.d_scan_temp_storage(), agent_scan_bytes,
+        batch.d_agent_cell_counts(), batch.d_agent_cell_offsets(), batch.agent_cell_count(), stream));
 
     CUDA_CHECK(cudaMemsetAsync(batch.d_agent_cell_write_counts(), 0, agent_cell_bytes, stream));
 
@@ -428,11 +426,9 @@ void rebuild_food_bins(GpuBatch& batch, cudaStream_t stream) {
         batch.food_count(), batch.food_cols(), batch.food_rows(), batch.food_cell_size(),
         batch.d_food_cell_counts());
 
-    CUDA_CHECK(cudaMemsetAsync(batch.d_food_cell_offsets(), 0, sizeof(int), stream));
-
     size_t food_scan_bytes = batch.food_scan_temp_bytes();
-    CUDA_CHECK(cub::DeviceScan::InclusiveSum(batch.d_scan_temp_storage(), food_scan_bytes,
-        batch.d_food_cell_counts(), batch.d_food_cell_offsets() + 1, batch.food_cell_count(), stream));
+    CUDA_CHECK(cub::DeviceScan::ExclusiveSum(batch.d_scan_temp_storage(), food_scan_bytes,
+        batch.d_food_cell_counts(), batch.d_food_cell_offsets(), batch.food_cell_count(), stream));
 
     CUDA_CHECK(cudaMemsetAsync(batch.d_food_cell_write_counts(), 0, food_cell_bytes, stream));
     scatter_food_kernel<<<food_grid, kBlockSize, 0, stream>>>(
