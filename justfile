@@ -3,7 +3,7 @@
 # Run `just --list` to see all available recipes.
 
 # Default recipe: build debug
-default: build
+default: run-release
 
 # ─── Configuration ──────────────────────────────────────────────────────────
 
@@ -68,6 +68,11 @@ release:
 [group('run')]
 run: build
     {{build-dir}}/moonai config.lua --experiment default
+
+# Run the release build with default config
+[group('run')]
+run-release: release
+    ./build/linux-release/moonai config.lua --experiment default
 
 # Run with a custom config file
 [group('run')]
@@ -194,39 +199,42 @@ profile: release
     ./build/linux-release/moonai_profiler profiler.lua \
         --suite baseline
 
-# Run Nsight Compute on the hottest GPU kernel with CLI output only
+# Run Nsight Compute on the hottest GPU kernel with CLI output only (requires sudo for GPU perf counters)
 [group('gpu')]
 ncu: release
-    ncu \
+    sudo ncu \
         --target-processes all \
         --kernel-name "regex:.*sensor_build_kernel.*" \
         --launch-skip 0 \
         --launch-count 1 \
         --set basic \
-        ./build/linux-release/moonai_profiler profiler.lua --suite baseline
+        ./build/linux-release/moonai config.lua --experiment baseline_seed42 --headless -g 1 --name nsight-baseline
+    @echo "Note: Output files may be owned by root. Run: sudo chown -R $(whoami):$(whoami) output/nsight-baseline*"
 
-# Run a deeper Nsight Compute pass on the hottest GPU kernel
+# Run a deeper Nsight Compute pass on the hottest GPU kernel (requires sudo for GPU perf counters)
 [group('gpu')]
 ncu-full: release
-    ncu \
+    sudo ncu \
         --target-processes all \
         --kernel-name "regex:.*sensor_build_kernel.*" \
         --launch-skip 0 \
         --launch-count 1 \
         --set full \
-        ./build/linux-release/moonai_profiler profiler.lua --suite baseline
+        ./build/linux-release/moonai config.lua --experiment baseline_seed42 --headless -g 1 --name nsight-baseline
+    @echo "Note: Output files may be owned by root. Run: sudo chown -R $(whoami):$(whoami) output/nsight-baseline*"
 
-# Run Nsight Systems for one profiler suite and print CLI stats
+# Run Nsight Systems for one profiler suite and print CLI stats (requires sudo for GPU perf counters)
 [group('gpu')]
 nsys: release
     mkdir -p output/nsight
-    nsys profile \
+    sudo nsys profile \
         --trace=cuda,nvtx,osrt \
         --sample=none \
         --stats=true \
         --force-overwrite=true \
         --output=output/nsight/nsys-baseline \
-        ./build/linux-release/moonai_profiler profiler.lua --suite baseline
+        ./build/linux-release/moonai config.lua --experiment baseline_seed42 --headless -g 1 --name nsight-baseline
+    @echo "Note: Output files may be owned by root. Run: sudo chown -R $(whoami):$(whoami) output/nsight*"
 
 # Full profiler pipeline: run profiler -> generate profiler report
 [group('dev')]
