@@ -93,34 +93,45 @@ def _render_cross_run_generation_lines(suites: list[ProfileSuite]) -> Chart:
     fig, ax = plt.subplots(figsize=(11, 5.4))
     has_data = False
     for suite in suites:
-        for member in suite.members:
-            if not member.generation_times_ms:
-                continue
-            has_data = True
-            generations = list(range(len(member.generation_times_ms)))
-            color = "#355070" if member.disposition == "kept" else "#c97b63"
-            alpha = 0.95 if member.disposition == "kept" else 0.55
-            label = f"{suite.label} seed {member.seed}"
-            ax.plot(
-                generations,
-                member.generation_times_ms,
-                label=label,
-                color=color,
-                alpha=alpha,
-                linewidth=1.5,
-            )
+        members = [
+            member for member in suite.kept_members if member.generation_times_ms
+        ]
+        if not members:
+            members = [member for member in suite.members if member.generation_times_ms]
+        if not members:
+            continue
+
+        generation_count = min(len(member.generation_times_ms) for member in members)
+        if generation_count == 0:
+            continue
+
+        averaged_generation_times = [
+            sum(member.generation_times_ms[index] for member in members) / len(members)
+            for index in range(generation_count)
+        ]
+
+        has_data = True
+        generations = list(range(generation_count))
+        ax.plot(
+            generations,
+            averaged_generation_times,
+            label=suite.label,
+            color="#355070",
+            alpha=0.95,
+            linewidth=1.8,
+        )
 
     if has_data:
         ax.legend(fontsize=7, ncol=2, loc="upper right")
     ax.set_xlabel("Generation")
     ax.set_ylabel("Generation time (ms)")
-    ax.set_title("Per-Run Generation Time Lines")
+    ax.set_title("Per-Suite Generation Time Lines")
     ax.grid(alpha=0.25)
     fig.tight_layout()
     return Chart(
-        title="Per-Run Generation Lines",
+        title="Per-Suite Generation Lines",
         image_uri=_figure_to_data_uri(fig),
-        caption="Each line is one raw suite member. Dropped runs are shown with lighter lines.",
+        caption="Each line is the per-generation mean across suite seeds, using kept runs when available.",
     )
 
 
