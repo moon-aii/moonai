@@ -7,6 +7,10 @@
 #include <algorithm>
 #include <chrono>
 
+#ifdef MOONAI_OPENMP_ENABLED
+#include <omp.h>
+#endif
+
 namespace moonai {
 
 SimulationManager::SimulationManager(const SimulationConfig& config)
@@ -125,6 +129,7 @@ SensorInput SimulationManager::get_sensors(size_t agent_index) const {
 }
 
 void SimulationManager::write_sensors_flat(float* dst, size_t agent_count) const {
+    #pragma omp parallel for schedule(dynamic) if(MOONAI_OPENMP_ENABLED)
     for (size_t i = 0; i < agent_count; ++i) {
         get_sensors(i).write_to(dst + i * SensorInput::SIZE);
     }

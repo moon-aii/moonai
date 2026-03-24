@@ -256,6 +256,8 @@ experiments["adaptive"] = extend(moonai_defaults, {
 | `--list` | List experiment names and exit |
 | `--name <name>` | Override output directory name |
 | `--validate` | Load + validate config, print result, exit |
+| `--profile` | Enable built-in headless profiler |
+| `--profile-output <dir>` | Override profiler output root directory |
 | `--set key=value` | Override any param after Lua load (repeatable) |
 
 ### Examples
@@ -309,8 +311,9 @@ just run-experiment baseline_seed42
 
 **4. Set up Python and generate analysis**
 ```bash
-just setup-python           # installs Python analysis dependencies via uv
+just setup-python           # installs simulation + profiler analysis dependencies via uv
 just analyse                # reads output/, writes a self-contained HTML report
+just analyse-profile        # reads output/profiles/, writes a profiler HTML report
 ```
 
 ### Analysis
@@ -347,6 +350,44 @@ The analysis code is structured as a small package under `analysis/moonai_analys
 - `summary.py` prepares structured summary data for the report
 - `html_report.py` renders the final self-contained HTML document
 - `templates/report.html.j2` defines the HTML report layout
+
+### Profiler output and analysis
+
+The built-in profiler is intentionally **headless-only**. Use `--headless --profile` so generation timing is not polluted by rendering, pause time, or GUI event handling.
+
+```bash
+just profile
+```
+
+Each profiled run now writes to its own timestamped directory under `output/profiles/` by default and produces a single raw artifact:
+
+| File | Contents |
+|------|----------|
+| `profile.json` | Full profiler payload: run metadata, event/counter definitions, per-generation records, and summary statistics |
+
+`profile.json` is the single source of truth for profiler data. The old split CSV + JSON profiler output is gone. Summary fields use `nonzero_generation_count` and `avg_*_per_nonzero_generation` for optional paths so zero-valued generations are not mislabeled as active executions.
+
+To generate the standalone profiler report:
+
+```bash
+just analyse-profile
+```
+
+Internally this runs the packaged profiler analysis entry point from `profiler_analysis/`:
+
+```bash
+cd profiler_analysis && uv run moonai-profile-analysis
+```
+
+The profiler analysis writes a timestamped self-contained HTML report to `profiler_analysis/output/`, for example `profile_report_20260324_154233.html`.
+
+The profiler analysis package lives under `profiler_analysis/moonai_profile_analysis/` and includes:
+
+- `pipeline.py` for orchestration
+- `io.py` for discovering and validating `profile.json` runs
+- `plots.py` for embedded timing charts
+- `html_report.py` for rendering
+- `templates/report.html.j2` for layout
 
 ### Experiment conditions
 
@@ -492,8 +533,14 @@ just lint
 # Benchmark NN forward-pass timing (requires release build)
 just bench-nn
 
-# Run the built-in profiler and write CSV/JSON timing reports
+# Run the built-in profiler and write headless profile.json output
 just profile
+
+# Generate the standalone profiler HTML report
+just analyse-profile
+
+# Run profiler and then build the profiler report
+just profile-pipeline
 
 # Quick FPS benchmark in visual mode (requires display)
 just bench-fps
@@ -505,7 +552,7 @@ just check-memory
 just test-gpu
 ```
 
-The built-in profiler writes per-generation CSV and summary JSON reports under
+The built-in profiler writes one `profile.json` file per run under a unique directory in
 `output/profiles/` by default when invoked through `just profile`.
 
 ## Project Structure
@@ -526,7 +573,8 @@ moonai/
 │   ├── data/                   # CSV/JSON logger, metrics collector
 │   └── gpu/                    # CUDA kernels (auto-detected; disabled at runtime by --no-gpu)
 ├── tests/                      # Google Test unit tests
-├── analysis/                   # Python analysis package and generated report output
+├── analysis/                   # Python simulation analysis package and generated report output
+├── profiler_analysis/          # Python profiler analysis package and generated report output
 ├── docs/                       # Project documents (PDFs + LLD LaTeX source)
 ├── web/                        # GitHub Pages website
 └── .github/workflows/          # CI/CD pipelines

@@ -124,8 +124,8 @@ struct CLIArgs {
     bool list_experiments = false;     // --list: list experiment names and exit
     std::string run_name = "";         // --name: override output directory name
     bool validate_only = false;        // --validate: check config and exit
-    bool profile = false;              // --profile: enable internal profiler outputs
-    std::string profile_output_dir = ""; // --profile-output: override profiling output directory
+    bool profile = false;              // --profile: enable built-in profiler (headless only)
+    std::string profile_output_dir = ""; // --profile-output: override profiler run root directory
 
     // --set key=value overrides
     std::vector<std::pair<std::string, std::string>> overrides;

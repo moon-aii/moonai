@@ -52,10 +52,11 @@ setup-ubuntu:
         nvidia-cuda-toolkit \
         python3-pandas python3-matplotlib
 
-# Set up Python environment for analysis
+# Set up Python environments for simulation and profiler analysis
 [group('setup')]
 setup-python:
     cd analysis && uv sync
+    cd profiler_analysis && uv sync
 
 # Full first-time setup
 [group('setup')]
@@ -158,6 +159,11 @@ run-experiment name: release
 analyse:
     cd analysis && uv run moonai-analysis
 
+# Generate the self-contained HTML profiler report from output/profiles/
+[group('analysis')]
+analyse-profile:
+    cd profiler_analysis && uv run moonai-profile-analysis
+
 # Full experiment pipeline: run all experiments → generate report
 [group('experiment')]
 experiment-pipeline: experiments analyse
@@ -236,6 +242,10 @@ profile: release
     ./build/linux-release/moonai config.lua \
         --experiment baseline_seed42 --headless -g 5 --profile \
         --profile-output output/profiles
+
+# Full profiler pipeline: run profiler -> generate profiler report
+[group('dev')]
+profile-pipeline: profile analyse-profile
 
 # Run visual mode briefly and capture FPS from stdout (requires display)
 [group('dev')]

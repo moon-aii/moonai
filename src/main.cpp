@@ -36,16 +36,12 @@ namespace {
     volatile std::sig_atomic_t g_running = 1;
     void signal_handler(int) { g_running = 0; }
 
-    std::string profile_output_dir_for(const moonai::CLIArgs& args,
-                                       const std::string& run_dir,
-                                       const std::string& experiment_name) {
+    std::string profile_output_root_for(const moonai::CLIArgs& args,
+                                        const std::string& run_dir) {
         if (args.profile_output_dir.empty()) {
-            return run_dir;
+            return (std::filesystem::path(run_dir) / "profile").string();
         }
-        if (experiment_name.empty()) {
-            return args.profile_output_dir;
-        }
-        return (std::filesystem::path(args.profile_output_dir) / experiment_name).string();
+        return args.profile_output_dir;
     }
 
     std::string read_file(const std::string& path) {
@@ -183,6 +179,18 @@ int main(int argc, char* argv[]) {
         spdlog::info("Build features:{}", features);
     }
 
+#ifdef MOONAI_ENABLE_CUDA
+    constexpr bool kCudaCompiled = true;
+#else
+    constexpr bool kCudaCompiled = false;
+#endif
+
+#ifdef MOONAI_OPENMP_ENABLED
+    constexpr bool kOpenmpCompiled = true;
+#else
+    constexpr bool kOpenmpCompiled = false;
+#endif
+
     // ── Load configuration from Lua ─────────────────────────────────────
     // --list and --validate use the lightweight loader (no persistent state).
     // Everything else uses LuaRuntime so Lua callbacks survive config loading.
@@ -270,13 +278,15 @@ int main(int argc, char* argv[]) {
             if (args.profile) {
                 moonai::Profiler::instance().start_run(
                     name,
-                    profile_output_dir_for(args, logger.run_dir(), name),
+                    profile_output_root_for(args, logger.run_dir()),
                     cfg.seed,
                     cfg.predator_count,
                     cfg.prey_count,
                     cfg.food_count,
                     cfg.generation_ticks,
-                    !args.no_gpu);
+                    !args.no_gpu,
+                    kCudaCompiled,
+                    kOpenmpCompiled);
             }
 
             if (cfg.tick_log_enabled) {
@@ -343,19 +353,14 @@ int main(int argc, char* argv[]) {
 
                 evolution.evolve();
                 if (args.profile) {
-                    const auto generation_end = std::chrono::steady_clock::now();
-                    moonai::Profiler::instance().set_duration(
-                        moonai::ProfileEvent::GenerationTotal,
-                        std::chrono::duration_cast<std::chrono::nanoseconds>(generation_end - generation_start).count());
                     moonai::Profiler::instance().finish_generation({
                         gen,
-                        evolution.gpu_enabled(),
-                        simulation.alive_predators(),
-                        simulation.alive_prey(),
-                        m.num_species,
-                        m.best_fitness,
-                        m.avg_fitness,
-                        m.avg_genome_complexity
+                simulation.alive_predators(),
+                simulation.alive_prey(),
+                evolution.species_count(),
+                m.best_fitness,
+                m.avg_fitness,
+                m.avg_genome_complexity
                     });
                 }
                 ++gen;
@@ -371,6 +376,7 @@ int main(int argc, char* argv[]) {
                 const auto experiment_end = std::chrono::steady_clock::now();
                 moonai::Profiler::instance().finish_run(
                     std::chrono::duration_cast<std::chrono::nanoseconds>(experiment_end - experiment_start).count());
+                spdlog::info("Profile output: {}", moonai::Profiler::instance().output_dir());
             }
         }
         spdlog::info("Batch complete: {}/{} succeeded", total - failures, total);
@@ -499,17 +505,6 @@ int main(int argc, char* argv[]) {
     logger->initialize(config);
 
     moonai::MetricsCollector metrics;
-    if (args.profile) {
-        moonai::Profiler::instance().start_run(
-            selected_experiment.empty() ? output_name : selected_experiment,
-            profile_output_dir_for(args, logger->run_dir(), selected_experiment.empty() ? output_name : selected_experiment),
-            config.seed,
-            config.predator_count,
-            config.prey_count,
-            config.food_count,
-            config.generation_ticks,
-            !args.no_gpu);
-    }
 
     bool headless = args.headless;
     // Auto-detect headless environment: if no display server is available,
@@ -520,6 +515,23 @@ int main(int argc, char* argv[]) {
         spdlog::warn("No display server found ($DISPLAY/$WAYLAND_DISPLAY unset). "
                      "Switching to headless mode automatically.");
         headless = true;
+    }
+    if (args.profile && !headless) {
+        spdlog::error("--profile requires --headless. GUI profiling is intentionally unsupported.");
+        return 1;
+    }
+    if (args.profile) {
+        moonai::Profiler::instance().start_run(
+            selected_experiment.empty() ? output_name : selected_experiment,
+            profile_output_root_for(args, logger->run_dir()),
+            config.seed,
+            config.predator_count,
+            config.prey_count,
+            config.food_count,
+            config.generation_ticks,
+            !args.no_gpu,
+            kCudaCompiled,
+            kOpenmpCompiled);
     }
     moonai::VisualizationManager visualization(config);
     bool has_multi_config = all_configs.size() > 1 && args.experiment_name.empty();
@@ -582,13 +594,15 @@ int main(int argc, char* argv[]) {
         if (args.profile) {
             moonai::Profiler::instance().start_run(
                 exp_name,
-                profile_output_dir_for(args, logger->run_dir(), exp_name),
+                profile_output_root_for(args, logger->run_dir()),
                 config.seed,
                 config.predator_count,
                 config.prey_count,
                 config.food_count,
                 config.generation_ticks,
-                !args.no_gpu);
+                !args.no_gpu,
+                kCudaCompiled,
+                kOpenmpCompiled);
             experiment_start = std::chrono::steady_clock::now();
         }
         generation = 0;
@@ -700,6 +714,8 @@ int main(int argc, char* argv[]) {
                     }
 #endif
                     if (!used_gpu) {
+                        moonai::Profiler::instance().mark_cpu_used(true);
+                        moonai::ScopedTimer cpu_eval_timer(moonai::ProfileEvent::CpuEvalTotal);
                         for (size_t i = 0; i < p_simulation->agents().size() && i < networks.size(); ++i) {
                             if (!p_simulation->agents()[i]->alive()) continue;
 
@@ -814,16 +830,11 @@ int main(int argc, char* argv[]) {
         // Evolve for next generation
         p_evolution->evolve();
         if (args.profile) {
-            const auto generation_end = std::chrono::steady_clock::now();
-            moonai::Profiler::instance().set_duration(
-                moonai::ProfileEvent::GenerationTotal,
-                std::chrono::duration_cast<std::chrono::nanoseconds>(generation_end - generation_start).count());
             moonai::Profiler::instance().finish_generation({
                 generation,
-                p_evolution->gpu_enabled(),
                 p_simulation->alive_predators(),
                 p_simulation->alive_prey(),
-                m.num_species,
+                p_evolution->species_count(),
                 m.best_fitness,
                 m.avg_fitness,
                 m.avg_genome_complexity
@@ -856,6 +867,7 @@ int main(int argc, char* argv[]) {
         const auto experiment_end = std::chrono::steady_clock::now();
         moonai::Profiler::instance().finish_run(
             std::chrono::duration_cast<std::chrono::nanoseconds>(experiment_end - experiment_start).count());
+        spdlog::info("Profile output: {}", moonai::Profiler::instance().output_dir());
     }
     return 0;
 }

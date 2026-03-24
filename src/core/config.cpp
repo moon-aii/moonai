@@ -534,8 +534,8 @@ void print_usage(const char* program_name) {
         "      --name <name>         Override output directory name\n"
         "      --set key=value       Override a config parameter (repeatable)\n"
         "      --validate            Validate config and exit\n"
-        "      --profile             Enable built-in profiling outputs (CSV + JSON)\n"
-        "      --profile-output <dir> Override profiling output directory\n"
+        "      --profile             Enable built-in profiler (headless only, single JSON output)\n"
+        "      --profile-output <dir> Override profiler output root directory\n"
         "\n"
         "  -h, --help                Show this help message\n",
         program_name

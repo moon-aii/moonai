@@ -2,6 +2,9 @@
 
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
+#include <sstream>
+#include <ctime>
 
 #include <nlohmann/json.hpp>
 
@@ -12,6 +15,142 @@ namespace {
 template<typename Enum>
 constexpr std::size_t enum_index(Enum value) {
     return static_cast<std::size_t>(value);
+}
+
+std::string sanitize_path_component(const std::string& value) {
+    std::string sanitized;
+    sanitized.reserve(value.size());
+    for (char ch : value) {
+        const bool valid = (ch >= 'a' && ch <= 'z')
+            || (ch >= 'A' && ch <= 'Z')
+            || (ch >= '0' && ch <= '9')
+            || ch == '-'
+            || ch == '_';
+        sanitized.push_back(valid ? ch : '_');
+    }
+    return sanitized.empty() ? std::string{"profile"} : sanitized;
+}
+
+std::string utc_timestamp_for_path(std::chrono::system_clock::time_point now) {
+    const auto time = std::chrono::system_clock::to_time_t(now);
+    std::tm tm{};
+#ifdef _WIN32
+    gmtime_s(&tm, &time);
+#else
+    gmtime_r(&time, &tm);
+#endif
+    std::ostringstream oss;
+    oss << std::put_time(&tm, "%Y%m%d_%H%M%S");
+    return oss.str();
+}
+
+std::string utc_timestamp_iso(std::chrono::system_clock::time_point now) {
+    const auto time = std::chrono::system_clock::to_time_t(now);
+    std::tm tm{};
+#ifdef _WIN32
+    gmtime_s(&tm, &time);
+#else
+    gmtime_r(&time, &tm);
+#endif
+    std::ostringstream oss;
+    oss << std::put_time(&tm, "%Y-%m-%dT%H:%M:%SZ");
+    return oss.str();
+}
+
+const char* profile_event_measurement(ProfileEvent event) {
+    switch (event) {
+        case ProfileEvent::GenerationTotal:
+            return "generation_wall_clock";
+        case ProfileEvent::BuildNetworks:
+        case ProfileEvent::PrepareGpuGeneration:
+        case ProfileEvent::GpuSensorFlatten:
+        case ProfileEvent::GpuPackInputs:
+        case ProfileEvent::GpuLaunch:
+        case ProfileEvent::GpuStartUnpack:
+        case ProfileEvent::GpuFinishUnpack:
+        case ProfileEvent::GpuOutputConvert:
+        case ProfileEvent::CpuEvalTotal:
+        case ProfileEvent::CpuSensorBuild:
+        case ProfileEvent::CpuNnActivate:
+        case ProfileEvent::ApplyActions:
+        case ProfileEvent::SimulationTick:
+        case ProfileEvent::RebuildSpatialGrid:
+        case ProfileEvent::RebuildFoodGrid:
+        case ProfileEvent::AgentUpdate:
+        case ProfileEvent::ProcessEnergy:
+        case ProfileEvent::ProcessFood:
+        case ProfileEvent::ProcessAttacks:
+        case ProfileEvent::BoundaryApply:
+        case ProfileEvent::DeathCheck:
+        case ProfileEvent::CountAlive:
+        case ProfileEvent::ComputeFitness:
+        case ProfileEvent::Speciate:
+        case ProfileEvent::RemoveStagnantSpecies:
+        case ProfileEvent::Reproduce:
+        case ProfileEvent::Logging:
+        case ProfileEvent::TickCallback:
+        case ProfileEvent::CompatibilityDistance:
+        case ProfileEvent::PhysicsBuildSensors:
+        case ProfileEvent::SpatialQueryRadius:
+            return "accumulated";
+        case ProfileEvent::Count:
+            return "unknown";
+    }
+    return "unknown";
+}
+
+const char* profile_event_description(ProfileEvent event) {
+    switch (event) {
+        case ProfileEvent::GenerationTotal: return "Wall-clock generation duration measured in headless mode.";
+        case ProfileEvent::BuildNetworks: return "Time spent rebuilding neural networks from genomes.";
+        case ProfileEvent::PrepareGpuGeneration: return "Time spent uploading GPU network state before a generation.";
+        case ProfileEvent::GpuSensorFlatten: return "Time spent flattening sensor inputs for GPU inference.";
+        case ProfileEvent::GpuPackInputs: return "Time spent packing flattened inputs into GPU buffers.";
+        case ProfileEvent::GpuLaunch: return "Time spent launching GPU inference kernels.";
+        case ProfileEvent::GpuStartUnpack: return "Time spent starting GPU output unpacking.";
+        case ProfileEvent::GpuFinishUnpack: return "Time spent waiting for GPU output unpacking to finish.";
+        case ProfileEvent::GpuOutputConvert: return "Time spent converting GPU outputs into agent actions.";
+        case ProfileEvent::CpuEvalTotal: return "Total CPU inference path time across a generation.";
+        case ProfileEvent::CpuSensorBuild: return "Time spent building CPU-side sensor inputs.";
+        case ProfileEvent::CpuNnActivate: return "Time spent running CPU neural network activations.";
+        case ProfileEvent::ApplyActions: return "Time spent applying movement actions to agents.";
+        case ProfileEvent::SimulationTick: return "Accumulated time spent inside simulation ticks.";
+        case ProfileEvent::RebuildSpatialGrid: return "Time spent rebuilding the agent spatial grid.";
+        case ProfileEvent::RebuildFoodGrid: return "Time spent rebuilding the food spatial grid.";
+        case ProfileEvent::AgentUpdate: return "Time spent updating agent age and per-tick state.";
+        case ProfileEvent::ProcessEnergy: return "Time spent applying per-tick energy drain.";
+        case ProfileEvent::ProcessFood: return "Time spent handling prey food pickup.";
+        case ProfileEvent::ProcessAttacks: return "Time spent handling predator attack checks.";
+        case ProfileEvent::BoundaryApply: return "Time spent applying world boundary rules.";
+        case ProfileEvent::DeathCheck: return "Time spent marking dead agents after tick processing.";
+        case ProfileEvent::CountAlive: return "Time spent recounting living predators and prey.";
+        case ProfileEvent::ComputeFitness: return "Time spent computing genome fitness values.";
+        case ProfileEvent::Speciate: return "Time spent assigning genomes to species.";
+        case ProfileEvent::RemoveStagnantSpecies: return "Time spent pruning stagnant species.";
+        case ProfileEvent::Reproduce: return "Time spent producing the next generation population.";
+        case ProfileEvent::Logging: return "Time spent writing generation logs.";
+        case ProfileEvent::TickCallback: return "Time spent executing optional tick callbacks.";
+        case ProfileEvent::CompatibilityDistance: return "Accumulated time spent in genome compatibility distance checks.";
+        case ProfileEvent::PhysicsBuildSensors: return "Accumulated time spent building sensor values per agent.";
+        case ProfileEvent::SpatialQueryRadius: return "Accumulated time spent in spatial radius queries.";
+        case ProfileEvent::Count: return "";
+    }
+    return "";
+}
+
+const char* profile_counter_description(ProfileCounter counter) {
+    switch (counter) {
+        case ProfileCounter::TicksExecuted: return "Number of simulation ticks completed.";
+        case ProfileCounter::GridQueryCalls: return "Number of spatial grid radius queries executed.";
+        case ProfileCounter::GridCandidatesScanned: return "Number of candidate entries scanned during radius queries.";
+        case ProfileCounter::FoodEatAttempts: return "Number of prey food pickup attempts.";
+        case ProfileCounter::FoodEaten: return "Number of successful food pickups.";
+        case ProfileCounter::AttackChecks: return "Number of potential attack targets considered.";
+        case ProfileCounter::Kills: return "Number of prey killed by predators.";
+        case ProfileCounter::CompatibilityChecks: return "Number of genome compatibility comparisons.";
+        case ProfileCounter::Count: return "";
+    }
+    return "";
 }
 
 } // namespace
@@ -26,23 +165,47 @@ void Profiler::set_enabled(bool enabled) {
 }
 
 void Profiler::start_run(const std::string& experiment_name,
-                         const std::string& output_dir,
+                         const std::string& output_root_dir,
                          std::uint64_t seed,
                          int predator_count,
                          int prey_count,
                          int food_count,
                          int generation_ticks,
-                         bool gpu_allowed) {
+                         bool gpu_allowed,
+                         bool cuda_compiled,
+                         bool openmp_compiled) {
+    if (!enabled()) {
+        return;
+    }
+
+    const auto now = std::chrono::system_clock::now();
     experiment_name_ = experiment_name;
-    output_dir_ = output_dir;
+    generated_at_utc_ = utc_timestamp_iso(now);
     seed_ = seed;
     predator_count_ = predator_count;
     prey_count_ = prey_count;
     food_count_ = food_count;
     generation_ticks_ = generation_ticks;
     gpu_allowed_ = gpu_allowed;
+    cuda_compiled_ = cuda_compiled;
+    openmp_compiled_ = openmp_compiled;
+    generation_cpu_used_ = false;
     generation_gpu_used_ = false;
+    generation_active_ = false;
     generation_records_.clear();
+
+    const std::filesystem::path base_path(output_root_dir);
+    const std::string run_name = utc_timestamp_for_path(now)
+        + "_"
+        + sanitize_path_component(experiment_name)
+        + "_seed"
+        + std::to_string(seed_);
+    std::filesystem::path candidate = base_path / run_name;
+    for (int suffix = 2; std::filesystem::exists(candidate); ++suffix) {
+        candidate = base_path / (run_name + "_" + std::to_string(suffix));
+    }
+    std::filesystem::create_directories(candidate);
+    output_dir_ = candidate.string();
 
     for (auto& duration : current_durations_ns_) {
         duration.store(0, std::memory_order_relaxed);
@@ -57,13 +220,23 @@ void Profiler::start_generation(int generation) {
         return;
     }
     (void)generation;
+    generation_cpu_used_ = false;
     generation_gpu_used_ = false;
+    generation_active_ = true;
+    generation_start_ = std::chrono::steady_clock::now();
     for (auto& duration : current_durations_ns_) {
         duration.store(0, std::memory_order_relaxed);
     }
     for (auto& counter : current_counters_) {
         counter.store(0, std::memory_order_relaxed);
     }
+}
+
+void Profiler::mark_cpu_used(bool used) {
+    if (!enabled() || !used) {
+        return;
+    }
+    generation_cpu_used_ = true;
 }
 
 void Profiler::mark_gpu_used(bool used) {
@@ -101,7 +274,16 @@ void Profiler::finish_generation(const GenerationProfileMeta& meta) {
 
     GenerationRecord record;
     record.meta = meta;
-    record.meta.gpu_used = generation_gpu_used_;
+    record.cpu_used = generation_cpu_used_;
+    record.gpu_used = generation_gpu_used_;
+
+    if (generation_active_) {
+        const auto generation_end = std::chrono::steady_clock::now();
+        current_durations_ns_[enum_index(ProfileEvent::GenerationTotal)].store(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(generation_end - generation_start_).count(),
+            std::memory_order_relaxed);
+        generation_active_ = false;
+    }
 
     for (std::size_t i = 0; i < record.durations_ns.size(); ++i) {
         record.durations_ns[i] = current_durations_ns_[i].load(std::memory_order_relaxed);
@@ -120,87 +302,148 @@ void Profiler::finish_run(std::int64_t run_total_ns) {
 
     std::filesystem::create_directories(output_dir_);
 
-    const auto csv_path = std::filesystem::path(output_dir_) / "profile_generations.csv";
-    std::ofstream csv(csv_path);
-    if (csv.is_open()) {
-        csv << "generation,gpu_used,predator_count,prey_count,species_count,best_fitness,avg_fitness,avg_complexity";
-        for (std::size_t i = 0; i < enum_index(ProfileEvent::Count); ++i) {
-            csv << "," << profile_event_name(static_cast<ProfileEvent>(i)) << "_ms";
-        }
-        for (std::size_t i = 0; i < enum_index(ProfileCounter::Count); ++i) {
-            csv << "," << profile_counter_name(static_cast<ProfileCounter>(i));
-        }
-        csv << "\n";
+    nlohmann::json profile;
+    profile["schema_version"] = 1;
+    profile["generated_at_utc"] = generated_at_utc_;
+    profile["run"] = {
+        {"experiment_name", experiment_name_},
+        {"output_dir", output_dir_},
+        {"seed", seed_},
+        {"predator_count", predator_count_},
+        {"prey_count", prey_count_},
+        {"food_count", food_count_},
+        {"generation_ticks", generation_ticks_},
+        {"gpu_allowed", gpu_allowed_},
+        {"headless_only", true},
+#ifdef _WIN32
+        {"platform", "windows"},
+#else
+        {"platform", "linux"},
+#endif
+        {"cuda_compiled", cuda_compiled_},
+        {"openmp_compiled", openmp_compiled_}
+    };
+    profile["notes"] = {
+        "Profiling is only supported in headless mode so generation_total is not polluted by GUI rendering or pause time.",
+        "Event durations are stored in milliseconds in both per-generation and summary sections.",
+        "Events with measurement='accumulated' sum repeated scoped timings within a generation.",
+        "Path-specific events can remain zero for generations that never execute that path.",
+        "Fields ending with nonzero_generation_count count generations where the recorded value was greater than zero.",
+        "Use nonzero_generation_count and avg_ms_per_nonzero_generation when judging optional events."
+    };
 
-        for (const auto& record : generation_records_) {
-            csv << record.meta.generation << ","
-                << (record.meta.gpu_used ? 1 : 0) << ","
-                << record.meta.predator_count << ","
-                << record.meta.prey_count << ","
-                << record.meta.species_count << ","
-                << record.meta.best_fitness << ","
-                << record.meta.avg_fitness << ","
-                << record.meta.avg_complexity;
-            for (const auto duration_ns : record.durations_ns) {
-                csv << "," << (static_cast<double>(duration_ns) / 1'000'000.0);
-            }
-            for (const auto counter : record.counters) {
-                csv << "," << counter;
-            }
-            csv << "\n";
-        }
+    nlohmann::json event_defs = nlohmann::json::array();
+    for (std::size_t i = 0; i < enum_index(ProfileEvent::Count); ++i) {
+        const auto event = static_cast<ProfileEvent>(i);
+        event_defs.push_back({
+            {"name", profile_event_name(event)},
+            {"unit", "ms"},
+            {"measurement", profile_event_measurement(event)},
+            {"description", profile_event_description(event)}
+        });
     }
+    profile["event_definitions"] = std::move(event_defs);
 
-    nlohmann::json summary;
-    summary["experiment_name"] = experiment_name_;
-    summary["seed"] = seed_;
-    summary["predator_count"] = predator_count_;
-    summary["prey_count"] = prey_count_;
-    summary["food_count"] = food_count_;
-    summary["generation_ticks"] = generation_ticks_;
-    summary["gpu_allowed"] = gpu_allowed_;
-    summary["generation_count"] = generation_records_.size();
-    summary["run_total_ms"] = static_cast<double>(run_total_ns) / 1'000'000.0;
+    nlohmann::json counter_defs = nlohmann::json::array();
+    for (std::size_t i = 0; i < enum_index(ProfileCounter::Count); ++i) {
+        const auto counter = static_cast<ProfileCounter>(i);
+        counter_defs.push_back({
+            {"name", profile_counter_name(counter)},
+            {"description", profile_counter_description(counter)}
+        });
+    }
+    profile["counter_definitions"] = std::move(counter_defs);
 
     std::array<std::int64_t, enum_index(ProfileEvent::Count)> total_durations{};
     std::array<std::int64_t, enum_index(ProfileCounter::Count)> total_counters{};
+    std::array<int, enum_index(ProfileEvent::Count)> active_duration_generations{};
+    std::array<int, enum_index(ProfileCounter::Count)> active_counter_generations{};
+    int cpu_generations = 0;
     int gpu_generations = 0;
+    nlohmann::json generation_rows = nlohmann::json::array();
 
     for (const auto& record : generation_records_) {
-        if (record.meta.gpu_used) {
+        if (record.cpu_used) {
+            ++cpu_generations;
+        }
+        if (record.gpu_used) {
             ++gpu_generations;
         }
+        nlohmann::json duration_row;
+        nlohmann::json counter_row;
         for (std::size_t i = 0; i < total_durations.size(); ++i) {
             total_durations[i] += record.durations_ns[i];
+            if (record.durations_ns[i] > 0) {
+                ++active_duration_generations[i];
+            }
+            duration_row[profile_event_name(static_cast<ProfileEvent>(i))] =
+                static_cast<double>(record.durations_ns[i]) / 1'000'000.0;
         }
         for (std::size_t i = 0; i < total_counters.size(); ++i) {
             total_counters[i] += record.counters[i];
+            if (record.counters[i] > 0) {
+                ++active_counter_generations[i];
+            }
+            counter_row[profile_counter_name(static_cast<ProfileCounter>(i))] = record.counters[i];
         }
+        generation_rows.push_back({
+            {"generation", record.meta.generation},
+            {"cpu_used", record.cpu_used},
+            {"gpu_used", record.gpu_used},
+            {"predator_count", record.meta.predator_count},
+            {"prey_count", record.meta.prey_count},
+            {"species_count", record.meta.species_count},
+            {"best_fitness", record.meta.best_fitness},
+            {"avg_fitness", record.meta.avg_fitness},
+            {"avg_complexity", record.meta.avg_complexity},
+            {"events_ms", std::move(duration_row)},
+            {"counters", std::move(counter_row)}
+        });
     }
+    profile["generations"] = std::move(generation_rows);
 
+    nlohmann::json summary;
+    summary["generation_count"] = generation_records_.size();
+    summary["run_total_ms"] = static_cast<double>(run_total_ns) / 1'000'000.0;
+    summary["cpu_generation_count"] = cpu_generations;
     summary["gpu_generation_count"] = gpu_generations;
 
     nlohmann::json durations_json;
     for (std::size_t i = 0; i < total_durations.size(); ++i) {
+        const double total_ms = static_cast<double>(total_durations[i]) / 1'000'000.0;
+        const int active_count = active_duration_generations[i];
         durations_json[profile_event_name(static_cast<ProfileEvent>(i))] = {
-            {"total_ms", static_cast<double>(total_durations[i]) / 1'000'000.0},
+            {"total_ms", total_ms},
             {"avg_ms_per_generation", generation_records_.empty()
                 ? 0.0
-                : static_cast<double>(total_durations[i]) / 1'000'000.0 / static_cast<double>(generation_records_.size())}
+                : total_ms / static_cast<double>(generation_records_.size())},
+            {"nonzero_generation_count", active_count},
+            {"avg_ms_per_nonzero_generation", active_count == 0 ? 0.0 : total_ms / static_cast<double>(active_count)}
         };
     }
-    summary["durations"] = durations_json;
+    summary["events"] = durations_json;
 
     nlohmann::json counters_json;
     for (std::size_t i = 0; i < total_counters.size(); ++i) {
-        counters_json[profile_counter_name(static_cast<ProfileCounter>(i))] = total_counters[i];
+        const int active_count = active_counter_generations[i];
+        counters_json[profile_counter_name(static_cast<ProfileCounter>(i))] = {
+            {"total", total_counters[i]},
+            {"avg_per_generation", generation_records_.empty()
+                ? 0.0
+                : static_cast<double>(total_counters[i]) / static_cast<double>(generation_records_.size())},
+            {"nonzero_generation_count", active_count},
+            {"avg_per_nonzero_generation", active_count == 0
+                ? 0.0
+                : static_cast<double>(total_counters[i]) / static_cast<double>(active_count)}
+        };
     }
     summary["counters"] = counters_json;
+    profile["summary"] = std::move(summary);
 
-    const auto json_path = std::filesystem::path(output_dir_) / "profile_summary.json";
+    const auto json_path = std::filesystem::path(output_dir_) / "profile.json";
     std::ofstream json(json_path);
     if (json.is_open()) {
-        json << summary.dump(2) << "\n";
+        json << profile.dump(2) << "\n";
     }
 }
 
@@ -235,9 +478,9 @@ const char* profile_event_name(ProfileEvent event) {
         case ProfileEvent::Reproduce: return "reproduce";
         case ProfileEvent::Logging: return "logging";
         case ProfileEvent::TickCallback: return "tick_callback";
-        case ProfileEvent::CompatibilityDistance: return "compatibility_distance";
-        case ProfileEvent::PhysicsBuildSensors: return "physics_build_sensors";
-        case ProfileEvent::SpatialQueryRadius: return "spatial_query_radius";
+        case ProfileEvent::CompatibilityDistance: return "compatibility_distance_accumulated";
+        case ProfileEvent::PhysicsBuildSensors: return "physics_build_sensors_accumulated";
+        case ProfileEvent::SpatialQueryRadius: return "spatial_query_radius_accumulated";
         case ProfileEvent::Count: return "count";
     }
     return "unknown";

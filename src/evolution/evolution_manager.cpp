@@ -298,15 +298,8 @@ void EvolutionManager::evaluate_generation(SimulationManager& sim) {
     int last_tick = 0;
     int agent_count = static_cast<int>(std::min(sim.agents().size(), networks_.size()));
     std::vector<Vec2> actions(sim.agents().size(), {0.0f, 0.0f});
-
-    int max_threads = 1;
-#ifdef MOONAI_OPENMP_ENABLED
-    max_threads = omp_get_max_threads();
-#endif
-    std::vector<std::vector<float>> thread_sensor_bufs(max_threads,
-        std::vector<float>(SensorInput::SIZE));
-    std::vector<std::vector<float>> thread_output_bufs(max_threads,
-        std::vector<float>(num_outputs_));
+    std::vector<float> sensor_values(static_cast<size_t>(agent_count * num_inputs_), 0.0f);
+    std::vector<float> output_values(static_cast<size_t>(agent_count * num_outputs_), 0.0f);
 
 #ifdef MOONAI_ENABLE_CUDA
     if (prepare_gpu_generation()) {
@@ -343,48 +336,40 @@ void EvolutionManager::evaluate_generation(SimulationManager& sim) {
 #endif
 
     // CPU path (OpenMP-parallelized)
+    Profiler::instance().mark_cpu_used(true);
     ScopedTimer cpu_eval_timer(ProfileEvent::CpuEvalTotal);
     for (int tick = last_tick; tick < config_.generation_ticks; ++tick) {
         // Parallel compute phase: sensor + NN per agent (read-only on shared state)
         std::fill(actions.begin(), actions.end(), Vec2{0.0f, 0.0f});
+        std::fill(sensor_values.begin(), sensor_values.end(), 0.0f);
+        std::fill(output_values.begin(), output_values.end(), 0.0f);
 
-        #pragma omp parallel for schedule(dynamic) if(MOONAI_OPENMP_ENABLED)
-        for (int i = 0; i < agent_count; ++i) {
-            if (!sim.agents()[i]->alive()) continue;
-
-            int tid = 0;
-#ifdef MOONAI_OPENMP_ENABLED
-            tid = omp_get_thread_num();
-#endif
-            float* sensor_buf = thread_sensor_bufs[tid].data();
-            float* output_buf = thread_output_bufs[tid].data();
-
-            if (Profiler::instance().enabled()) {
-                const auto sensor_start = std::chrono::steady_clock::now();
-                sim.get_sensors(static_cast<size_t>(i)).write_to(sensor_buf);
-                const auto sensor_end = std::chrono::steady_clock::now();
-                Profiler::instance().add_duration(
-                    ProfileEvent::CpuSensorBuild,
-                    std::chrono::duration_cast<std::chrono::nanoseconds>(sensor_end - sensor_start).count());
-
-                const auto nn_start = std::chrono::steady_clock::now();
-                networks_[i]->activate_into(sensor_buf, num_inputs_,
-                                            output_buf, num_outputs_);
-                const auto nn_end = std::chrono::steady_clock::now();
-                Profiler::instance().add_duration(
-                    ProfileEvent::CpuNnActivate,
-                    std::chrono::duration_cast<std::chrono::nanoseconds>(nn_end - nn_start).count());
-            } else {
-                sim.get_sensors(static_cast<size_t>(i)).write_to(sensor_buf);
-                networks_[i]->activate_into(sensor_buf, num_inputs_,
-                                            output_buf, num_outputs_);
+        {
+            ScopedTimer timer(ProfileEvent::CpuSensorBuild);
+            #pragma omp parallel for schedule(dynamic) if(MOONAI_OPENMP_ENABLED)
+            for (int i = 0; i < agent_count; ++i) {
+                if (!sim.agents()[i]->alive()) continue;
+                sim.get_sensors(static_cast<size_t>(i)).write_to(
+                    sensor_values.data() + static_cast<size_t>(i * num_inputs_));
             }
+        }
 
-            if (num_outputs_ >= 2) {
-                actions[i] = Vec2{
-                    output_buf[0] * 2.0f - 1.0f,
-                    output_buf[1] * 2.0f - 1.0f
-                };
+        {
+            ScopedTimer timer(ProfileEvent::CpuNnActivate);
+            #pragma omp parallel for schedule(dynamic) if(MOONAI_OPENMP_ENABLED)
+            for (int i = 0; i < agent_count; ++i) {
+                if (!sim.agents()[i]->alive()) continue;
+
+                float* sensor_buf = sensor_values.data() + static_cast<size_t>(i * num_inputs_);
+                float* output_buf = output_values.data() + static_cast<size_t>(i * num_outputs_);
+                networks_[i]->activate_into(sensor_buf, num_inputs_, output_buf, num_outputs_);
+
+                if (num_outputs_ >= 2) {
+                    actions[i] = Vec2{
+                        output_buf[0] * 2.0f - 1.0f,
+                        output_buf[1] * 2.0f - 1.0f
+                    };
+                }
             }
         }
 
