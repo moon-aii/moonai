@@ -53,7 +53,7 @@ def _render_generation_comparison(runs: list[ProfileRun]) -> Chart:
 
 
 def _render_hotspot_comparison(runs: list[ProfileRun]) -> Chart:
-    fig, ax = plt.subplots(figsize=(10, 4.8))
+    fig, ax = plt.subplots(figsize=(11.5, 6.0))
     labels = [run.label for run in runs]
     values = [run.top_event_avg_ms for run in runs]
     ax.bar(labels, values, color="#c97b63")
@@ -71,7 +71,7 @@ def _render_hotspot_comparison(runs: list[ProfileRun]) -> Chart:
             ha="center",
             fontsize=8,
         )
-    fig.tight_layout()
+    fig.subplots_adjust(left=0.10, right=0.98, bottom=0.26, top=0.88)
     return Chart(
         title="Dominant Hotspots",
         image_uri=_figure_to_data_uri(fig),
