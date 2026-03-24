@@ -194,6 +194,40 @@ profile: release
     ./build/linux-release/moonai_profiler profiler.lua \
         --suite baseline
 
+# Run Nsight Compute on the hottest GPU kernel with CLI output only
+[group('gpu')]
+ncu: release
+    ncu \
+        --target-processes all \
+        --kernel-name "regex:.*sensor_build_kernel.*" \
+        --launch-skip 0 \
+        --launch-count 1 \
+        --set basic \
+        ./build/linux-release/moonai_profiler profiler.lua --suite baseline
+
+# Run a deeper Nsight Compute pass on the hottest GPU kernel
+[group('gpu')]
+ncu-full: release
+    ncu \
+        --target-processes all \
+        --kernel-name "regex:.*sensor_build_kernel.*" \
+        --launch-skip 0 \
+        --launch-count 1 \
+        --set full \
+        ./build/linux-release/moonai_profiler profiler.lua --suite baseline
+
+# Run Nsight Systems for one profiler suite and print CLI stats
+[group('gpu')]
+nsys: release
+    mkdir -p output/nsight
+    nsys profile \
+        --trace=cuda,nvtx,osrt \
+        --sample=none \
+        --stats=true \
+        --force-overwrite=true \
+        --output=output/nsight/nsys-baseline \
+        ./build/linux-release/moonai_profiler profiler.lua --suite baseline
+
 # Full profiler pipeline: run profiler -> generate profiler report
 [group('dev')]
 profile-pipeline: profile analyse-profile
