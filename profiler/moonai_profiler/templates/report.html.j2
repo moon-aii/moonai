@@ -483,6 +483,41 @@
             {% endfor %}
           </tbody>
         </table>
+
+        <h3>Resident GPU Tick Breakdown</h3>
+        {% if run.summary_gpu_stage_timings %}
+        <div class="note">
+          These stage timings are device elapsed measurements collected inside the real resident GPU tick path.
+          They decompose <code>gpu_resident_tick</code> and may not sum exactly to the top-level event table.
+        </div>
+        <table>
+          <caption>Aggregate resident GPU stage timings computed from the four kept suite runs.</caption>
+          <thead>
+            <tr>
+              <th>Stage</th>
+              <th>% of gpu_resident_tick</th>
+              <th>Avg / Generation</th>
+              <th>Nonzero Generations</th>
+              <th>Avg / Nonzero Generation</th>
+              <th>Total (ms)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in run.summary_gpu_stage_timings %}
+            <tr>
+              <td>{{ row.name }}</td>
+              <td>{{ row.percentage }}</td>
+              <td>{{ row.avg_ms_per_generation }}</td>
+              <td>{{ row.nonzero_generation_count }}</td>
+              <td>{{ row.avg_ms_per_nonzero_generation }}</td>
+              <td>{{ row.total_ms }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div class="empty">No resident GPU stage timings were recorded for this suite.</div>
+        {% endif %}
       </div>
     </details>
     {% endfor %}

@@ -152,6 +152,21 @@ const char* profile_counter_description(ProfileCounter counter) {
     return "";
 }
 
+const char* gpu_stage_timing_description(GpuStageTiming stage) {
+    switch (stage) {
+        case GpuStageTiming::ResidentTickBinRebuildPre: return "Device elapsed time for the resident tick's pre-inference spatial bin rebuild.";
+        case GpuStageTiming::ResidentTickSensorBuild: return "Device elapsed time for resident sensor input construction.";
+        case GpuStageTiming::ResidentTickInference: return "Device elapsed time for resident neural inference.";
+        case GpuStageTiming::ResidentTickMovement: return "Device elapsed time for resident movement integration.";
+        case GpuStageTiming::ResidentTickBinRebuildPost: return "Device elapsed time for the resident tick's post-movement spatial bin rebuild.";
+        case GpuStageTiming::ResidentTickPreyFood: return "Device elapsed time for resident prey-food interactions.";
+        case GpuStageTiming::ResidentTickPredatorAttack: return "Device elapsed time for resident predator attack interactions.";
+        case GpuStageTiming::ResidentTickRespawn: return "Device elapsed time for resident food respawn.";
+        case GpuStageTiming::Count: return "";
+    }
+    return "";
+}
+
 } // namespace
 
 Profiler& Profiler::instance() {
@@ -217,6 +232,9 @@ void Profiler::start_run(const ProfileRunSpec& spec) {
     for (auto& counter : current_counters_) {
         counter.store(0, std::memory_order_relaxed);
     }
+    for (auto& stage : current_gpu_stage_durations_ns_) {
+        stage.store(0, std::memory_order_relaxed);
+    }
 }
 
 void Profiler::start_generation(int generation) {
@@ -233,6 +251,9 @@ void Profiler::start_generation(int generation) {
     }
     for (auto& counter : current_counters_) {
         counter.store(0, std::memory_order_relaxed);
+    }
+    for (auto& stage : current_gpu_stage_durations_ns_) {
+        stage.store(0, std::memory_order_relaxed);
     }
 }
 
@@ -271,6 +292,13 @@ void Profiler::increment(ProfileCounter counter, std::int64_t value) {
     current_counters_[enum_index(counter)].fetch_add(value, std::memory_order_relaxed);
 }
 
+void Profiler::add_gpu_stage_duration(GpuStageTiming stage, std::int64_t nanoseconds) {
+    if (!enabled()) {
+        return;
+    }
+    current_gpu_stage_durations_ns_[enum_index(stage)].fetch_add(nanoseconds, std::memory_order_relaxed);
+}
+
 void Profiler::finish_generation(const GenerationProfileMeta& meta) {
     if (!enabled()) {
         return;
@@ -295,6 +323,9 @@ void Profiler::finish_generation(const GenerationProfileMeta& meta) {
     for (std::size_t i = 0; i < record.counters.size(); ++i) {
         record.counters[i] = current_counters_[i].load(std::memory_order_relaxed);
     }
+    for (std::size_t i = 0; i < record.gpu_stage_durations_ns.size(); ++i) {
+        record.gpu_stage_durations_ns[i] = current_gpu_stage_durations_ns_[i].load(std::memory_order_relaxed);
+    }
 
     generation_records_.push_back(std::move(record));
 }
@@ -313,7 +344,7 @@ void Profiler::finish_run(std::int64_t run_total_ns) {
     }
 
     nlohmann::json profile;
-    profile["schema_version"] = 2;
+    profile["schema_version"] = 3;
     profile["generated_at_utc"] = generated_at_utc_;
     profile["run"] = {
         {"experiment_name", experiment_name_},
@@ -344,7 +375,9 @@ void Profiler::finish_run(std::int64_t run_total_ns) {
         "Path-specific events can remain zero for generations that never execute that path.",
         "cpu_generation_count and gpu_generation_count are non-exclusive; a fallback generation can increment both counts.",
         "Fields ending with nonzero_generation_count count generations where the recorded value was greater than zero.",
-        "Use nonzero_generation_count and avg_ms_per_nonzero_generation when judging optional events."
+        "Use nonzero_generation_count and avg_ms_per_nonzero_generation when judging optional events.",
+        "gpu_stage_timings use device elapsed timestamps collected inside the resident GPU tick sequence.",
+        "gpu_stage_timings decompose gpu_resident_tick and are diagnostic timings, not top-level generation wall-clock events."
     };
 
     nlohmann::json event_defs = nlohmann::json::array();
@@ -369,10 +402,27 @@ void Profiler::finish_run(std::int64_t run_total_ns) {
     }
     profile["counter_definitions"] = std::move(counter_defs);
 
+    nlohmann::json gpu_stage_defs = nlohmann::json::array();
+    for (std::size_t i = 0; i < enum_index(GpuStageTiming::Count); ++i) {
+        const auto stage = static_cast<GpuStageTiming>(i);
+        gpu_stage_defs.push_back({
+            {"name", gpu_stage_timing_name(stage)},
+            {"unit", "ms"},
+            {"measurement", "device_elapsed"},
+            {"scope", "resident_tick"},
+            {"parent_event", "gpu_resident_tick"},
+            {"collection_mode", "device_globaltimer"},
+            {"description", gpu_stage_timing_description(stage)}
+        });
+    }
+    profile["gpu_stage_definitions"] = std::move(gpu_stage_defs);
+
     std::array<std::int64_t, enum_index(ProfileEvent::Count)> total_durations{};
     std::array<std::int64_t, enum_index(ProfileCounter::Count)> total_counters{};
+    std::array<std::int64_t, enum_index(GpuStageTiming::Count)> total_gpu_stage_durations{};
     std::array<int, enum_index(ProfileEvent::Count)> active_duration_generations{};
     std::array<int, enum_index(ProfileCounter::Count)> active_counter_generations{};
+    std::array<int, enum_index(GpuStageTiming::Count)> active_gpu_stage_generations{};
     int cpu_generations = 0;
     int gpu_generations = 0;
     nlohmann::json generation_rows = nlohmann::json::array();
@@ -401,6 +451,15 @@ void Profiler::finish_run(std::int64_t run_total_ns) {
             }
             counter_row[profile_counter_name(static_cast<ProfileCounter>(i))] = record.counters[i];
         }
+        nlohmann::json gpu_stage_row;
+        for (std::size_t i = 0; i < total_gpu_stage_durations.size(); ++i) {
+            total_gpu_stage_durations[i] += record.gpu_stage_durations_ns[i];
+            if (record.gpu_stage_durations_ns[i] > 0) {
+                ++active_gpu_stage_generations[i];
+            }
+            gpu_stage_row[gpu_stage_timing_name(static_cast<GpuStageTiming>(i))] =
+                static_cast<double>(record.gpu_stage_durations_ns[i]) / 1'000'000.0;
+        }
         generation_rows.push_back({
             {"generation", record.meta.generation},
             {"cpu_used", record.cpu_used},
@@ -412,7 +471,8 @@ void Profiler::finish_run(std::int64_t run_total_ns) {
             {"avg_fitness", record.meta.avg_fitness},
             {"avg_complexity", record.meta.avg_complexity},
             {"events_ms", std::move(duration_row)},
-            {"counters", std::move(counter_row)}
+            {"counters", std::move(counter_row)},
+            {"gpu_stage_timings_ms", std::move(gpu_stage_row)}
         });
     }
     profile["generations"] = std::move(generation_rows);
@@ -454,6 +514,21 @@ void Profiler::finish_run(std::int64_t run_total_ns) {
         };
     }
     summary["counters"] = counters_json;
+
+    nlohmann::json gpu_stage_json;
+    for (std::size_t i = 0; i < total_gpu_stage_durations.size(); ++i) {
+        const double total_ms = static_cast<double>(total_gpu_stage_durations[i]) / 1'000'000.0;
+        const int active_count = active_gpu_stage_generations[i];
+        gpu_stage_json[gpu_stage_timing_name(static_cast<GpuStageTiming>(i))] = {
+            {"total_ms", total_ms},
+            {"avg_ms_per_generation", generation_records_.empty()
+                ? 0.0
+                : total_ms / static_cast<double>(generation_records_.size())},
+            {"nonzero_generation_count", active_count},
+            {"avg_ms_per_nonzero_generation", active_count == 0 ? 0.0 : total_ms / static_cast<double>(active_count)}
+        };
+    }
+    summary["gpu_stage_timings"] = gpu_stage_json;
     profile["summary"] = std::move(summary);
 
     const auto json_path = std::filesystem::path(output_dir_) / "profile.json";
@@ -520,6 +595,21 @@ const char* profile_counter_name(ProfileCounter counter) {
         case ProfileCounter::Kills: return "kills";
         case ProfileCounter::CompatibilityChecks: return "compatibility_checks";
         case ProfileCounter::Count: return "count";
+    }
+    return "unknown";
+}
+
+const char* gpu_stage_timing_name(GpuStageTiming stage) {
+    switch (stage) {
+        case GpuStageTiming::ResidentTickBinRebuildPre: return "bin_rebuild_pre";
+        case GpuStageTiming::ResidentTickSensorBuild: return "sensor_build";
+        case GpuStageTiming::ResidentTickInference: return "inference";
+        case GpuStageTiming::ResidentTickMovement: return "movement";
+        case GpuStageTiming::ResidentTickBinRebuildPost: return "bin_rebuild_post";
+        case GpuStageTiming::ResidentTickPreyFood: return "prey_food";
+        case GpuStageTiming::ResidentTickPredatorAttack: return "predator_attack";
+        case GpuStageTiming::ResidentTickRespawn: return "respawn";
+        case GpuStageTiming::Count: return "count";
     }
     return "unknown";
 }

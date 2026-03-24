@@ -57,6 +57,18 @@ enum class ProfileCounter : std::size_t {
     Count
 };
 
+enum class GpuStageTiming : std::size_t {
+    ResidentTickBinRebuildPre = 0,
+    ResidentTickSensorBuild,
+    ResidentTickInference,
+    ResidentTickMovement,
+    ResidentTickBinRebuildPost,
+    ResidentTickPreyFood,
+    ResidentTickPredatorAttack,
+    ResidentTickRespawn,
+    Count
+};
+
 struct GenerationProfileMeta {
     int generation = 0;
     int predator_count = 0;
@@ -98,6 +110,7 @@ public:
     void add_duration(ProfileEvent event, std::int64_t nanoseconds);
     void set_duration(ProfileEvent event, std::int64_t nanoseconds);
     void increment(ProfileCounter counter, std::int64_t value = 1);
+    void add_gpu_stage_duration(GpuStageTiming stage, std::int64_t nanoseconds);
     void finish_generation(const GenerationProfileMeta& meta);
     void finish_run(std::int64_t run_total_ns);
 
@@ -110,6 +123,7 @@ private:
         bool gpu_used = false;
         std::array<std::int64_t, static_cast<std::size_t>(ProfileEvent::Count)> durations_ns{};
         std::array<std::int64_t, static_cast<std::size_t>(ProfileCounter::Count)> counters{};
+        std::array<std::int64_t, static_cast<std::size_t>(GpuStageTiming::Count)> gpu_stage_durations_ns{};
     };
 
     Profiler() = default;
@@ -137,6 +151,7 @@ private:
     std::vector<GenerationRecord> generation_records_;
     std::array<std::atomic<std::int64_t>, static_cast<std::size_t>(ProfileEvent::Count)> current_durations_ns_{};
     std::array<std::atomic<std::int64_t>, static_cast<std::size_t>(ProfileCounter::Count)> current_counters_{};
+    std::array<std::atomic<std::int64_t>, static_cast<std::size_t>(GpuStageTiming::Count)> current_gpu_stage_durations_ns_{};
 };
 
 class ScopedTimer {
@@ -166,6 +181,7 @@ private:
 
 const char* profile_event_name(ProfileEvent event);
 const char* profile_counter_name(ProfileCounter counter);
+const char* gpu_stage_timing_name(GpuStageTiming stage);
 
 #define MOONAI_PROFILE_CONCAT_INNER(lhs, rhs) lhs##rhs
 #define MOONAI_PROFILE_CONCAT(lhs, rhs) MOONAI_PROFILE_CONCAT_INNER(lhs, rhs)

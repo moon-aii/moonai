@@ -40,6 +40,7 @@ class ProfileSuite:
     avg_run_total_ms: float
     aggregate_events: dict[str, dict[str, float]]
     aggregate_counters: dict[str, dict[str, float]]
+    aggregate_gpu_stage_timings: dict[str, dict[str, float]]
     members: list[SuiteMemberRun]
     kept_members: list[SuiteMemberRun]
     dropped_members: list[SuiteMemberRun]
@@ -117,6 +118,11 @@ def _build_profile_suite(path: Path, payload: dict) -> ProfileSuite:
         aggregate_counters={
             name: {key: float(value) for key, value in values.items()}
             for name, values in aggregate.get("counters", {}).items()
+            if isinstance(values, dict)
+        },
+        aggregate_gpu_stage_timings={
+            name: {key: float(value) for key, value in values.items()}
+            for name, values in aggregate.get("gpu_stage_timings", {}).items()
             if isinstance(values, dict)
         },
         members=members,

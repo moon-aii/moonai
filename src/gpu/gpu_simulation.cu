@@ -3,6 +3,7 @@
 #include "gpu/sensor_common.cuh"
 
 #include "core/deterministic_respawn.hpp"
+#include "core/profiler.hpp"
 
 #include <cub/cub.cuh>
 
@@ -18,6 +19,48 @@ enum class AgentBinMode {
     AllAgents,
     PreyOnly,
 };
+
+#ifdef MOONAI_BUILD_PROFILER
+__device__ __forceinline__ unsigned long long read_globaltimer_ns() {
+    unsigned long long value;
+    asm volatile("mov.u64 %0, %%globaltimer;" : "=l"(value));
+    return value;
+}
+
+__global__ void resident_stage_begin_kernel(unsigned long long* last_timestamp_ns) {
+    if (blockIdx.x == 0 && threadIdx.x == 0) {
+        const unsigned long long now = read_globaltimer_ns();
+        *last_timestamp_ns = now == 0ULL ? 1ULL : now;
+    }
+}
+
+__global__ void resident_stage_end_kernel(unsigned long long* stage_accum_ns,
+                                          unsigned long long* last_timestamp_ns,
+                                          int stage_index) {
+    if (blockIdx.x == 0 && threadIdx.x == 0) {
+        const unsigned long long now = read_globaltimer_ns();
+        const unsigned long long last = *last_timestamp_ns;
+        if (last != 0ULL) {
+            stage_accum_ns[stage_index] += now - last;
+        }
+        *last_timestamp_ns = now;
+    }
+}
+
+__host__ __forceinline__ void record_stage_begin(GpuBatch& batch, cudaStream_t stream) {
+    resident_stage_begin_kernel<<<1, 1, 0, stream>>>(batch.d_resident_stage_last_timestamp_ns());
+}
+
+__host__ __forceinline__ void record_stage_end(GpuBatch& batch, cudaStream_t stream, GpuStageTiming stage) {
+    resident_stage_end_kernel<<<1, 1, 0, stream>>>(
+        batch.d_resident_stage_accum_ns(), batch.d_resident_stage_last_timestamp_ns(),
+        static_cast<int>(stage));
+}
+#else
+__host__ __forceinline__ void record_stage_begin(GpuBatch&, cudaStream_t) {}
+template<typename Stage>
+__host__ __forceinline__ void record_stage_end(GpuBatch&, cudaStream_t, Stage) {}
+#endif
 
 __device__ __forceinline__ void normalize_inplace(float& x, float& y) {
     const float len_sq = x * x + y * y;
@@ -378,8 +421,10 @@ void rebuild_food_bins(GpuBatch& batch, cudaStream_t stream) {
 }
 
 void rebuild_bins(GpuBatch& batch, cudaStream_t stream) {
+    record_stage_begin(batch, stream);
     rebuild_agent_bins(batch, stream, AgentBinMode::AllAgents);
     rebuild_food_bins(batch, stream);
+    record_stage_end(batch, stream, GpuStageTiming::ResidentTickBinRebuildPre);
     CUDA_CHECK(cudaGetLastError());
 }
 
@@ -433,8 +478,10 @@ void launch_resident_tick_sequence(GpuBatch& batch, const ResidentTickParams& pa
     } else {
         sensor_build_kernel<false><<<agent_grid, kBlockSize, 0, stream>>>(view);
     }
+    record_stage_end(batch, stream, GpuStageTiming::ResidentTickSensorBuild);
 
     batch_neural_inference(batch);
+    record_stage_end(batch, stream, GpuStageTiming::ResidentTickInference);
 
     movement_kernel<<<agent_grid, kBlockSize, 0, stream>>>(
         batch.d_agent_pos_x(), batch.d_agent_pos_y(), batch.d_agent_vel_x(), batch.d_agent_vel_y(),
@@ -442,8 +489,10 @@ void launch_resident_tick_sequence(GpuBatch& batch, const ResidentTickParams& pa
         batch.d_agent_age(), batch.d_agent_alive(), batch.d_outputs(), batch.num_agents(),
         batch.num_outputs(), params.dt, params.world_width, params.world_height,
         params.has_walls, params.energy_drain_per_tick, params.target_fps);
+    record_stage_end(batch, stream, GpuStageTiming::ResidentTickMovement);
 
     rebuild_agent_bins(batch, stream, AgentBinMode::PreyOnly);
+    record_stage_end(batch, stream, GpuStageTiming::ResidentTickBinRebuildPost);
 
     prey_food_kernel<<<agent_grid, kBlockSize, 0, stream>>>(
         batch.d_agent_alive(), batch.d_agent_types(), batch.d_agent_pos_x(), batch.d_agent_pos_y(),
@@ -452,16 +501,19 @@ void launch_resident_tick_sequence(GpuBatch& batch, const ResidentTickParams& pa
         batch.food_cols(), batch.food_rows(), batch.food_cell_size(),
         batch.food_count(), params.food_pickup_range, params.energy_gain_from_food,
         params.world_width, params.world_height, params.has_walls);
+    record_stage_end(batch, stream, GpuStageTiming::ResidentTickPreyFood);
     predator_attack_kernel<<<agent_grid, kBlockSize, 0, stream>>>(
         batch.d_agent_alive(), batch.d_agent_types(), batch.d_agent_pos_x(), batch.d_agent_pos_y(),
         batch.d_agent_energy(), batch.d_agent_kills(), batch.num_agents(), batch.d_agent_cell_offsets(),
         batch.d_agent_cell_ids(), batch.agent_cols(), batch.agent_rows(), batch.agent_cell_size(),
         params.attack_range, params.energy_gain_from_kill,
         params.world_width, params.world_height, params.has_walls);
+    record_stage_end(batch, stream, GpuStageTiming::ResidentTickPredatorAttack);
     respawn_food_kernel<<<food_grid, kBlockSize, 0, stream>>>(
         batch.d_food_pos_x(), batch.d_food_pos_y(), batch.d_food_active(), batch.food_count(),
         params.food_respawn_rate, params.world_width, params.world_height, params.seed,
         batch.d_tick_index());
+    record_stage_end(batch, stream, GpuStageTiming::ResidentTickRespawn);
     CUDA_CHECK(cudaGetLastError());
 }
 

@@ -1,6 +1,10 @@
 #include "gpu/gpu_batch.hpp"
 #include "gpu/cuda_utils.cuh"
 
+#ifdef MOONAI_BUILD_PROFILER
+#include "core/profiler.hpp"
+#endif
+
 #include <cub/cub.cuh>
 #include <spdlog/spdlog.h>
 
@@ -192,6 +196,13 @@ GpuBatch::GpuBatch(int num_agents, int num_inputs, int num_outputs)
     had_error_ |= !malloc_host_checked(&h_pinned_out_, out_bytes, __FILE__, __LINE__);
     had_error_ |= !malloc_host_checked(&h_tick_index_, sizeof(int), __FILE__, __LINE__);
     had_error_ |= !malloc_checked(&d_tick_index_, sizeof(int), __FILE__, __LINE__);
+#ifdef MOONAI_BUILD_PROFILER
+    had_error_ |= !malloc_checked(&d_resident_stage_accum_ns_,
+        static_cast<size_t>(GpuStageTiming::Count) * sizeof(unsigned long long), __FILE__, __LINE__);
+    had_error_ |= !malloc_checked(&d_resident_stage_last_timestamp_ns_, sizeof(unsigned long long), __FILE__, __LINE__);
+    had_error_ |= !malloc_host_checked(&h_resident_stage_accum_ns_,
+        static_cast<size_t>(GpuStageTiming::Count) * sizeof(unsigned long long), __FILE__, __LINE__);
+#endif
 
     cudaStream_t s = nullptr;
     had_error_ |= !check_cuda(cudaStreamCreate(&s), __FILE__, __LINE__);
@@ -235,11 +246,18 @@ GpuBatch::~GpuBatch() {
     if (d_inference_agent_indices_) cudaFree(d_inference_agent_indices_);
     if (d_tick_index_) cudaFree(d_tick_index_);
     if (d_scan_temp_storage_) cudaFree(d_scan_temp_storage_);
+#ifdef MOONAI_BUILD_PROFILER
+    if (d_resident_stage_accum_ns_) cudaFree(d_resident_stage_accum_ns_);
+    if (d_resident_stage_last_timestamp_ns_) cudaFree(d_resident_stage_last_timestamp_ns_);
+#endif
 
     // Pinned host memory
     if (h_pinned_in_)   cudaFreeHost(h_pinned_in_);
     if (h_pinned_out_)  cudaFreeHost(h_pinned_out_);
     if (h_tick_index_)  cudaFreeHost(h_tick_index_);
+#ifdef MOONAI_BUILD_PROFILER
+    if (h_resident_stage_accum_ns_) cudaFreeHost(h_resident_stage_accum_ns_);
+#endif
 
     // Stream
     if (stream_)        cudaStreamDestroy(static_cast<cudaStream_t>(stream_));
@@ -811,6 +829,37 @@ void GpuBatch::launch_resident_inference_tick_async(float dt, float world_width,
                                  attack_range, energy_gain_from_food, energy_gain_from_kill,
                                  food_respawn_rate, seed, tick_index);
 }
+
+#ifdef MOONAI_BUILD_PROFILER
+void GpuBatch::reset_resident_stage_timings_async() {
+    if (had_error_) {
+        return;
+    }
+    cudaStream_t s = static_cast<cudaStream_t>(stream_);
+    had_error_ |= !check_cuda(cudaMemsetAsync(d_resident_stage_accum_ns_, 0,
+        static_cast<size_t>(GpuStageTiming::Count) * sizeof(unsigned long long), s), __FILE__, __LINE__);
+    had_error_ |= !check_cuda(cudaMemsetAsync(d_resident_stage_last_timestamp_ns_, 0,
+        sizeof(unsigned long long), s), __FILE__, __LINE__);
+}
+
+void GpuBatch::flush_resident_stage_timings_to_profiler() {
+    if (had_error_ || !Profiler::instance().enabled()) {
+        return;
+    }
+    cudaStream_t s = static_cast<cudaStream_t>(stream_);
+    had_error_ |= !memcpy_async_checked(h_resident_stage_accum_ns_, d_resident_stage_accum_ns_,
+        static_cast<size_t>(GpuStageTiming::Count) * sizeof(unsigned long long), cudaMemcpyDeviceToHost,
+        s, __FILE__, __LINE__);
+    had_error_ |= !check_cuda(cudaStreamSynchronize(s), __FILE__, __LINE__);
+    if (had_error_) {
+        return;
+    }
+    for (std::size_t i = 0; i < static_cast<std::size_t>(GpuStageTiming::Count); ++i) {
+        Profiler::instance().add_gpu_stage_duration(static_cast<GpuStageTiming>(i),
+            static_cast<std::int64_t>(h_resident_stage_accum_ns_[i]));
+    }
+}
+#endif
 
 void GpuBatch::download_agent_states(std::vector<GpuAgentState>& agents) {
     agents.resize(static_cast<size_t>(num_agents_));

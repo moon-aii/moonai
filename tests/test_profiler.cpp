@@ -59,7 +59,7 @@ TEST_F(ProfilerTest, WritesSingleJsonProfileWithSummaryAndGenerations) {
     ASSERT_TRUE(handle.is_open());
     const auto profile = nlohmann::json::parse(handle);
 
-    EXPECT_EQ(profile["schema_version"], 2);
+    EXPECT_EQ(profile["schema_version"], 3);
     EXPECT_EQ(profile["run"]["experiment_name"], "baseline_seed42");
     EXPECT_EQ(profile["run"]["suite_name"], "baseline_suite");
     EXPECT_EQ(profile["run"]["config_fingerprint"], "abc123");
@@ -69,6 +69,8 @@ TEST_F(ProfilerTest, WritesSingleJsonProfileWithSummaryAndGenerations) {
     EXPECT_EQ(profile["summary"]["gpu_generation_count"], 0);
     EXPECT_EQ(profile["generations"].size(), 1u);
     EXPECT_EQ(profile["generations"][0]["species_count"], 7);
+    EXPECT_TRUE(profile.contains("gpu_stage_definitions"));
+    EXPECT_TRUE(profile["summary"].contains("gpu_stage_timings"));
     EXPECT_DOUBLE_EQ(
         profile["summary"]["events"]["cpu_eval_total"]["avg_ms_per_nonzero_generation"].get<double>(),
         5.0);

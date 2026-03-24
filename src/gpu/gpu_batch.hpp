@@ -98,6 +98,10 @@ public:
                                               float energy_gain_from_food,
                                               float energy_gain_from_kill, float food_respawn_rate,
                                               std::uint64_t seed, int tick_index);
+#ifdef MOONAI_BUILD_PROFILER
+    void reset_resident_stage_timings_async();
+    void flush_resident_stage_timings_to_profiler();
+#endif
     void download_agent_states(std::vector<GpuAgentState>& agents);
     void download_food_states(std::vector<GpuFoodState>& food);
     bool ok() const { return !had_error_; }
@@ -193,6 +197,10 @@ public:
     int inference_bucket_count() const { return static_cast<int>(inference_bucket_offsets_.size()); }
     int inference_bucket_start(int bucket_index) const { return inference_bucket_offsets_[static_cast<size_t>(bucket_index)]; }
     int inference_bucket_size(int bucket_index) const { return inference_bucket_sizes_[static_cast<size_t>(bucket_index)]; }
+#ifdef MOONAI_BUILD_PROFILER
+    unsigned long long* d_resident_stage_accum_ns() { return d_resident_stage_accum_ns_; }
+    unsigned long long* d_resident_stage_last_timestamp_ns() { return d_resident_stage_last_timestamp_ns_; }
+#endif
     bool ensure_scan_temp_storage(size_t bytes);
 
 private:
@@ -242,6 +250,11 @@ private:
     int*           d_inference_agent_indices_ = nullptr;
     int*           d_tick_index_ = nullptr;
     void*          d_scan_temp_storage_ = nullptr;
+#ifdef MOONAI_BUILD_PROFILER
+    unsigned long long* d_resident_stage_accum_ns_ = nullptr;
+    unsigned long long* d_resident_stage_last_timestamp_ns_ = nullptr;
+    unsigned long long* h_resident_stage_accum_ns_ = nullptr;
+#endif
 
     // Pinned host memory (required for cudaMemcpyAsync)
     float*         h_pinned_in_  = nullptr;

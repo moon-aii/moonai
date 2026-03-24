@@ -401,6 +401,9 @@ void EvolutionManager::evaluate_generation(SimulationManager& sim) {
                 config_.food_respawn_rate,
                 config_.seed,
             });
+#ifdef MOONAI_BUILD_PROFILER
+            gpu_batch_->reset_resident_stage_timings_async();
+#endif
 
             for (int tick = 0; tick < config_.generation_ticks; ++tick) {
                 {
@@ -429,6 +432,9 @@ void EvolutionManager::evaluate_generation(SimulationManager& sim) {
                     MOONAI_PROFILE_SCOPE(ProfileEvent::GpuFinishUnpack);
                     gpu_batch_->finish_unpack();
                 }
+#ifdef MOONAI_BUILD_PROFILER
+                gpu_batch_->flush_resident_stage_timings_to_profiler();
+#endif
                 if (!gpu_batch_->ok()) {
                     spdlog::warn("GPU resident simulation failed; falling back to CPU inference");
                     gpu_batch_.reset();

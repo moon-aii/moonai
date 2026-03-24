@@ -59,6 +59,12 @@ def run_analysis(input_dir: Path, output_dir: Path) -> None:
                 },
                 "summary_events": _format_event_summary(suite.aggregate_events),
                 "summary_counters": _format_counter_summary(suite.aggregate_counters),
+                "summary_gpu_stage_timings": _format_gpu_stage_summary(
+                    suite.aggregate_gpu_stage_timings,
+                    suite.aggregate_events.get("gpu_resident_tick", {}).get(
+                        "total_ms", 0.0
+                    ),
+                ),
                 "charts": [chart.__dict__ for chart in charts],
                 "members": [
                     {
@@ -195,4 +201,34 @@ def _format_counter_summary(
             }
         )
     rows.sort(key=lambda row: float(row["total"]), reverse=True)
+    return rows
+
+
+def _format_gpu_stage_summary(
+    stages: dict[str, dict[str, float]],
+    resident_tick_total_ms: float,
+) -> list[dict[str, str]]:
+    rows = []
+    for name, values in stages.items():
+        if values.get("total_ms", 0.0) <= 0.0:
+            continue
+        total_ms = values.get("total_ms", 0.0)
+        percentage = (
+            (total_ms / resident_tick_total_ms * 100)
+            if resident_tick_total_ms > 0
+            else 0.0
+        )
+        rows.append(
+            {
+                "name": name,
+                "percentage": f"{percentage:.1f}",
+                "avg_ms_per_generation": f"{values.get('avg_ms_per_generation', 0.0):.3f}",
+                "nonzero_generation_count": str(
+                    int(values.get("nonzero_generation_count", 0.0))
+                ),
+                "avg_ms_per_nonzero_generation": f"{values.get('avg_ms_per_nonzero_generation', 0.0):.3f}",
+                "total_ms": f"{total_ms:.3f}",
+            }
+        )
+    rows.sort(key=lambda row: float(row["total_ms"]), reverse=True)
     return rows

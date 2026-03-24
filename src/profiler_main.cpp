@@ -66,6 +66,7 @@ struct RawRunSummary {
     int gpu_generation_count = 0;
     nlohmann::json summary_events;
     nlohmann::json summary_counters;
+    nlohmann::json summary_gpu_stage_timings;
 };
 
 ProfilerCliArgs parse_args(int argc, char* argv[]) {
@@ -184,6 +185,7 @@ RawRunSummary load_raw_run_summary(const std::filesystem::path& profile_path) {
     summary.gpu_generation_count = suite_summary.value("gpu_generation_count", 0);
     summary.summary_events = suite_summary.at("events");
     summary.summary_counters = suite_summary.at("counters");
+    summary.summary_gpu_stage_timings = suite_summary.value("gpu_stage_timings", nlohmann::json::object());
     summary.avg_generation_ms = summary.summary_events.at("generation_total").at("avg_ms_per_generation").get<double>();
     return summary;
 }
@@ -424,6 +426,7 @@ void write_suite_manifest(const std::filesystem::path& suite_dir,
 
     std::vector<nlohmann::json> kept_events;
     std::vector<nlohmann::json> kept_counters;
+    std::vector<nlohmann::json> kept_gpu_stage_timings;
     std::vector<double> kept_generation_ms;
     std::vector<double> kept_run_total_ms;
     int cpu_generation_count_sum = 0;
@@ -431,6 +434,7 @@ void write_suite_manifest(const std::filesystem::path& suite_dir,
     for (const auto& run : kept_runs) {
         kept_events.push_back(run.summary_events);
         kept_counters.push_back(run.summary_counters);
+        kept_gpu_stage_timings.push_back(run.summary_gpu_stage_timings);
         kept_generation_ms.push_back(run.avg_generation_ms);
         kept_run_total_ms.push_back(run.run_total_ms);
         cpu_generation_count_sum += run.cpu_generation_count;
@@ -501,6 +505,12 @@ void write_suite_manifest(const std::filesystem::path& suite_dir,
             "avg_per_generation",
             "nonzero_generation_count",
             "avg_per_nonzero_generation")},
+        {"gpu_stage_timings", aggregate_named_stats(
+            kept_gpu_stage_timings,
+            "total_ms",
+            "avg_ms_per_generation",
+            "nonzero_generation_count",
+            "avg_ms_per_nonzero_generation")},
     };
     const std::filesystem::path output_path = suite_dir / "profile_suite.json";
     std::ofstream handle(output_path);
