@@ -175,7 +175,7 @@ def _mode_color(mode: str) -> str:
 
 def _figure_to_data_uri(fig) -> str:
     buffer = BytesIO()
-    fig.savefig(buffer, format="png", dpi=150, bbox_inches="tight")
+    fig.savefig(buffer, format="svg", bbox_inches="tight")
     plt.close(fig)
     encoded = b64encode(buffer.getvalue()).decode("ascii")
-    return f"data:image/png;base64,{encoded}"
+    return f"data:image/svg+xml;base64,{encoded}"

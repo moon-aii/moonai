@@ -107,10 +107,10 @@ def render_genome_plot(genome: dict, title: str) -> str:
     axis.axis("off")
     buffer = io.BytesIO()
     figure.tight_layout()
-    figure.savefig(buffer, format="png", dpi=150, bbox_inches="tight")
+    figure.savefig(buffer, format="svg", bbox_inches="tight")
     plt.close(figure)
     encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
-    return f"data:image/png;base64,{encoded}"
+    return f"data:image/svg+xml;base64,{encoded}"
 
 
 def _build_layout(node_types: dict[int, int]) -> dict[int, tuple[float, float]]:

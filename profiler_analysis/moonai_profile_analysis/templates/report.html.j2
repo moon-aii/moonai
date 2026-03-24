@@ -6,336 +6,479 @@
   <title>MoonAI Profiler Report</title>
   <style>
     :root {
-      --bg: #f5f7fb;
-      --paper: #ffffff;
-      --ink: #182230;
-      --muted: #5b6b7f;
-      --line: #d7dee9;
+      --bg: #ffffff;
+      --ink: #1a1a1a;
+      --muted: #555555;
+      --rule: #000000;
+      --rule-light: #cccccc;
+      --link: #1a0dab;
       --accent: #1d4ed8;
-      --accent-soft: #dbeafe;
-      --shadow: 0 18px 40px rgba(24, 34, 48, 0.08);
+      --caption: #444444;
+      --zebra: #f7f7f7;
     }
-    * { box-sizing: border-box; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      margin: 0;
-      font-family: "Segoe UI", "Helvetica Neue", sans-serif;
-      background: linear-gradient(180deg, #edf2ff 0%, var(--bg) 100%);
+      font-family: "Source Sans 3", "Source Sans Pro", Calibri, "Helvetica Neue", Arial, sans-serif;
+      font-size: 11pt;
+      line-height: 1.6;
+      color: var(--ink);
+      background: var(--bg);
+      max-width: 52em;
+      margin: 0 auto;
+      padding: 2em 1.5em 4em;
+    }
+
+    /* Title block */
+    .title-block {
+      text-align: center;
+      margin-bottom: 1.5em;
+    }
+    .title-block h1 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      line-height: 1.2;
+      margin-bottom: 0.3em;
+    }
+    .title-block .subtitle {
+      font-size: 0.95rem;
+      color: var(--muted);
+      margin-bottom: 0.2em;
+    }
+    .title-block .date {
+      font-size: 0.88rem;
+      color: var(--muted);
+    }
+    .title-rule {
+      border: none;
+      border-top: 2.5px solid var(--accent);
+      margin: 1.5em 0;
+    }
+
+    /* Abstract */
+    .abstract {
+      margin-bottom: 2em;
+    }
+    .abstract h2 {
+      font-size: 1.1rem;
+      font-weight: 700;
+      margin-bottom: 0.5em;
+    }
+    .abstract p {
+      color: var(--muted);
+      text-align: justify;
+    }
+
+    /* TOC */
+    .toc {
+      margin-bottom: 2.5em;
+      padding: 1em 1.5em;
+      border: 1px solid var(--rule-light);
+      background: #fafafa;
+    }
+    .toc strong {
+      display: block;
+      margin-bottom: 0.5em;
+      font-size: 0.95rem;
+    }
+    .toc ul {
+      list-style: none;
+      padding-left: 0;
+    }
+    .toc li {
+      margin: 0.25em 0;
+      font-size: 0.9rem;
+    }
+    .toc li ul {
+      padding-left: 1.2em;
+    }
+    .toc a {
+      color: var(--link);
+      text-decoration: none;
+    }
+    .toc a:hover {
+      text-decoration: underline;
+    }
+
+    /* Sections */
+    section {
+      margin-bottom: 2.5em;
+    }
+    h2 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      margin-bottom: 0.6em;
+      padding-bottom: 0.3em;
+      border-bottom: 1px solid var(--rule-light);
+    }
+    h3 {
+      font-size: 1.05rem;
+      font-weight: 600;
+      margin-bottom: 0.4em;
+      margin-top: 1em;
+    }
+    p {
+      margin-bottom: 0.8em;
+    }
+    .muted {
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    /* Booktabs tables */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1em 0;
+      font-size: 0.88rem;
+    }
+    caption {
+      text-align: left;
+      font-size: 0.9rem;
+      font-weight: 600;
+      margin-bottom: 0.4em;
       color: var(--ink);
     }
-    .page {
-      width: min(1280px, calc(100vw - 32px));
-      margin: 24px auto 48px;
-      display: grid;
-      grid-template-columns: 280px minmax(0, 1fr);
-      gap: 24px;
-      align-items: start;
+    thead {
+      border-top: 2px solid var(--rule);
+      border-bottom: 1px solid var(--rule);
     }
-    .sidebar, .panel {
-      background: rgba(255,255,255,0.92);
-      border: 1px solid var(--line);
-      border-radius: 20px;
-      box-shadow: var(--shadow);
+    tbody {
+      border-bottom: 2px solid var(--rule);
     }
-    .sidebar {
-      position: sticky;
-      top: 20px;
-      padding: 20px;
-      backdrop-filter: blur(10px);
-    }
-    .content { display: grid; gap: 20px; }
-    .panel { padding: 24px; }
-    h1, h2, h3 { margin: 0 0 12px; line-height: 1.15; }
-    h1 { font-size: 2.1rem; }
-    h2 { font-size: 1.35rem; color: var(--accent); }
-    h3 { font-size: 1rem; }
-    .muted { color: var(--muted); }
-    .stats {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-      gap: 12px;
-    }
-    .stat {
-      padding: 14px 16px;
-      border-radius: 16px;
-      background: var(--accent-soft);
-      border: 1px solid #bfdbfe;
-    }
-    .stat strong { display: block; font-size: 1.2rem; }
-    .toc ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
-    .toc a { color: var(--accent); text-decoration: none; }
-    .toc a:hover { text-decoration: underline; }
-    table { width: 100%; border-collapse: collapse; background: white; }
-    th, td {
-      padding: 10px 12px;
-      border-bottom: 1px solid #e6ebf2;
+    th {
+      font-weight: 600;
+      padding: 6px 10px;
       text-align: left;
-      vertical-align: top;
-      font-size: 0.93rem;
+      background: none;
+      color: var(--ink);
+      white-space: nowrap;
     }
-    th { background: #eef4ff; color: var(--accent); }
-    .chart-grid {
+    td {
+      padding: 5px 10px;
+      vertical-align: top;
+    }
+    tbody tr:nth-child(even) {
+      background: var(--zebra);
+    }
+
+    /* Figures */
+    .figure-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-      gap: 18px;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1.5em;
+      margin: 1em 0;
     }
     figure {
-      margin: 0;
-      padding: 16px;
-      border: 1px solid var(--line);
-      border-radius: 16px;
-      background: white;
+      margin: 1.2em 0;
+      padding: 0;
+      border: none;
+      background: none;
+      text-align: center;
     }
-    img { width: 100%; border-radius: 10px; }
-    figcaption { margin-top: 10px; color: var(--muted); font-size: 0.9rem; }
+    figure img {
+      max-width: 100%;
+      height: auto;
+      border: 1px solid #e0e0e0;
+    }
+    figcaption {
+      margin-top: 0.4em;
+      font-size: 0.85rem;
+      color: var(--caption);
+      text-align: center;
+    }
+
+    /* Details / collapsibles */
     details {
-      border: 1px solid var(--line);
-      border-radius: 16px;
-      background: #fcfdff;
-      overflow: hidden;
+      border: none;
+      border-top: 1px solid var(--rule-light);
+      background: none;
+      margin: 1.5em 0;
     }
-    details + details { margin-top: 14px; }
     summary {
       cursor: pointer;
       list-style: none;
-      padding: 18px 20px;
-      background: linear-gradient(90deg, rgba(29,78,216,0.10), rgba(29,78,216,0.03));
+      padding: 0.6em 0;
       font-weight: 700;
+      font-size: 1.05rem;
+      background: none;
     }
     summary::-webkit-details-marker { display: none; }
-    .details-body { padding: 18px; display: grid; gap: 18px; }
-    .meta {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
+    summary::before {
+      content: "\25B6\00a0";
+      font-size: 0.7em;
+      vertical-align: middle;
+    }
+    details[open] > summary::before {
+      content: "\25BC\00a0";
+    }
+    .details-body {
+      padding: 0.5em 0 1em;
+    }
+    .run-meta {
+      font-size: 0.88rem;
       color: var(--muted);
-      font-size: 0.92rem;
+      margin-bottom: 1em;
     }
-    .pill {
-      padding: 6px 10px;
-      border-radius: 999px;
-      background: var(--accent-soft);
-      border: 1px solid #bfdbfe;
+    .run-meta em {
+      font-style: normal;
+      font-weight: 600;
+      color: var(--ink);
     }
+
+    /* Empty state */
     .empty {
-      padding: 16px;
-      border-radius: 16px;
-      border: 1px dashed var(--line);
+      padding: 1em;
+      border: 1px dashed var(--rule-light);
       color: var(--muted);
-      background: #f8fbff;
+      font-size: 0.9rem;
     }
-    @media (max-width: 980px) {
-      .page { grid-template-columns: 1fr; }
-      .sidebar { position: static; }
+
+    /* Notes */
+    .note {
+      padding: 0.8em 1em;
+      border-left: 3px solid var(--rule-light);
+      color: var(--muted);
+      font-size: 0.88rem;
+      margin-bottom: 1em;
+    }
+
+    /* Links */
+    a { color: var(--link); }
+
+    /* Print */
+    @media print {
+      body {
+        font-size: 10pt;
+        padding: 0;
+        max-width: none;
+      }
+      .toc { page-break-after: always; }
+      section { page-break-before: auto; }
+      h2 { page-break-after: avoid; }
+      figure, table { page-break-inside: avoid; }
+      details { border: none; }
+      details > summary { display: none; }
+      details > .details-body { display: block !important; }
+      .figure-grid { grid-template-columns: 1fr; }
+      a { color: var(--ink); text-decoration: none; }
+    }
+
+    @media (max-width: 700px) {
+      body { padding: 1em; }
+      .figure-grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
 <body>
-  <div class="page">
-    <aside class="sidebar">
-      <div class="toc">
-        <h3>Contents</h3>
+
+  <header class="title-block">
+    <h1>MoonAI Profiler Analysis Report</h1>
+    <p class="subtitle">MoonAI Project &mdash; TED University</p>
+    <p class="date">{{ report_name }} &middot; generated {{ generated_at }}</p>
+  </header>
+  <hr class="title-rule">
+
+  <section class="abstract">
+    <h2>Abstract</h2>
+    <p>
+      This report presents profiling data from {{ run_count }} headless simulation
+      run{{ 's' if run_count != 1 else '' }}.
+      {{ skipped_count }} profile{{ 's' if skipped_count != 1 else '' }} could not be analysed and
+      {{ 'are' if skipped_count != 1 else 'is' }} listed in Excluded Profiles.
+      Source directory: <code>{{ input_dir }}</code>.
+    </p>
+  </section>
+
+  <nav class="toc">
+    <strong>Contents</strong>
+    <ul>
+      <li><a href="#summary">Run Summary</a></li>
+      <li><a href="#comparisons">Cross-Run Comparisons</a></li>
+      <li><a href="#runs">Profile Details</a>
         <ul>
-          <li><a href="#overview">Overview</a></li>
-          <li><a href="#summary">Run Summary</a></li>
-          <li><a href="#comparisons">Comparisons</a></li>
-          <li><a href="#runs">Profiles</a></li>
-          <li><a href="#skipped">Skipped</a></li>
+          {% for run in run_sections %}
+          <li><a href="#run-{{ loop.index }}">{{ run.label }}</a></li>
+          {% endfor %}
         </ul>
-      </div>
-    </aside>
+      </li>
+      <li><a href="#skipped">Excluded Profiles</a></li>
+    </ul>
+  </nav>
 
-    <main class="content">
-      <section class="panel" id="overview">
-        <h1>MoonAI Profiler Report</h1>
-        <p class="muted">{{ report_name }} · generated {{ generated_at }}</p>
-        <div class="stats">
-          <div class="stat"><span class="muted">Input directory</span><strong>{{ input_dir }}</strong></div>
-          <div class="stat"><span class="muted">Analysed runs</span><strong>{{ run_count }}</strong></div>
-          <div class="stat"><span class="muted">Skipped</span><strong>{{ skipped_count }}</strong></div>
-        </div>
-      </section>
+  <section id="summary">
+    <h2>Run Summary</h2>
+    <table>
+      <caption>Per-run overview of generation timing and dominant hotspots.</caption>
+      <thead>
+        <tr>
+          <th>Run</th>
+          <th>Generations</th>
+          <th>Avg Gen (ms)</th>
+          <th>Top Event</th>
+          <th>Top Event Avg (ms/active gen)</th>
+          <th>Path</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in summary_rows %}
+        <tr>
+          <td>{{ row.label }}</td>
+          <td>{{ row.generations }}</td>
+          <td>{{ row.avg_generation_ms }}</td>
+          <td>{{ row.top_event }} ({{ row.top_event_nonzero_generation_count }} active)</td>
+          <td>{{ row.top_event_avg_ms }}</td>
+          <td><code>{{ row.path }}</code></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
 
-      <section class="panel" id="summary">
-        <h2>Run Summary</h2>
+  <section id="comparisons">
+    <h2>Cross-Run Comparisons</h2>
+    <div class="figure-grid">
+      {% for chart in comparison_charts %}
+      <figure>
+        <img src="{{ chart.image_uri }}" alt="{{ chart.title }} chart">
+        <figcaption>{{ chart.title }}. {{ chart.caption }}</figcaption>
+      </figure>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section id="runs">
+    <h2>Profile Details</h2>
+    {% for run in run_sections %}
+    <details id="run-{{ loop.index }}" {% if loop.first %}open{% endif %}>
+      <summary>{{ run.label }}</summary>
+      <div class="details-body">
+        <p class="run-meta">
+          <em>Run dir:</em> {{ run.name }} &ensp;|&ensp;
+          <em>Mode:</em> {{ run.mode }} &ensp;|&ensp;
+          <em>Generations:</em> {{ run.generation_count }} &ensp;|&ensp;
+          <em>Avg generation:</em> {{ run.avg_generation_ms }} ms
+        </p>
+        <p class="run-meta">
+          <em>Top event:</em> {{ run.top_event_name }} ({{ run.top_event_avg_ms }} ms/active gen,
+          {{ run.top_event_nonzero_generation_count }} active generations,
+          {{ run.top_event_total_ms }} ms total)
+        </p>
+
+        {% if run.summary_meta.path_count_note %}
+        <div class="note">{{ run.summary_meta.path_count_note }}</div>
+        {% endif %}
+
+        {% if run.run_notes %}
+        <h3>Profiler Notes</h3>
         <table>
-          <thead>
-            <tr>
-              <th>Run</th>
-              <th>Generations</th>
-              <th>Avg Generation Ms</th>
-              <th>Top Event</th>
-              <th>Top Event Avg Ms/Active Gen</th>
-              <th>Path</th>
-            </tr>
-          </thead>
           <tbody>
-            {% for row in summary_rows %}
-            <tr>
-              <td>{{ row.label }}</td>
-              <td>{{ row.generations }}</td>
-              <td>{{ row.avg_generation_ms }}</td>
-              <td>{{ row.top_event }} ({{ row.top_event_nonzero_generation_count }} active)</td>
-              <td>{{ row.top_event_avg_ms }}</td>
-              <td>{{ row.path }}</td>
-            </tr>
+            {% for note in run.run_notes %}
+            <tr><td>{{ note }}</td></tr>
             {% endfor %}
           </tbody>
         </table>
-      </section>
+        {% endif %}
 
-      <section class="panel" id="comparisons">
-        <h2>Cross-Run Comparisons</h2>
-        <div class="chart-grid">
-          {% for chart in comparison_charts %}
+        <div class="figure-grid">
+          {% for chart in run.charts %}
           <figure>
-            <h3>{{ chart.title }}</h3>
             <img src="{{ chart.image_uri }}" alt="{{ chart.title }} chart">
-            <figcaption>{{ chart.caption }}</figcaption>
+            <figcaption>{{ chart.title }}. {{ chart.caption }}</figcaption>
           </figure>
           {% endfor %}
         </div>
-      </section>
 
-      <section class="panel" id="runs">
-        <h2>Profiles</h2>
-        {% for run in run_sections %}
-        <details {% if loop.first %}open{% endif %}>
-          <summary>{{ run.label }}</summary>
-          <div class="details-body">
-            <div class="meta">
-              <span class="pill">Run dir: {{ run.name }}</span>
-              <span class="pill">Mode: {{ run.mode }}</span>
-              <span class="pill">Generations: {{ run.generation_count }}</span>
-              <span class="pill">Avg generation: {{ run.avg_generation_ms }} ms</span>
-              <span class="pill">Top event: {{ run.top_event_name }} ({{ run.top_event_avg_ms }} ms/active gen)</span>
-              <span class="pill">Top event active generations: {{ run.top_event_nonzero_generation_count }}</span>
-              <span class="pill">Top event total time: {{ run.top_event_total_ms }} ms</span>
-            </div>
-
-            {% if run.summary_meta.path_count_note %}
-            <div class="empty">{{ run.summary_meta.path_count_note }}</div>
-            {% endif %}
-
-            {% if run.run_notes %}
-            <div>
-              <h3>Profiler Notes</h3>
-              <table>
-                <tbody>
-                  {% for note in run.run_notes %}
-                  <tr>
-                    <td>{{ note }}</td>
-                  </tr>
-                  {% endfor %}
-                </tbody>
-              </table>
-            </div>
-            {% endif %}
-
-            <div class="chart-grid">
-              {% for chart in run.charts %}
-              <figure>
-                <h3>{{ chart.title }}</h3>
-                <img src="{{ chart.image_uri }}" alt="{{ chart.title }} chart">
-                <figcaption>{{ chart.caption }}</figcaption>
-              </figure>
-              {% endfor %}
-            </div>
-
-            <div>
-              <h3>Run Metadata</h3>
-              <table>
-                <tbody>
-                  {% for key, value in run.run_meta.items() %}
-                  <tr>
-                    <th>{{ key }}</th>
-                    <td>{{ value }}</td>
-                  </tr>
-                  {% endfor %}
-                  <tr>
-                    <th>profile_path</th>
-                    <td>{{ run.path }}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-
-            <div>
-              <h3>Summary Events</h3>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Event</th>
-                    <th>Total Ms</th>
-                    <th>Avg / Generation</th>
-                    <th>Nonzero Generations</th>
-                    <th>Avg / Nonzero Generation</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {% for row in run.summary_events %}
-                  <tr>
-                    <td>{{ row.name }}</td>
-                    <td>{{ row.total_ms }}</td>
-                    <td>{{ row.avg_ms_per_generation }}</td>
-                    <td>{{ row.nonzero_generation_count }}</td>
-                    <td>{{ row.avg_ms_per_nonzero_generation }}</td>
-                  </tr>
-                  {% endfor %}
-                </tbody>
-              </table>
-            </div>
-
-            <div>
-              <h3>Summary Counters</h3>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Counter</th>
-                    <th>Total</th>
-                    <th>Avg / Generation</th>
-                    <th>Nonzero Generations</th>
-                    <th>Avg / Nonzero Generation</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {% for row in run.summary_counters %}
-                  <tr>
-                    <td>{{ row.name }}</td>
-                    <td>{{ row.total }}</td>
-                    <td>{{ row.avg_per_generation }}</td>
-                    <td>{{ row.nonzero_generation_count }}</td>
-                    <td>{{ row.avg_per_nonzero_generation }}</td>
-                  </tr>
-                  {% endfor %}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </details>
-        {% endfor %}
-      </section>
-
-      <section class="panel" id="skipped">
-        <h2>Skipped Profiles</h2>
-        {% if skipped_profiles %}
+        <h3>Run Metadata</h3>
         <table>
+          <tbody>
+            {% for key, value in run.run_meta.items() %}
+            <tr>
+              <th>{{ key }}</th>
+              <td>{{ value }}</td>
+            </tr>
+            {% endfor %}
+            <tr>
+              <th>profile_path</th>
+              <td><code>{{ run.path }}</code></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>Summary Events</h3>
+        <table>
+          <caption>All profiled events sorted by total time.</caption>
           <thead>
-            <tr><th>Name</th><th>Reason</th></tr>
+            <tr>
+              <th>Event</th>
+              <th>Total (ms)</th>
+              <th>Avg / Generation</th>
+              <th>Nonzero Generations</th>
+              <th>Avg / Nonzero Generation</th>
+            </tr>
           </thead>
           <tbody>
-            {% for skipped in skipped_profiles %}
+            {% for row in run.summary_events %}
             <tr>
-              <td>{{ skipped.name }}</td>
-              <td>{{ skipped.reason }}</td>
+              <td>{{ row.name }}</td>
+              <td>{{ row.total_ms }}</td>
+              <td>{{ row.avg_ms_per_generation }}</td>
+              <td>{{ row.nonzero_generation_count }}</td>
+              <td>{{ row.avg_ms_per_nonzero_generation }}</td>
             </tr>
             {% endfor %}
           </tbody>
         </table>
-        {% else %}
-        <div class="empty">No skipped profiles.</div>
-        {% endif %}
-      </section>
-    </main>
-  </div>
+
+        <h3>Summary Counters</h3>
+        <table>
+          <caption>All profiled counters sorted by total value.</caption>
+          <thead>
+            <tr>
+              <th>Counter</th>
+              <th>Total</th>
+              <th>Avg / Generation</th>
+              <th>Nonzero Generations</th>
+              <th>Avg / Nonzero Generation</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in run.summary_counters %}
+            <tr>
+              <td>{{ row.name }}</td>
+              <td>{{ row.total }}</td>
+              <td>{{ row.avg_per_generation }}</td>
+              <td>{{ row.nonzero_generation_count }}</td>
+              <td>{{ row.avg_per_nonzero_generation }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </details>
+    {% endfor %}
+  </section>
+
+  <section id="skipped">
+    <h2>Excluded Profiles</h2>
+    {% if skipped_profiles %}
+    <table>
+      <caption>Profiles that could not be included in the analysis.</caption>
+      <thead>
+        <tr><th>Name</th><th>Reason</th></tr>
+      </thead>
+      <tbody>
+        {% for skipped in skipped_profiles %}
+        <tr>
+          <td>{{ skipped.name }}</td>
+          <td>{{ skipped.reason }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty">No profiles were skipped.</div>
+    {% endif %}
+  </section>
+
 </body>
 </html>
