@@ -197,11 +197,14 @@ void Profiler::start_run(const std::string& experiment_name,
 
     try {
         const std::filesystem::path base_path(output_root_dir);
-        const std::string run_name = utc_timestamp_for_path(now)
-            + "_"
-            + sanitize_path_component(experiment_name)
-            + "_seed"
-            + std::to_string(seed_);
+        std::string run_name;
+        if (!experiment_name.empty()) {
+            // Named experiment: use timestamp + sanitized name (name already contains seed from config.lua)
+            run_name = utc_timestamp_for_path(now) + "_" + sanitize_path_component(experiment_name);
+        } else {
+            // Anonymous run: add seed suffix
+            run_name = utc_timestamp_for_path(now) + "_seed" + std::to_string(seed_);
+        }
         std::filesystem::path candidate = base_path / run_name;
         for (int suffix = 2; std::filesystem::exists(candidate); ++suffix) {
             candidate = base_path / (run_name + "_" + std::to_string(suffix));
