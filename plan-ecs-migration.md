@@ -59,7 +59,7 @@ After marking a phase `[x]`, shrink its section by:
 - [x] All code for phase is committed
 - [x] All tests passing
 - [x] Phase checklist fully checked off
-- [ ] Commit message includes "Phase X complete"
+- [x] Commit message includes "Phase X complete"
 
 **After shrinking**:
 - [x] Update this Document Maintenance Protocol with completion date
