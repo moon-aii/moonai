@@ -1,6 +1,10 @@
 set(MOONAI_GPU_SOURCES
+    gpu_data_buffer.cu
+    gpu_entity_mapping.cpp
+    ecs_gpu_packing.cu
     neural_inference.cu
     gpu_batch.cu
+    gpu_batch_ecs.cu
     sensor_kernel.cu
     gpu_simulation.cu
 )
