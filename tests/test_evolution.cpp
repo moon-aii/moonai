@@ -1,7 +1,6 @@
 #include "core/config.hpp"
 #include "core/random.hpp"
 #include "evolution/crossover.hpp"
-#include "evolution/evolution_manager.hpp"
 #include "evolution/genome.hpp"
 #include "evolution/mutation.hpp"
 #include "evolution/neural_network.hpp"
@@ -339,70 +338,6 @@ TEST(GenomeTest, CompatibilityDistanceWithOutOfOrderInnovations) {
   // delta = c1*1/n + 0 + 0 = 1.0*1/2 = 0.5 (c1=1, n=max(2,1)=2)
   float delta = Genome::compatibility_distance(a, b, 1.0f, 1.0f, 0.4f);
   EXPECT_NEAR(delta, 0.5f, 0.001f);
-}
-
-// ── Evolution Manager Tests ─────────────────────────────────────────────
-
-TEST(EvolutionManagerTest, InitializeCreatesPopulation) {
-  SimulationConfig config;
-  config.predator_count = 5;
-  config.prey_count = 10;
-  config.seed = 42;
-
-  Random rng(42);
-  SimulationManager sim(config);
-  sim.initialize();
-  EvolutionManager evo(config, rng);
-  evo.initialize(15, 2);
-  evo.seed_initial_population(sim);
-
-  EXPECT_EQ(static_cast<int>(sim.agents().size()), 15);
-
-  // Each genome should have correct structure
-  for (const auto &agent : sim.agents()) {
-    const auto &g = agent->genome();
-    EXPECT_EQ(g.num_inputs(), 15);
-    EXPECT_EQ(g.num_outputs(), 2);
-    EXPECT_GT(g.connections().size(), 0u);
-  }
-}
-
-TEST(EvolutionManagerTest, InitialGenomesProduceValidNetworks) {
-  SimulationConfig config;
-  config.predator_count = 3;
-  config.prey_count = 5;
-  config.seed = 42;
-
-  Random rng(42);
-  SimulationManager sim(config);
-  sim.initialize();
-  EvolutionManager evo(config, rng);
-  evo.initialize(15, 2);
-  evo.seed_initial_population(sim);
-
-  for (size_t i = 0; i < sim.agents().size(); ++i) {
-    auto outputs =
-        sim.agents()[i]->network()->activate(std::vector<float>(15, 0.5f));
-    EXPECT_EQ(outputs.size(), 2u);
-  }
-}
-
-TEST(EvolutionManagerTest, CreateOffspringAppendsPopulation) {
-  SimulationConfig config;
-  config.predator_count = 5;
-  config.prey_count = 10;
-  config.seed = 42;
-
-  Random rng(42);
-  SimulationManager sim(config);
-  sim.initialize();
-  EvolutionManager evo(config, rng);
-  evo.initialize(4, 2);
-  evo.seed_initial_population(sim);
-
-  const std::size_t before = sim.agents().size();
-  evo.create_offspring(sim, 0, 1, {10.0f, 10.0f});
-  EXPECT_EQ(sim.agents().size(), before + 1);
 }
 
 // ── Delete Connection Tests ─────────────────────────────────────────────

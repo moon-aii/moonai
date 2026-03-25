@@ -1,11 +1,9 @@
 #include "core/config.hpp"
 #include "core/random.hpp"
-#include "evolution/evolution_manager.hpp"
 #include "evolution/genome.hpp"
 #include "evolution/mutation.hpp"
 #include "evolution/neural_network.hpp"
 #include "gpu/gpu_batch.hpp"
-#include "simulation/simulation_manager.hpp"
 #include <cmath>
 #include <gtest/gtest.h>
 
@@ -207,35 +205,6 @@ static void run_gpu_inference(GpuBatch &batch, const float *inputs,
   batch.start_unpack_async();
   batch.finish_unpack(outputs, output_count);
   ASSERT_TRUE(batch.ok()) << "GPU batch reported a CUDA failure";
-}
-
-static void run_continuous_steps(EvolutionManager &evo, SimulationManager &sim,
-                                 int steps, const SimulationConfig &config) {
-  std::vector<Vec2> actions;
-  const float dt = 1.0f / static_cast<float>(config.target_fps);
-  int steps_executed = 0;
-
-  while (steps_executed < steps) {
-    evo.compute_actions(sim, actions);
-    for (std::size_t idx : sim.alive_agent_indices()) {
-      sim.apply_action(idx, actions[idx], dt);
-    }
-
-    sim.step(dt);
-
-    const auto pairs = sim.find_reproduction_pairs();
-    for (const auto &pair : pairs) {
-      evo.create_offspring(sim, pair.parent_a, pair.parent_b,
-                           pair.spawn_position);
-    }
-
-    evo.refresh_fitness(sim);
-    if (config.species_update_interval_steps > 0 &&
-        ((steps_executed + 1) % config.species_update_interval_steps) == 0) {
-      evo.refresh_species(sim);
-    }
-    ++steps_executed;
-  }
 }
 
 // Test 1: CPU vs GPU output comparison with known topology
@@ -519,150 +488,4 @@ TEST_F(GpuTest, RejectsOversizedCopies) {
   const float oversized_inputs[4] = {1.0f, 0.5f, -1.0f, 0.0f};
   batch.pack_inputs_async(oversized_inputs, 4);
   EXPECT_FALSE(batch.ok());
-}
-
-TEST_F(GpuTest, ComputeActionsMatchesCpuForStaticSnapshot) {
-  SimulationConfig config;
-  config.predator_count = 120;
-  config.prey_count = 180;
-  config.seed = 42;
-  config.target_fps = 30;
-
-  Random cpu_rng(config.seed);
-  Random gpu_rng(config.seed);
-  SimulationManager cpu_sim(config);
-  SimulationManager gpu_sim(config);
-  EvolutionManager cpu_evo(config, cpu_rng);
-  EvolutionManager gpu_evo(config, gpu_rng);
-
-  cpu_sim.initialize();
-  gpu_sim.initialize();
-  cpu_evo.initialize(SensorInput::SIZE, 2);
-  gpu_evo.initialize(SensorInput::SIZE, 2);
-  cpu_evo.seed_initial_population(cpu_sim);
-  gpu_evo.seed_initial_population(gpu_sim);
-
-  gpu_evo.enable_gpu(true);
-
-  std::vector<Vec2> cpu_actions;
-  std::vector<Vec2> gpu_actions;
-  cpu_evo.compute_actions(cpu_sim, cpu_actions);
-  gpu_evo.compute_actions(gpu_sim, gpu_actions);
-
-  ASSERT_EQ(cpu_actions.size(), gpu_actions.size());
-  for (size_t i = 0; i < cpu_actions.size(); i += 23) {
-    EXPECT_NEAR(cpu_actions[i].x, gpu_actions[i].x, 1e-4f)
-        << "Action X mismatch at slot " << i;
-    EXPECT_NEAR(cpu_actions[i].y, gpu_actions[i].y, 1e-4f)
-        << "Action Y mismatch at slot " << i;
-  }
-}
-
-TEST_F(GpuTest, ContinuousStepLoopMatchesCpu) {
-  SimulationConfig config;
-  config.predator_count = 400;
-  config.prey_count = 700;
-  config.max_steps = 12;
-  config.seed = 42;
-  config.target_fps = 30;
-
-  Random cpu_rng(config.seed);
-  Random gpu_rng(config.seed);
-  SimulationManager cpu_sim(config);
-  SimulationManager gpu_sim(config);
-  EvolutionManager cpu_evo(config, cpu_rng);
-  EvolutionManager gpu_evo(config, gpu_rng);
-
-  cpu_sim.initialize();
-  gpu_sim.initialize();
-  cpu_evo.initialize(SensorInput::SIZE, 2);
-  gpu_evo.initialize(SensorInput::SIZE, 2);
-  cpu_evo.seed_initial_population(cpu_sim);
-  gpu_evo.seed_initial_population(gpu_sim);
-
-  gpu_evo.enable_gpu(true);
-
-  run_continuous_steps(cpu_evo, cpu_sim, config.max_steps, config);
-  run_continuous_steps(gpu_evo, gpu_sim, config.max_steps, config);
-
-  EXPECT_EQ(cpu_sim.alive_predators(), gpu_sim.alive_predators());
-  EXPECT_EQ(cpu_sim.alive_prey(), gpu_sim.alive_prey());
-
-  for (size_t i = 0; i < cpu_sim.agents().size(); i += 137) {
-    EXPECT_NEAR(cpu_sim.agents()[i]->genome().fitness(),
-                gpu_sim.agents()[i]->genome().fitness(), 1e-4f)
-        << "Fitness mismatch at agent slot " << i;
-  }
-}
-
-TEST_F(GpuTest, ContinuousGpuRunsAreDeterministic) {
-  SimulationConfig config;
-  config.predator_count = 250;
-  config.prey_count = 750;
-  config.food_count = 1000;
-  config.max_steps = 4;
-  config.seed = 1337;
-  config.target_fps = 30;
-
-  Random cpu_rng(config.seed);
-  Random gpu_rng_a(config.seed);
-  Random gpu_rng_b(config.seed);
-  SimulationManager cpu_sim(config);
-  SimulationManager gpu_sim_a(config);
-  SimulationManager gpu_sim_b(config);
-  EvolutionManager cpu_evo(config, cpu_rng);
-  EvolutionManager gpu_evo_a(config, gpu_rng_a);
-  EvolutionManager gpu_evo_b(config, gpu_rng_b);
-
-  cpu_sim.initialize();
-  gpu_sim_a.initialize();
-  gpu_sim_b.initialize();
-  cpu_evo.initialize(SensorInput::SIZE, 2);
-  gpu_evo_a.initialize(SensorInput::SIZE, 2);
-  gpu_evo_b.initialize(SensorInput::SIZE, 2);
-  cpu_evo.seed_initial_population(cpu_sim);
-  gpu_evo_a.seed_initial_population(gpu_sim_a);
-  gpu_evo_b.seed_initial_population(gpu_sim_b);
-
-  gpu_evo_a.enable_gpu(true);
-  gpu_evo_b.enable_gpu(true);
-
-  run_continuous_steps(cpu_evo, cpu_sim, config.max_steps, config);
-  run_continuous_steps(gpu_evo_a, gpu_sim_a, config.max_steps, config);
-  run_continuous_steps(gpu_evo_b, gpu_sim_b, config.max_steps, config);
-
-  EXPECT_EQ(gpu_sim_a.alive_predators(), gpu_sim_b.alive_predators());
-  EXPECT_EQ(gpu_sim_a.alive_prey(), gpu_sim_b.alive_prey());
-  EXPECT_LE(std::abs(cpu_sim.alive_predators() - gpu_sim_a.alive_predators()),
-            1);
-  EXPECT_LE(std::abs(cpu_sim.alive_prey() - gpu_sim_a.alive_prey()), 1);
-
-  for (size_t i = 0; i < cpu_sim.agents().size(); i += 17) {
-    EXPECT_NEAR(gpu_sim_a.agents()[i]->genome().fitness(),
-                gpu_sim_b.agents()[i]->genome().fitness(), 1e-4f)
-        << "Resident deterministic fitness mismatch at agent slot " << i;
-    EXPECT_NEAR(cpu_sim.agents()[i]->genome().fitness(),
-                gpu_sim_a.agents()[i]->genome().fitness(), 1e-3f)
-        << "Resident CPU/GPU fitness mismatch at agent slot " << i;
-  }
-
-  for (size_t i = 0; i < gpu_sim_a.agents().size(); i += 19) {
-    const auto &gpu_agent_a = gpu_sim_a.agents()[i];
-    const auto &gpu_agent_b = gpu_sim_b.agents()[i];
-    EXPECT_EQ(gpu_agent_a->alive(), gpu_agent_b->alive())
-        << "Resident alive mismatch at agent " << i;
-    EXPECT_NEAR(gpu_agent_a->position().x, gpu_agent_b->position().x, 1e-5f);
-    EXPECT_NEAR(gpu_agent_a->position().y, gpu_agent_b->position().y, 1e-5f);
-    EXPECT_NEAR(gpu_agent_a->energy(), gpu_agent_b->energy(), 1e-5f);
-    EXPECT_EQ(gpu_agent_a->kills(), gpu_agent_b->kills());
-    EXPECT_EQ(gpu_agent_a->food_eaten(), gpu_agent_b->food_eaten());
-  }
-
-  for (size_t i = 0; i < cpu_sim.agents().size(); i += 19) {
-    const auto &cpu_agent = cpu_sim.agents()[i];
-    const auto &gpu_agent = gpu_sim_a.agents()[i];
-    EXPECT_NEAR(cpu_agent->position().x, gpu_agent->position().x, 1.0f);
-    EXPECT_NEAR(cpu_agent->position().y, gpu_agent->position().y, 1.0f);
-    EXPECT_NEAR(cpu_agent->energy(), gpu_agent->energy(), 1.0f);
-  }
 }

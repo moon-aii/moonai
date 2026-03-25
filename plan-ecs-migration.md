@@ -44,27 +44,32 @@ This document outlines the comprehensive migration of MoonAI's simulation core f
 - Expensive GPU upload (field-by-field extraction)
 - Mixed hot/cold data in single class
 
-### 1.2 Target Architecture (ECS)
+### 1.2 Target Architecture (ECS in Simulation Module)
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                           ECS WORLD                                  │
-├─────────────────────────────────────────────────────────────────────┤
-│  ENTITIES (uint32_t IDs)                                             │
-│  Components (SoA - Structure of Arrays)                              │
-│  ┌───────────────────────────────────────────────────────────────┐  │
-│  │ Position      │ Velocity      │ Energy        │ Brain         │  │
-│  │ [x][x][x]     │ [x][x][x]     │ [e][e][e]     │ [g][n][i][o]  │  │
-│  │ [y][y][y]     │ [y][y][y]     │               │               │  │
-│  │ (hot)         │ (hot)         │ (hot)         │ (warm)        │  │
-│  └───────────────────────────────────────────────────────────────┘  │
-│                                                                       │
-│  SYSTEMS (Data Transformation)                                        │
-│  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ │
-│  │ SensorSystem │ │ Inference    │ │ Movement     │ │ Combat       │ │
-│  │ (spatial)    │ │ (CPU/GPU)    │ │ (physics)    │ │ (attacks)    │ │
-│  └──────────────┘ └──────────────┘ └──────────────┘ └──────────────┘ │
-└─────────────────────────────────────────────────────────────────────┘
+src/simulation/ (ECS Container)
+├── ecs_registry.hpp          [Entity + Component Storage]
+├── ecs_component.hpp         [Component Traits]
+├── components/
+│   ├── core_components.hpp   [Position, Velocity, Energy, Vitals]
+│   └── agent_components.hpp  [Vision, Brain, CombatStats]
+├── systems/
+│   ├── system.hpp            [System Interface]
+│   ├── movement_system.hpp
+│   ├── combat_system.hpp
+│   ├── sensor_system.hpp
+│   └── energy_system.hpp
+└── system_scheduler.hpp      [System Execution]
+
+src/evolution/
+├── brain_component.hpp       [Entity → Genome/NN Link]
+└── evolution_manager.hpp     [Modified for ECS]
+
+src/gpu/
+└── ecs_gpu_bridge.hpp        [Zero-Copy Uploads]
+
+src/visualization/
+└── [Modified to query ECS]
 ```
 
 **Benefits**:
@@ -77,28 +82,27 @@ This document outlines the comprehensive migration of MoonAI's simulation core f
 
 ## 2. Migration Strategy
 
-### 2.1 Hybrid Approach
+### 2.1 ECS Location
 
-We will use a **partial migration** strategy:
+**All ECS code in `src/simulation/`**
 
-**Migrate to ECS**:
-- Agent simulation state (positions, energy, age)
-- Movement and physics
-- Combat and interactions
-- Sensor building
-- GPU computation orchestration
+The simulation module becomes the ECS container:
+- Registry, components, and systems all in `src/simulation/`
+- One place to find all ECS-related code
+- Simulation owns agent lifecycle
 
-**Keep as OOP**:
-- NEAT evolution (Genome, NeuralNetwork)
-- Species management
-- Lua runtime
-- Visualization (SFML)
-- Data logging
+**Files to Delete Immediately**:
+- `src/simulation/agent.hpp`
+- `src/simulation/agent.cpp`
+- `src/simulation/predator.hpp`
+- `src/simulation/predator.cpp`
+- `src/simulation/prey.hpp`
+- `src/simulation/prey.cpp`
 
 **Bridge Layer**:
-- ECS ↔ EvolutionManager (Genome references)
-- ECS ↔ GpuBatch (zero-copy transfers)
-- ECS ↔ Renderer (query interface)
+- `src/evolution/` → `src/simulation/` (EvolutionManager uses Registry)
+- `src/gpu/` → `src/simulation/` (ECSGpuBridge reads component arrays)
+- `src/visualization/` → `src/simulation/` (Renderer queries components)
 
 ### 2.2 Parallel Validation
 
@@ -123,19 +127,17 @@ public:
 
 ### 2.3 Implementation Approach
 
-**Custom ECS Implementation**
+**Custom ECS in Simulation Module**
 
-We will build a custom ECS implementation optimized for GPU delegation:
-
-- **Structure of Arrays (SoA)** layout for cache-friendly iteration
-- **Sparse set** storage for O(1) component access
+- **Structure of Arrays (SoA)** for cache-friendly iteration
+- **Sparse set** storage for O(1) component access  
 - **Zero-copy GPU transfers** - direct pointer passing to CUDA
-- **Zero external dependencies** - implemented from scratch
+- **All files in `src/simulation/`** - single location for ECS code
 
 **Why Custom:**
-- Frameworks (EnTT, Flecs) use generic memory layouts not optimized for GPU
-- Custom implementation enables direct `cudaMemcpy()` from component arrays
-- Full control over memory allocation for pinned memory (zero-copy)
+- Optimized memory layout for GPU (not generic framework)
+- Direct `cudaMemcpy()` from component arrays
+- Full control over pinned memory allocation
 - Educational value for academic project
 
 ---
@@ -149,20 +151,20 @@ We will build a custom ECS implementation optimized for GPU delegation:
 #### 3.1.1 Create ECS Core Module
 
 **Files to Create**:
-- `src/ecs/registry.hpp` - Sparse set registry
-- `src/ecs/registry.cpp`
-- `src/ecs/component.hpp` - Component traits
-- `src/ecs/view.hpp` - Query views
-- `src/ecs/entity.hpp` - Entity type definitions
+- `src/simulation/registry.hpp` - Sparse set registry
+- `src/simulation/registry.cpp`
+- `src/simulation/component.hpp` - Component traits
+- `src/simulation/view.hpp` - Query views
+- `src/simulation/entity.hpp` - Entity type definitions
 
 **Implementation**:
 
 ```cpp
-// src/ecs/entity.hpp
+// src/simulation/entity.hpp
 #pragma once
 #include <cstdint>
 
-namespace moonai::ecs {
+namespace moonai {
 
 using Entity = std::uint32_t;
 constexpr Entity INVALID_ENTITY = 0;
@@ -172,15 +174,15 @@ struct EntityIndex {
     uint32_t generation;
 };
 
-} // namespace moonai::ecs
+} // namespace moonai
 ```
 
 ```cpp
-// src/ecs/component.hpp
+// src/simulation/component.hpp
 #pragma once
 #include <type_traits>
 
-namespace moonai::ecs {
+namespace moonai {
 
 // Component concept: must be trivially copyable
 template<typename T>
@@ -194,20 +196,20 @@ struct ComponentTraits {
     static constexpr size_t max_count = 100000;  // Max entities per type
 };
 
-} // namespace moonai::ecs
+} // namespace moonai
 ```
 
 ```cpp
-// src/ecs/registry.hpp
+// src/simulation/registry.hpp
 #pragma once
-#include "ecs/entity.hpp"
-#include "ecs/component.hpp"
+#include "simulation/ecs_entity.hpp"
+#include "simulation/ecs_component.hpp"
 #include <vector>
 #include <unordered_map>
 #include <typeindex>
 #include <memory>
 
-namespace moonai::ecs {
+namespace moonai {
 
 // Sparse set for O(1) component access
 template<Component T>
@@ -280,23 +282,23 @@ private:
     SparseSet<T>* pool();
 };
 
-} // namespace moonai::ecs
+} // namespace moonai
 ```
 
 #### 3.1.2 Implement Component Types
 
 **Files to Create**:
-- `src/ecs/components/core.hpp` - Position, Velocity, etc.
-- `src/ecs/components/agent.hpp` - Agent-specific components
-- `src/ecs/components/gpu_aligned.hpp` - GPU-compatible layouts
+- `src/simulation/components/core.hpp` - Position, Velocity, etc.
+- `src/simulation/components/agent.hpp` - Agent-specific components
+- `src/simulation/components/gpu_aligned.hpp` - GPU-compatible layouts
 
 ```cpp
-// src/ecs/components/core.hpp
+// src/simulation/components/core.hpp
 #pragma once
-#include "ecs/component.hpp"
+#include "simulation/ecs_component.hpp"
 #include "core/types.hpp"
 
-namespace moonai::ecs {
+namespace moonai {
 
 // Transform components (hot - accessed every frame)
 struct Position {
@@ -415,7 +417,7 @@ struct ComponentTraits<GpuAgentState> {
     static constexpr size_t max_count = 50000;
 };
 
-} // namespace moonai::ecs
+} // namespace moonai
 ```
 
 #### 3.1.3 Write Comprehensive Tests
@@ -494,22 +496,22 @@ TEST(ECSRegistry, QueryPerformance) {
 #### 3.2.1 Create System Base Classes
 
 **Files to Create**:
-- `src/ecs/system.hpp` - System interface
-- `src/ecs/systems/movement.hpp` - Movement system
-- `src/ecs/systems/movement.cpp`
-- `src/ecs/systems/energy.hpp` - Energy system
-- `src/ecs/systems/energy.cpp`
-- `src/ecs/systems/sensor.hpp` - Sensor building
-- `src/ecs/systems/sensor.cpp`
-- `src/ecs/systems/combat.hpp` - Combat system
-- `src/ecs/systems/combat.cpp`
+- `src/simulation/system.hpp` - System interface
+- `src/simulation/systems/movement.hpp` - Movement system
+- `src/simulation/systems/movement.cpp`
+- `src/simulation/systems/energy.hpp` - Energy system
+- `src/simulation/systems/energy.cpp`
+- `src/simulation/systems/sensor.hpp` - Sensor building
+- `src/simulation/systems/sensor.cpp`
+- `src/simulation/systems/combat.hpp` - Combat system
+- `src/simulation/systems/combat.cpp`
 
 ```cpp
-// src/ecs/system.hpp
+// src/simulation/system.hpp
 #pragma once
-#include "ecs/registry.hpp"
+#include "simulation/ecs_registry.hpp"
 
-namespace moonai::ecs {
+namespace moonai {
 
 class System {
 public:
@@ -527,18 +529,18 @@ private:
     std::vector<std::unique_ptr<System>> systems;
 };
 
-} // namespace moonai::ecs
+} // namespace moonai
 ```
 
 #### 3.2.2 Implement Movement System
 
 ```cpp
-// src/ecs/systems/movement.hpp
+// src/simulation/systems/movement.hpp
 #pragma once
-#include "ecs/system.hpp"
+#include "simulation/system.hpp"
 #include "simulation/spatial_grid.hpp"
 
-namespace moonai::ecs {
+namespace moonai {
 
 class MovementSystem : public System {
 public:
@@ -553,16 +555,16 @@ private:
     float world_height_;
 };
 
-} // namespace moonai::ecs
+} // namespace moonai
 ```
 
 ```cpp
-// src/ecs/systems/movement.cpp
-#include "ecs/systems/movement.hpp"
-#include "ecs/components/core.hpp"
+// src/simulation/systems/movement.cpp
+#include "simulation/systems/movement.hpp"
+#include "simulation/components/core.hpp"
 #include "simulation/physics.hpp"
 
-namespace moonai::ecs {
+namespace moonai {
 
 MovementSystem::MovementSystem(SpatialGrid* grid, float w, float h)
     : spatial_grid_(grid), world_width_(w), world_height_(h) {}
@@ -605,13 +607,13 @@ void MovementSystem::update(Registry& registry, float dt) {
     }
 }
 
-} // namespace moonai::ecs
+} // namespace moonai
 ```
 
 #### 3.2.3 Implement Sensor System
 
 ```cpp
-// src/ecs/systems/sensor.cpp
+// src/simulation/systems/sensor.cpp
 void SensorSystem::update(Registry& registry, float dt) {
     auto view = registry.query<Position, Vision, SensorInput, AgentTypeTag, 
                                Vitals>();
@@ -637,8 +639,8 @@ void SensorSystem::update(Registry& registry, float dt) {
 // src/validation/dual_mode.hpp
 #pragma once
 #include "simulation/simulation_manager.hpp"
-#include "ecs/registry.hpp"
-#include "ecs/systems/all.hpp"
+#include "simulation/ecs_registry.hpp"
+#include "simulation/systems/all.hpp"
 
 namespace moonai::validation {
 
@@ -684,17 +686,17 @@ private:
 #### 3.3.1 Create ECS-GPU Bridge
 
 **Files to Create**:
-- `src/ecs/gpu/bridge.hpp` - ECS to GPU bridge
-- `src/ecs/gpu/bridge.cpp`
-- `src/ecs/gpu/buffer_manager.hpp` - GPU buffer management
+- `src/simulation/gpu/bridge.hpp` - ECS to GPU bridge
+- `src/simulation/gpu/bridge.cpp`
+- `src/simulation/gpu/buffer_manager.hpp` - GPU buffer management
 
 ```cpp
-// src/ecs/gpu/bridge.hpp
+// src/simulation/gpu/bridge.hpp
 #pragma once
-#include "ecs/registry.hpp"
+#include "simulation/ecs_registry.hpp"
 #include "gpu/gpu_batch.hpp"
 
-namespace moonai::ecs::gpu {
+namespace moonai::gpu {
 
 class EcsGpuBridge {
 public:
@@ -727,15 +729,15 @@ private:
     void free_pinned_buffers();
 };
 
-} // namespace moonai::ecs::gpu
+} // namespace moonai::gpu
 ```
 
 ```cpp
-// src/ecs/gpu/bridge.cpp
-#include "ecs/gpu/bridge.hpp"
-#include "ecs/components/core.hpp"
+// src/simulation/gpu/bridge.cpp
+#include "gpu/bridge.hpp"
+#include "simulation/components/core.hpp"
 
-namespace moonai::ecs::gpu {
+namespace moonai::gpu {
 
 void EcsGpuBridge::upload_async() {
     if (zero_copy_enabled_) {
@@ -794,7 +796,7 @@ void EcsGpuBridge::enable_zero_copy() {
     zero_copy_enabled_ = true;
 }
 
-} // namespace moonai::ecs::gpu
+} // namespace moonai::gpu
 ```
 
 #### 3.3.2 Optimize GPU Memory Layout
@@ -1061,8 +1063,8 @@ void UiOverlay::draw(sf::RenderTarget& target,
 #### 3.6.1 Event System
 
 ```cpp
-// src/ecs/events.hpp
-namespace moonai::ecs {
+// src/simulation/events.hpp
+namespace moonai {
 
 struct DeathEvent {
     Entity victim;
@@ -1087,7 +1089,7 @@ public:
     void dispatch_all();  // Process queued events
 };
 
-} // namespace moonai::ecs
+} // namespace moonai
 ```
 
 #### 3.6.2 System Dependencies
@@ -1393,29 +1395,34 @@ moonai/
 ├── config.lua                  # Unified config: default run + experiment matrix
 ├── src/
 │   ├── main.cpp                # Entry point
-│   ├── ecs/                    # NEW: Entity-Component-System core
-│   │   ├── registry.hpp        # Sparse set registry
-│   │   ├── components/         # Component definitions
-│   │   │   ├── core.hpp        # Position, Velocity, Energy, etc.
-│   │   │   └── agent.hpp       # Agent-specific components
-│   │   ├── systems/            # System implementations
-│   │   │   ├── movement.hpp    # Movement system
-│   │   │   ├── combat.hpp      # Combat system
-│   │   │   └── sensor.hpp      # Sensor building system
-│   │   └── gpu/                # ECS-GPU bridge
-│   │       ├── bridge.hpp      # Zero-copy GPU transfers
-│   │       └── buffer_manager.hpp
 │   ├── core/                   # Shared types, config loader, Lua runtime
-│   ├── simulation/             # UPDATED: Environment, spatial grid (no Agent classes)
+│   ├── simulation/             # ECS CORE - Data-oriented simulation
+│   │   ├── ecs_registry.hpp    # Sparse set registry
+│   │   ├── ecs_component.hpp   # Component traits
+│   │   ├── ecs_entity.hpp      # Entity type
+│   │   ├── components/         # Component definitions
+│   │   │   ├── core_components.hpp    # Position, Velocity, Energy
+│   │   │   └── agent_components.hpp   # Vision, Brain, CombatStats
+│   │   ├── systems/            # System implementations
+│   │   │   ├── system.hpp
+│   │   │   ├── movement_system.hpp
+│   │   │   ├── combat_system.hpp
+│   │   │   ├── sensor_system.hpp
+│   │   │   └── energy_system.hpp
+│   │   ├── system_scheduler.hpp
 │   │   ├── environment.hpp
 │   │   ├── spatial_grid.hpp
 │   │   └── physics.hpp
 │   ├── evolution/              # NEAT: genome, neural network, species
-│   ├── visualization/          # SFML rendering, UI overlay
-│   ├── data/                   # CSV/JSON logger, metrics
+│   │   ├── brain_component.hpp # NEW: Entity → Genome link
+│   │   └── evolution_manager.hpp
+│   ├── visualization/          # SFML rendering, queries ECS
+│   ├── data/                   # CSV/JSON logger
 │   └── gpu/                    # CUDA kernels
+│       ├── ecs_gpu_bridge.hpp  # NEW: ECS zero-copy bridge
+│       └── ...
 ├── tests/
-│   ├── test_ecs_*.cpp          # NEW: ECS unit tests
+│   ├── test_simulation_ecs.cpp # NEW: ECS tests
 │   └── ...                     # Existing tests
 └── ...
 ```
@@ -1481,8 +1488,7 @@ ECS solves these with:
 
 | Subsystem | Pattern | Description |
 |-----------|---------|-------------|
-| `src/ecs/` | **ECS** | Registry, components (SoA), systems |
-| `src/simulation/` | **ECS** | Environment, spatial grid, physics |
+| `src/simulation/` | **ECS** | Registry, components (SoA), systems, environment |
 | `src/evolution/` | **OOP** | NEAT: Genome, NN, Species, Mutation |
 | `src/visualization/` | **OOP** | SFML rendering, queries ECS |
 | `src/gpu/` | **Mixed** | CUDA kernels, ECS-GPU bridge |
@@ -1498,7 +1504,7 @@ ECS solves these with:
 ### 9.7 Checklist for README Update
 
 - [ ] Architecture diagram updated
-- [ ] Project structure reflects `src/ecs/` directory
+- [ ] Project structure reflects `src/simulation/` as ECS container
 - [ ] Key features mention ECS and performance
 - [ ] Performance section added with benchmarks
 - [ ] Architecture section explains ECS/OOP hybrid
