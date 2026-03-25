@@ -266,7 +266,6 @@ src/visualization/
 | 3 | GPU Integration | [x] | COMPLETED |
 | 4 | Network Cache & Evolution | [x] | COMPLETED |
 | 5 | Visualization | [x] | COMPLETED |
-| 6 | Advanced Features | [ ] | - |
 
 **Legend**: [ ] Not started, [~] In progress, [x] Completed
 
@@ -443,82 +442,6 @@ While all components are committed together, implement in this order:
 - [x] All legacy files removed (agent, predator, prey, environment, physics, AgentId)
 - [x] All 131 tests passing
 - [x] `just build` and `just test` pass clean
-
----
-
-### Phase 6: Advanced Features [ ]
-
-**Goal**: Add production-grade features (optional but recommended)
-
-#### 3.6.1 Event System
-
-```cpp
-// src/simulation/events.hpp
-namespace moonai {
-
-struct DeathEvent {
-    Entity victim;
-    Entity killer;  // INVALID_ENTITY if not killed
-    enum Reason { Starvation, Killed, Age } reason;
-};
-
-struct BirthEvent {
-    Entity child;
-    Entity parent_a;
-    Entity parent_b;
-};
-
-class EventBus {
-public:
-    template<typename Event>
-    void subscribe(std::function<void(const Event&)> handler);
-    
-    template<typename Event>
-    void emit(const Event& event);
-    
-    void dispatch_all();  // Process queued events
-};
-
-} // namespace moonai
-```
-
-#### 3.6.2 System Dependencies
-
-```cpp
-class SystemScheduler {
-    struct SystemNode {
-        std::unique_ptr<System> system;
-        std::vector<SystemNode*> dependencies;
-        std::vector<SystemNode*> dependents;
-};
-
-} // namespace moonai
-    
-public:
-    void add_system(std::unique_ptr<System> sys, 
-                   std::vector<std::string> after = {});
-    
-    void update(Registry& registry, float dt) {
-        // Topological sort for execution order
-        // Run independent systems in parallel
-    }
-};
-```
-
-#### 3.6.3 Serialization
-
-```cpp
-// Save/Load ECS world state
-void Registry::serialize(const std::string& filepath) const;
-void Registry::deserialize(const std::string& filepath);
-```
-
-#### 3.6.4 Validation Criteria
-
-- [ ] Event system decouples systems
-- [ ] Save/load functionality works
-- [ ] System dependencies respected
-- [ ] Performance profiling tools integrated
 
 ---
 
