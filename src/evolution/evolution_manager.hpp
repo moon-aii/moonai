@@ -2,18 +2,25 @@
 
 #include "core/config.hpp"
 #include "core/random.hpp"
+#include "core/types.hpp"
 #include "evolution/genome.hpp"
 #include "evolution/mutation.hpp"
+#include "evolution/network_cache.hpp"
 #include "evolution/neural_network.hpp"
 #include "evolution/species.hpp"
 #include "gpu/gpu_batch.hpp"
+#include "simulation/entity.hpp"
 #include "simulation/simulation_manager.hpp"
 
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace moonai {
+
+// Forward declaration
+class Registry;
 
 class EvolutionManager {
 public:
@@ -38,6 +45,37 @@ public:
                            AgentId parent_b, Vec2 spawn_position);
   void refresh_species(SimulationManager &sim);
   void refresh_fitness(const SimulationManager &sim);
+
+  // ECS-aware methods (Phase 4)
+  // These methods work with the ECS Registry instead of SimulationManager
+  // agents
+  void seed_initial_population_ecs(Registry &registry);
+
+  // Validates parent handles before creating offspring
+  // Returns INVALID_ENTITY if parents are invalid or dead
+  Entity create_offspring_ecs(Registry &registry, Entity parent_a,
+                              Entity parent_b, Vec2 spawn_position);
+
+  void refresh_fitness_ecs(const Registry &registry);
+  void refresh_species_ecs(Registry &registry);
+
+  // Compute actions: uses NetworkCache for NN inference
+  // Note: Registry must be non-const to write brain outputs
+  void compute_actions_ecs(Registry &registry, std::vector<Vec2> &actions);
+
+  // Called when entities die (cleanup)
+  void on_entity_destroyed(Entity e);
+
+  // Accessors for ECS integration
+  NetworkCache &network_cache() {
+    return network_cache_;
+  }
+  const NetworkCache &network_cache() const {
+    return network_cache_;
+  }
+
+  Genome *genome_for(Entity e);
+  const Genome *genome_for(Entity e) const;
 
   const std::vector<Species> &species() const {
     return species_;
@@ -80,6 +118,13 @@ private:
   std::vector<AgentId> gpu_layout_agent_ids_;
   std::unique_ptr<gpu::GpuBatch> gpu_batch_;
   std::string gpu_activation_function_;
+
+  // ECS integration (Phase 4)
+  // Entity -> Genome mapping (flat POD, fine for ECS)
+  std::unordered_map<Entity, Genome, EntityHash> entity_genomes_;
+
+  // Entity -> NeuralNetwork mapping (variable topology, separate cache)
+  NetworkCache network_cache_;
 };
 
 } // namespace moonai

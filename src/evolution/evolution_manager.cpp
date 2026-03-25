@@ -4,6 +4,7 @@
 #include "evolution/crossover.hpp"
 #include "simulation/predator.hpp"
 #include "simulation/prey.hpp"
+#include "simulation/registry.hpp"
 
 #include <algorithm>
 #include <limits>
@@ -677,6 +678,338 @@ bool EvolutionManager::step_gpu(SimulationManager &sim, int step_index) {
 
   return true;
 #endif
+}
+
+// ============================================================================
+// ECS-Aware Methods (Phase 4)
+// ============================================================================
+
+#include "simulation/registry.hpp"
+
+void EvolutionManager::seed_initial_population_ecs(Registry &registry) {
+  entity_genomes_.clear();
+  network_cache_.clear();
+
+  int num_predators = config_.predator_count;
+  int num_prey = config_.prey_count;
+
+  float grid_size_f = static_cast<float>(config_.grid_size);
+
+  // Create predators
+  for (int i = 0; i < num_predators; ++i) {
+    Entity e = registry.create();
+    size_t idx = registry.index_of(e);
+
+    Genome genome = create_initial_genome();
+    entity_genomes_[e] = genome;
+    network_cache_.assign(e, genome, config_.activation_function);
+
+    // Initialize position randomly
+    registry.positions().x[idx] = rng_.next_float(0.0f, grid_size_f);
+    registry.positions().y[idx] = rng_.next_float(0.0f, grid_size_f);
+
+    // Initialize motion
+    registry.motion().vel_x[idx] = 0.0f;
+    registry.motion().vel_y[idx] = 0.0f;
+    registry.motion().speed[idx] = config_.predator_speed;
+
+    // Initialize vitals
+    registry.vitals().energy[idx] = config_.initial_energy;
+    registry.vitals().age[idx] = 0;
+    registry.vitals().alive[idx] = 1;
+    registry.vitals().reproduction_cooldown[idx] = 0;
+
+    // Initialize identity
+    registry.identity().type[idx] = IdentitySoA::TYPE_PREDATOR;
+    registry.identity().species_id[idx] = 0; // Will be set by refresh_species
+    registry.identity().entity_id[idx] = e.index;
+
+    // Initialize sensors
+    std::fill(registry.sensors().input_ptr(idx),
+              registry.sensors().input_ptr(idx) + SensorSoA::INPUT_COUNT, 0.0f);
+    std::fill(registry.sensors().output_ptr(idx),
+              registry.sensors().output_ptr(idx) + SensorSoA::OUTPUT_COUNT,
+              0.0f);
+
+    // Initialize stats
+    registry.stats().kills[idx] = 0;
+    registry.stats().food_eaten[idx] = 0;
+    registry.stats().distance_traveled[idx] = 0.0f;
+    registry.stats().offspring_count[idx] = 0;
+
+    // Initialize visual
+    registry.visual().radius[idx] = 8.0f;           // Default agent radius
+    registry.visual().color_rgba[idx] = 0xFFFF0000; // Red for predators
+    registry.visual().shape_type[idx] = 0;
+
+    // Initialize brain
+    registry.brain().decision_x[idx] = 0.0f;
+    registry.brain().decision_y[idx] = 0.0f;
+  }
+
+  // Create prey
+  for (int i = 0; i < num_prey; ++i) {
+    Entity e = registry.create();
+    size_t idx = registry.index_of(e);
+
+    Genome genome = create_initial_genome();
+    entity_genomes_[e] = genome;
+    network_cache_.assign(e, genome, config_.activation_function);
+
+    // Initialize position randomly
+    registry.positions().x[idx] = rng_.next_float(0.0f, grid_size_f);
+    registry.positions().y[idx] = rng_.next_float(0.0f, grid_size_f);
+
+    // Initialize motion
+    registry.motion().vel_x[idx] = 0.0f;
+    registry.motion().vel_y[idx] = 0.0f;
+    registry.motion().speed[idx] = config_.prey_speed;
+
+    // Initialize vitals
+    registry.vitals().energy[idx] = config_.initial_energy;
+    registry.vitals().age[idx] = 0;
+    registry.vitals().alive[idx] = 1;
+    registry.vitals().reproduction_cooldown[idx] = 0;
+
+    // Initialize identity
+    registry.identity().type[idx] = IdentitySoA::TYPE_PREY;
+    registry.identity().species_id[idx] = 0; // Will be set by refresh_species
+    registry.identity().entity_id[idx] = e.index;
+
+    // Initialize sensors
+    std::fill(registry.sensors().input_ptr(idx),
+              registry.sensors().input_ptr(idx) + SensorSoA::INPUT_COUNT, 0.0f);
+    std::fill(registry.sensors().output_ptr(idx),
+              registry.sensors().output_ptr(idx) + SensorSoA::OUTPUT_COUNT,
+              0.0f);
+
+    // Initialize stats
+    registry.stats().kills[idx] = 0;
+    registry.stats().food_eaten[idx] = 0;
+    registry.stats().distance_traveled[idx] = 0.0f;
+    registry.stats().offspring_count[idx] = 0;
+
+    // Initialize visual
+    registry.visual().radius[idx] = 8.0f;           // Default agent radius
+    registry.visual().color_rgba[idx] = 0xFF00FF00; // Green for prey
+    registry.visual().shape_type[idx] = 0;
+
+    // Initialize brain
+    registry.brain().decision_x[idx] = 0.0f;
+    registry.brain().decision_y[idx] = 0.0f;
+  }
+
+  network_cache_.invalidate_gpu_cache();
+}
+
+Entity EvolutionManager::create_offspring_ecs(Registry &registry,
+                                              Entity parent_a, Entity parent_b,
+                                              Vec2 spawn_position) {
+  // CRITICAL: Validate parents still alive (they might have died)
+  if (!registry.valid(parent_a) || !registry.valid(parent_b)) {
+    return INVALID_ENTITY; // Skip reproduction, parents dead
+  }
+
+  // Get parent genomes
+  auto it_a = entity_genomes_.find(parent_a);
+  auto it_b = entity_genomes_.find(parent_b);
+  if (it_a == entity_genomes_.end() || it_b == entity_genomes_.end()) {
+    return INVALID_ENTITY; // Missing genome data
+  }
+
+  const Genome &genome_a = it_a->second;
+  const Genome &genome_b = it_b->second;
+
+  // Create child genome
+  Genome child_genome = create_child_genome(genome_a, genome_b);
+
+  // Create new ECS entity (stable handle)
+  Entity child = registry.create();
+
+  // Get dense index for SoA array access
+  size_t idx = registry.index_of(child);
+  size_t parent_idx = registry.index_of(parent_a);
+
+  // Initialize SoA arrays
+  registry.positions().x[idx] = spawn_position.x;
+  registry.positions().y[idx] = spawn_position.y;
+  registry.motion().vel_x[idx] = 0.0f;
+  registry.motion().vel_y[idx] = 0.0f;
+  registry.motion().speed[idx] = registry.motion().speed[parent_idx];
+  registry.vitals().energy[idx] = config_.offspring_initial_energy;
+  registry.vitals().age[idx] = 0;
+  registry.vitals().alive[idx] = 1;
+  registry.vitals().reproduction_cooldown[idx] = 0;
+  registry.identity().type[idx] = registry.identity().type[parent_idx];
+  registry.identity().species_id[idx] =
+      registry.identity().species_id[parent_idx];
+  registry.identity().entity_id[idx] = child.index;
+
+  // Initialize sensors
+  std::fill(registry.sensors().input_ptr(idx),
+            registry.sensors().input_ptr(idx) + SensorSoA::INPUT_COUNT, 0.0f);
+  std::fill(registry.sensors().output_ptr(idx),
+            registry.sensors().output_ptr(idx) + SensorSoA::OUTPUT_COUNT, 0.0f);
+
+  // Initialize stats
+  registry.stats().kills[idx] = 0;
+  registry.stats().food_eaten[idx] = 0;
+  registry.stats().distance_traveled[idx] = 0.0f;
+  registry.stats().offspring_count[idx] = 0;
+
+  // Copy visual from parent
+  registry.visual().radius[idx] = registry.visual().radius[parent_idx];
+  registry.visual().color_rgba[idx] = registry.visual().color_rgba[parent_idx];
+  registry.visual().shape_type[idx] = registry.visual().shape_type[parent_idx];
+
+  // Initialize brain
+  registry.brain().decision_x[idx] = 0.0f;
+  registry.brain().decision_y[idx] = 0.0f;
+
+  // Store genome
+  entity_genomes_[child] = std::move(child_genome);
+
+  // Create neural network in cache (outside ECS)
+  network_cache_.assign(child, entity_genomes_[child],
+                        config_.activation_function);
+  network_cache_.invalidate_gpu_cache();
+
+  // Deduct energy from parents
+  registry.vitals().energy[registry.index_of(parent_a)] -=
+      config_.reproduction_energy_cost;
+  registry.vitals().energy[registry.index_of(parent_b)] -=
+      config_.reproduction_energy_cost;
+
+  // Increment offspring count
+  registry.stats().offspring_count[registry.index_of(parent_a)]++;
+  registry.stats().offspring_count[registry.index_of(parent_b)]++;
+
+  return child;
+}
+
+void EvolutionManager::refresh_fitness_ecs(const Registry &registry) {
+  for (Entity e : registry.living_entities()) {
+    auto it = entity_genomes_.find(e);
+    if (it != entity_genomes_.end()) {
+      // Calculate fitness based on ECS stats
+      size_t idx = registry.index_of(e);
+
+      float survival =
+          registry.vitals().age[idx] * config_.fitness_survival_weight;
+      float kills = registry.stats().kills[idx] * config_.fitness_kill_weight;
+      float food = registry.stats().food_eaten[idx] *
+                   config_.fitness_kill_weight; // Reuse kill_weight for food
+      float energy =
+          registry.vitals().energy[idx] * config_.fitness_energy_weight;
+      float distance = registry.stats().distance_traveled[idx] *
+                       config_.fitness_distance_weight;
+      float complexity =
+          it->second.complexity() * config_.complexity_penalty_weight;
+
+      float fitness = survival + kills + food + energy + distance - complexity;
+
+      it->second.set_fitness(fitness);
+    }
+  }
+}
+
+void EvolutionManager::refresh_species_ecs(Registry &registry) {
+  // Clear existing species
+  for (auto &species : species_) {
+    species.clear_members();
+  }
+  species_.clear();
+
+  // Assign each genome to a species
+  for (Entity e : registry.living_entities()) {
+    auto it = entity_genomes_.find(e);
+    if (it == entity_genomes_.end())
+      continue;
+
+    Genome &genome = it->second;
+    bool assigned = false;
+
+    // Try to add to existing species
+    for (auto &species : species_) {
+      if (species.is_compatible(genome, config_.compatibility_threshold,
+                                config_.c1_excess, config_.c2_disjoint,
+                                config_.c3_weight)) {
+        species.add_member(static_cast<AgentId>(e.index), genome);
+        assigned = true;
+        break;
+      }
+    }
+
+    // Create new species if not compatible with any existing
+    if (!assigned) {
+      Species new_species(genome);
+      new_species.add_member(static_cast<AgentId>(e.index), genome);
+      species_.push_back(std::move(new_species));
+    }
+
+    // Update entity's species_id in ECS
+    size_t idx = registry.index_of(e);
+    registry.identity().species_id[idx] =
+        assigned ? species_.back().id() : species_.size() - 1;
+  }
+}
+
+void EvolutionManager::compute_actions_ecs(Registry &registry,
+                                           std::vector<Vec2> &actions) {
+  actions.clear();
+  actions.reserve(registry.size());
+
+  // Get all living entities
+  const auto &living = registry.living_entities();
+
+  // Collect all inputs
+  std::vector<float> all_inputs;
+  all_inputs.reserve(living.size() * SensorSoA::INPUT_COUNT);
+
+  for (Entity e : living) {
+    size_t idx = registry.index_of(e);
+    const float *input_ptr = registry.sensors().input_ptr(idx);
+    all_inputs.insert(all_inputs.end(), input_ptr,
+                      input_ptr + SensorSoA::INPUT_COUNT);
+  }
+
+  // Batch activate all networks
+  std::vector<float> all_outputs;
+  network_cache_.activate_batch(living, all_inputs, all_outputs,
+                                SensorSoA::INPUT_COUNT,
+                                SensorSoA::OUTPUT_COUNT);
+
+  // Convert outputs to actions
+  for (size_t i = 0; i < living.size(); ++i) {
+    Vec2 action{all_outputs[i * 2], all_outputs[i * 2 + 1]};
+    actions.push_back(action);
+
+    // Store in brain component
+    size_t idx = registry.index_of(living[i]);
+    registry.brain().decision_x[idx] = action.x;
+    registry.brain().decision_y[idx] = action.y;
+  }
+}
+
+void EvolutionManager::on_entity_destroyed(Entity e) {
+  entity_genomes_.erase(e);
+  network_cache_.remove(e);
+}
+
+Genome *EvolutionManager::genome_for(Entity e) {
+  auto it = entity_genomes_.find(e);
+  if (it != entity_genomes_.end()) {
+    return &it->second;
+  }
+  return nullptr;
+}
+
+const Genome *EvolutionManager::genome_for(Entity e) const {
+  auto it = entity_genomes_.find(e);
+  if (it != entity_genomes_.end()) {
+    return &it->second;
+  }
+  return nullptr;
 }
 
 } // namespace moonai
