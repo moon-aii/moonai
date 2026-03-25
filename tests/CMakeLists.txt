@@ -9,8 +9,6 @@ add_executable(moonai_tests
     test_simulation.cpp
     test_logger.cpp
     test_evolution.cpp
-    test_profiler.cpp
-    test_profiler_suite.cpp
 )
 
 target_link_libraries(moonai_tests PRIVATE

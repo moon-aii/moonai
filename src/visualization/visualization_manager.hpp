@@ -159,8 +159,8 @@ private:
   float pending_click_y_ = 0.0f;
 
   // Window dimensions
-  unsigned int window_width_ = 1280;
-  unsigned int window_height_ = 720;
+  unsigned int window_width_ = 1600;
+  unsigned int window_height_ = 900;
 
   // Experiment selector state
   bool experiment_select_mode_ = false;

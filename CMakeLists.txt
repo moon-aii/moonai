@@ -88,11 +88,11 @@ if(MOONAI_ENABLE_CUDA)
     target_link_libraries(moonai_evolution PRIVATE moonai_gpu)
     target_compile_definitions(moonai_evolution PRIVATE MOONAI_ENABLE_CUDA)
 
-    target_link_libraries(moonai PRIVATE moonai_gpu)
-    target_compile_definitions(moonai PRIVATE MOONAI_ENABLE_CUDA)
-
     target_link_libraries(moonai_evolution_profiler PRIVATE moonai_gpu_profiler)
     target_compile_definitions(moonai_evolution_profiler PRIVATE MOONAI_ENABLE_CUDA)
+
+    target_link_libraries(moonai PRIVATE moonai_gpu)
+    target_compile_definitions(moonai PRIVATE MOONAI_ENABLE_CUDA)
 
     target_link_libraries(moonai_profiler PRIVATE moonai_gpu_profiler)
     target_compile_definitions(moonai_profiler PRIVATE MOONAI_ENABLE_CUDA)

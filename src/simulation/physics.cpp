@@ -1,5 +1,5 @@
 #include "simulation/physics.hpp"
-#include "core/profiler.hpp"
+#include "core/profiler_types.hpp"
 #include "simulation/environment.hpp"
 #include "simulation/predator.hpp"
 
@@ -244,8 +244,6 @@ std::vector<Physics::KillEvent> Physics::process_attacks_from_candidates(
 
     auto *predator = static_cast<Predator *>(agent.get());
     const auto &nearby = nearby_agent_ids[predator_index];
-    MOONAI_PROFILE_INC(ProfileCounter::AttackChecks,
-                       static_cast<std::int64_t>(nearby.size()));
 
     for (AgentId nid : nearby) {
       const auto slot_it = agent_slots.find(nid);

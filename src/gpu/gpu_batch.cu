@@ -527,8 +527,37 @@ void GpuBatch::download_agent_changes_async(float *pos_x, float *pos_y,
       cudaMemcpyDeviceToHost, s, __FILE__, __LINE__);
 }
 
+void GpuBatch::download_agent_counters_async(int *kills, int *food_eaten,
+                                             int *age, float *distance_traveled,
+                                             int count) {
+  if (had_error_ || kills == nullptr || food_eaten == nullptr ||
+      age == nullptr || distance_traveled == nullptr || count <= 0) {
+    return;
+  }
+  if (count > num_agents_) {
+    had_error_ = true;
+    return;
+  }
+
+  cudaStream_t s = static_cast<cudaStream_t>(stream_);
+
+  had_error_ |= !memcpy_async_checked(
+      kills, d_agent_kills_, static_cast<size_t>(count) * sizeof(int),
+      cudaMemcpyDeviceToHost, s, __FILE__, __LINE__);
+  had_error_ |= !memcpy_async_checked(
+      food_eaten, d_agent_food_eaten_, static_cast<size_t>(count) * sizeof(int),
+      cudaMemcpyDeviceToHost, s, __FILE__, __LINE__);
+  had_error_ |= !memcpy_async_checked(
+      age, d_agent_age_, static_cast<size_t>(count) * sizeof(int),
+      cudaMemcpyDeviceToHost, s, __FILE__, __LINE__);
+  had_error_ |= !memcpy_async_checked(
+      distance_traveled, d_agent_distance_traveled_,
+      static_cast<size_t>(count) * sizeof(float), cudaMemcpyDeviceToHost, s,
+      __FILE__, __LINE__);
+}
+
 void GpuBatch::upload_food_states_async(const GpuFoodState *food,
-                                        int food_count) {
+                                         int food_count) {
   if (had_error_ || food == nullptr || food_count <= 0) {
     return;
   }

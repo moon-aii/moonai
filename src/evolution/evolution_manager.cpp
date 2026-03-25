@@ -1,6 +1,6 @@
 #include "evolution/evolution_manager.hpp"
 
-#include "core/profiler.hpp"
+#include "core/profiler_types.hpp"
 #include "evolution/crossover.hpp"
 #include "simulation/predator.hpp"
 #include "simulation/prey.hpp"
@@ -583,12 +583,19 @@ bool EvolutionManager::step_gpu(SimulationManager &sim, int step_index) {
   std::vector<float> new_pos_y(sim.agents().size());
   std::vector<float> new_energy(sim.agents().size());
   std::vector<unsigned int> new_alive(sim.agents().size());
+  std::vector<int> new_kills(sim.agents().size());
+  std::vector<int> new_food_eaten(sim.agents().size());
+  std::vector<int> new_age(sim.agents().size());
+  std::vector<float> new_distance(sim.agents().size());
 
   {
     MOONAI_PROFILE_SCOPE(ProfileEvent::GpuOutputConvert);
     batch.download_agent_changes_async(new_pos_x.data(), new_pos_y.data(),
                                        new_energy.data(), new_alive.data(),
                                        static_cast<int>(sim.agents().size()));
+    batch.download_agent_counters_async(new_kills.data(), new_food_eaten.data(),
+                                        new_age.data(), new_distance.data(),
+                                        static_cast<int>(sim.agents().size()));
   }
 
   // 6. Download food states from GPU
@@ -608,16 +615,50 @@ bool EvolutionManager::step_gpu(SimulationManager &sim, int step_index) {
   }
 
   // 7. Update simulation state with GPU results
+  int total_food_eaten_this_step = 0;
+  int total_kills_this_step = 0;
   for (std::size_t i = 0; i < sim.agents().size(); ++i) {
     auto &agent = sim.agents()[i];
     agent->set_position({new_pos_x[i], new_pos_y[i]});
     agent->set_energy(new_energy[i]);
-    if (new_alive[i] == 0U && agent->alive()) {
-      agent->set_alive(false);
-      // Record death event
-      sim.record_event(SimEvent{SimEvent::Death, agent->id(), agent->id(),
-                                agent->id(), agent->id(), agent->position()});
+    agent->set_age(new_age[i]);
+    agent->set_distance_traveled(new_distance[i]);
+
+    // Only process agents that were alive at the start of this step
+    if (agent->alive()) {
+      // Record kill events (counter increased on GPU)
+      int kill_delta = new_kills[i] - agent->kills();
+      total_kills_this_step += kill_delta;
+      for (int k = 0; k < kill_delta; ++k) {
+        sim.record_event(SimEvent{SimEvent::Kill, agent->id(), agent->id(), 0,
+                                  0, agent->position()});
+      }
+      agent->set_kills(new_kills[i]);
+
+      // Record food events (counter increased on GPU)
+      int food_delta = new_food_eaten[i] - agent->food_eaten();
+      total_food_eaten_this_step += food_delta;
+      for (int f = 0; f < food_delta; ++f) {
+        sim.record_event(SimEvent{SimEvent::Food, agent->id(),
+                                  static_cast<AgentId>(f), 0, 0,
+                                  agent->position()});
+      }
+      agent->set_food_eaten(new_food_eaten[i]);
+
+      // Check if agent died this step
+      if (new_alive[i] == 0U) {
+        agent->set_alive(false);
+        // Record death event
+        sim.record_event(SimEvent{SimEvent::Death, agent->id(), agent->id(),
+                                  agent->id(), agent->id(), agent->position()});
+      }
     }
+  }
+
+  // Debug: Print food/kill counts every 60 steps
+  if (step_index % 60 == 0 && step_index > 0) {
+    spdlog::info("GPU Step {}: food_eaten={}, kills={}", step_index,
+                 total_food_eaten_this_step, total_kills_this_step);
   }
 
   // 8. Update food states
@@ -628,7 +669,10 @@ bool EvolutionManager::step_gpu(SimulationManager &sim, int step_index) {
     food.active = (new_food_states[i].active != 0U);
   }
 
-  // 9. Increment step counter so GUI and species refresh work correctly
+  // 9. Refresh simulation state (rebuild spatial grids, alive indices)
+  sim.refresh_state();
+
+  // 10. Increment step counter so GUI and species refresh work correctly
   sim.increment_step();
 
   return true;

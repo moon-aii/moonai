@@ -1,6 +1,6 @@
 #include "simulation/spatial_grid.hpp"
 
-#include "core/profiler.hpp"
+#include "core/profiler_types.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -134,7 +134,6 @@ std::vector<AgentId> SpatialGrid::query_radius(Vec2 position,
 
 void SpatialGrid::query_radius_into(Vec2 position, float radius,
                                     std::vector<AgentId> &result) const {
-  MOONAI_PROFILE_INC(ProfileCounter::GridQueryCalls);
   result.clear();
   float r2 = radius * radius;
   int cells_to_check = static_cast<int>(std::ceil(radius / cell_size_));
@@ -148,8 +147,6 @@ void SpatialGrid::query_radius_into(Vec2 position, float radius,
       if (nx < 0 || nx >= cols_ || ny < 0 || ny >= rows_)
         continue;
       int idx = ny * cols_ + nx;
-      MOONAI_PROFILE_INC(ProfileCounter::GridCandidatesScanned,
-                         static_cast<std::int64_t>(cells_[idx].size()));
       for (const auto &entry : cells_[idx]) {
         float ddx = entry.pos.x - position.x;
         float ddy = entry.pos.y - position.y;

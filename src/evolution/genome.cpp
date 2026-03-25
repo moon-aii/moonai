@@ -1,7 +1,5 @@
 #include "evolution/genome.hpp"
 
-#include "core/profiler.hpp"
-
 #include <algorithm>
 #include <cmath>
 #include <nlohmann/json.hpp>
@@ -22,7 +20,9 @@ Genome::Genome(int num_inputs, int num_outputs)
   }
 }
 
-void Genome::add_node(const NodeGene &node) { nodes_.push_back(node); }
+void Genome::add_node(const NodeGene &node) {
+  nodes_.push_back(node);
+}
 
 void Genome::add_connection(const ConnectionGene &conn) {
   connections_.push_back(conn);
@@ -62,7 +62,6 @@ void Genome::sort_connections_by_innovation() {
 
 float Genome::compatibility_distance(const Genome &a, const Genome &b, float c1,
                                      float c2, float c3) {
-  MOONAI_PROFILE_INC(ProfileCounter::CompatibilityChecks);
   const auto &raw_conns_a = a.connections();
   const auto &raw_conns_b = b.connections();
 

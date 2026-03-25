@@ -77,6 +77,10 @@ public:
   void download_agent_changes_async(float *pos_x, float *pos_y, float *energy,
                                     unsigned int *alive, int count);
 
+  // Download agent counters (kills, food_eaten, age, distance_traveled)
+  void download_agent_counters_async(int *kills, int *food_eaten, int *age,
+                                     float *distance_traveled, int count);
+
   // Upload food states from CPU to GPU
   void upload_food_states_async(const GpuFoodState *food, int food_count);
 
@@ -90,6 +94,9 @@ public:
   // ── Individual Kernel Stages (for flexibility/debugging) ─────────────
   // Rebuild spatial bins for all agents
   void rebuild_bins_async(float world_width, float world_height);
+
+  // Rebuild spatial bins for food only (used after agent movement)
+  void rebuild_food_bins_async(float world_width, float world_height);
 
   // Rebuild spatial bins for prey only (used after movement)
   void rebuild_prey_bins_async(float world_width, float world_height);

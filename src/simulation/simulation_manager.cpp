@@ -1,5 +1,5 @@
 #include "simulation/simulation_manager.hpp"
-#include "core/profiler.hpp"
+#include "core/profiler_types.hpp"
 #include <algorithm>
 #include <chrono>
 #include <limits>
@@ -273,7 +273,6 @@ void SimulationManager::process_food() {
     auto &agent = agents_[prey_index];
     if (!agent->alive())
       continue;
-    MOONAI_PROFILE_INC(ProfileCounter::FoodEatAttempts);
     AgentId eaten_food = 0;
     bool ate_food = false;
     if (neighbor_cache_enabled_ && neighbor_cache_.valid &&
@@ -291,7 +290,6 @@ void SimulationManager::process_food() {
       food_grid_.remove(eaten_food);
       agent->add_energy(config_.energy_gain_from_food);
       agent->add_food();
-      MOONAI_PROFILE_INC(ProfileCounter::FoodEaten);
       last_events_.push_back(SimEvent{SimEvent::Food, agent->id(), eaten_food,
                                       0, 0, agent->position()});
     }
@@ -306,9 +304,6 @@ void SimulationManager::process_attacks() {
                          alive_predator_indices_, config_.attack_range)
                    : Physics::process_attacks(agents_, grid_, agent_slots_,
                                               config_.attack_range);
-
-  MOONAI_PROFILE_INC(ProfileCounter::Kills,
-                     static_cast<std::int64_t>(kills.size()));
 
   for (const auto &kill : kills) {
     // Reward energy to the killer

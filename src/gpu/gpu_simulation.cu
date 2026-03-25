@@ -535,6 +535,16 @@ void GpuBatch::rebuild_bins_async(float world_width, float world_height) {
   batch_rebuild_compact_bins(*this);
 }
 
+void GpuBatch::rebuild_food_bins_async(float world_width, float world_height) {
+  (void)world_width;
+  (void)world_height;
+  if (had_error_) {
+    return;
+  }
+  cudaStream_t stream = static_cast<cudaStream_t>(stream_handle());
+  rebuild_food_bins(*this, stream);
+}
+
 void GpuBatch::rebuild_prey_bins_async(float world_width, float world_height) {
   (void)world_width;
   (void)world_height;
@@ -653,7 +663,8 @@ void GpuBatch::launch_ecology_step_async(const EcologyStepParams &params) {
   }
 
   // Launch the full sequence of kernels
-  // 1. Rebuild spatial bins
+  // Phase 1: Sensing and Decision Making (using current positions)
+  // 1. Rebuild spatial bins for sensing
   rebuild_bins_async(params.world_width, params.world_height);
 
   // 2. Build sensors
@@ -663,23 +674,28 @@ void GpuBatch::launch_ecology_step_async(const EcologyStepParams &params) {
   // 3. Neural inference
   launch_inference_async();
 
+  // Phase 2: Movement (agents move to new positions)
   // 4. Apply movement
   apply_movement_async(params);
 
-  // 5. Rebuild bins for prey-only queries
+  // Phase 3: Interactions (using new positions)
+  // 5. Rebuild food bins (food positions are static, but agents moved)
+  rebuild_food_bins_async(params.world_width, params.world_height);
+
+  // 6. Rebuild prey bins for attack queries (agents are at new positions)
   rebuild_prey_bins_async(params.world_width, params.world_height);
 
-  // 6. Process prey food
+  // 7. Process prey food (prey eat food at their new positions)
   process_prey_food_async(params.world_width, params.world_height,
                           params.has_walls, params.food_pickup_range,
                           params.energy_gain_from_food);
 
-  // 7. Process predator attacks
+  // 8. Process predator attacks (predators attack prey at new positions)
   process_predator_attacks_async(params.world_width, params.world_height,
                                  params.has_walls, params.attack_range,
                                  params.energy_gain_from_kill);
 
-  // 8. Respawn food
+  // 9. Respawn food
   respawn_food_async(params.world_width, params.world_height,
                      params.food_respawn_rate, params.seed, params.step_index);
 }
