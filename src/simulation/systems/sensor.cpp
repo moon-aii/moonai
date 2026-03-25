@@ -1,6 +1,6 @@
 #include "simulation/systems/sensor.hpp"
 #include "simulation/components.hpp"
-#include "simulation/environment.hpp"
+#include <algorithm>
 #include <cmath>
 #include <limits>
 
@@ -128,16 +128,27 @@ void SensorSystem::build_sensors_for_entity(size_t entity_idx,
     sensor_ptr[3] = normalize_angle(nearest_prey_dir.x, nearest_prey_dir.y);
   }
 
-  // Nearest food (for prey only)
-  if (my_type == IdentitySoA::TYPE_PREY && food_ != nullptr) {
+  // Nearest food (for prey only) - query from spatial grid
+  if (my_type == IdentitySoA::TYPE_PREY) {
     float nearest_food_dist_sq = std::numeric_limits<float>::max();
     Vec2 nearest_food_dir{0.0f, 0.0f};
+    auto &food_state = registry.food_state();
 
-    for (const auto &food : *food_) {
-      if (!food.active)
+    // Re-query spatial grid for food entities
+    for (Entity other_e : nearby) {
+      size_t other_idx = registry.index_of(other_e);
+      if (other_idx == std::numeric_limits<size_t>::max()) {
         continue;
+      }
 
-      Vec2 diff = wrap_diff({food.position.x - pos.x, food.position.y - pos.y});
+      // Only consider food entities that are active
+      if (identity.type[other_idx] != IdentitySoA::TYPE_FOOD ||
+          !food_state.active[other_idx]) {
+        continue;
+      }
+
+      Vec2 other_pos{positions.x[other_idx], positions.y[other_idx]};
+      Vec2 diff = wrap_diff({other_pos.x - pos.x, other_pos.y - pos.y});
       float dist_sq = diff.x * diff.x + diff.y * diff.y;
 
       if (dist_sq < nearest_food_dist_sq) {

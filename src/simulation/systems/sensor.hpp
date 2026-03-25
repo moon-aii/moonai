@@ -5,9 +5,6 @@
 
 namespace moonai {
 
-// Environment forward declaration
-struct Food;
-
 // Builds neural network sensor inputs from spatial queries
 class SensorSystem : public System {
 public:
@@ -19,14 +16,8 @@ public:
     return "SensorSystem";
   }
 
-  // Set food data for prey sensor inputs
-  void set_food_data(const std::vector<Food> *food) {
-    food_ = food;
-  }
-
 private:
   const SpatialGridECS &agent_grid_;
-  const std::vector<Food> *food_ = nullptr;
 
   float world_width_;
   float world_height_;

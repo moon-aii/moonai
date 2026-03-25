@@ -5,17 +5,23 @@
 
 namespace moonai {
 
-using AgentId = std::uint32_t;
-
 struct Vec2 {
   float x = 0.0f;
   float y = 0.0f;
 
-  Vec2 operator+(const Vec2 &other) const { return {x + other.x, y + other.y}; }
-  Vec2 operator-(const Vec2 &other) const { return {x - other.x, y - other.y}; }
-  Vec2 operator*(float scalar) const { return {x * scalar, y * scalar}; }
+  Vec2 operator+(const Vec2 &other) const {
+    return {x + other.x, y + other.y};
+  }
+  Vec2 operator-(const Vec2 &other) const {
+    return {x - other.x, y - other.y};
+  }
+  Vec2 operator*(float scalar) const {
+    return {x * scalar, y * scalar};
+  }
 
-  float length() const { return std::sqrt(x * x + y * y); }
+  float length() const {
+    return std::sqrt(x * x + y * y);
+  }
 
   Vec2 normalized() const {
     float len = length();

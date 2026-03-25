@@ -115,8 +115,8 @@ void VisualizationManager::render_ecs(const Registry &registry,
   renderer_.draw_grid(*window_, config_.grid_size, config_.grid_size, 500.0f);
   renderer_.draw_boundaries(*window_, config_.grid_size, config_.grid_size);
 
-  // Draw food
-  renderer_.draw_food(*window_, simulation.environment().food());
+  // Draw food (ECS-based)
+  renderer_.draw_food_ecs(*window_, registry);
 
   // Count entities and calculate stats
   int alive_predators = 0;
@@ -174,8 +174,7 @@ void VisualizationManager::render_ecs(const Registry &registry,
   // agent is clicked)
   if (selected_entity_ != INVALID_ENTITY && registry.valid(selected_entity_)) {
     Renderer::draw_vision_range_ecs(*window_, registry, selected_entity_);
-    Renderer::draw_sensor_lines_ecs(*window_, registry, selected_entity_,
-                                    simulation.environment().food());
+    Renderer::draw_sensor_lines_ecs(*window_, registry, selected_entity_);
   }
 
   // Update FPS counter

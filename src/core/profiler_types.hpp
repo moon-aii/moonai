@@ -11,7 +11,7 @@ struct ProfileEventDef {
   std::string_view description;
 };
 
-inline constexpr std::array<ProfileEventDef, 26> PROFILE_EVENTS = {{
+inline constexpr std::array<ProfileEventDef, 25> PROFILE_EVENTS = {{
     {"window_total", true,
      "Wall-clock report-window duration measured in headless mode."},
     {"prepare_gpu_window", false,
@@ -38,8 +38,6 @@ inline constexpr std::array<ProfileEventDef, 26> PROFILE_EVENTS = {{
      "Accumulated time spent inside simulation steps."},
     {"rebuild_spatial_grid", false,
      "Time spent rebuilding the agent spatial grid."},
-    {"rebuild_food_grid", false,
-     "Time spent rebuilding the food spatial grid."},
     {"agent_update", false,
      "Time spent updating agent age and per-step state."},
     {"process_energy", false, "Time spent applying per-step energy drain."},
@@ -71,19 +69,18 @@ enum class ProfileEvent : std::size_t {
   ApplyActions = 11,
   SimulationStep = 12,
   RebuildSpatialGrid = 13,
-  RebuildFoodGrid = 14,
-  AgentUpdate = 15,
-  ProcessEnergy = 16,
-  ProcessFood = 17,
-  ProcessAttacks = 18,
-  BoundaryApply = 19,
-  DeathCheck = 20,
-  CountAlive = 21,
-  ComputeFitness = 22,
-  Speciate = 23,
-  Reproduce = 24,
-  Logging = 25,
-  Count = 26
+  AgentUpdate = 14,
+  ProcessEnergy = 15,
+  ProcessFood = 16,
+  ProcessAttacks = 17,
+  BoundaryApply = 18,
+  DeathCheck = 19,
+  CountAlive = 20,
+  ComputeFitness = 21,
+  Speciate = 22,
+  Reproduce = 23,
+  Logging = 24,
+  Count = 25
 };
 
 constexpr std::size_t event_count = PROFILE_EVENTS.size();

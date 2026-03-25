@@ -3,7 +3,7 @@
 #include "core/random.hpp"
 #include "data/metrics.hpp"
 #include "evolution/evolution_manager.hpp"
-#include "simulation/physics.hpp"
+#include "simulation/components.hpp"
 #include "simulation/registry.hpp"
 #include "simulation/simulation_manager.hpp"
 
@@ -579,7 +579,7 @@ RunResult run_suite_member(const moonai::profiler::SuiteConfig &suite,
   moonai::MetricsCollector metrics;
 
   simulation.initialize();
-  evolution.initialize(moonai::SensorInput::SIZE, 2);
+  evolution.initialize(moonai::SensorSoA::INPUT_COUNT, 2);
   evolution.seed_initial_population_ecs(registry);
   evolution.enable_gpu(!no_gpu);
 

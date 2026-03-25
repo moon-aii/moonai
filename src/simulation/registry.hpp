@@ -1,4 +1,5 @@
 #pragma once
+#include "core/types.hpp"
 #include "simulation/components.hpp"
 #include "simulation/entity.hpp"
 #include "simulation/sparse_set.hpp"
@@ -95,6 +96,25 @@ public:
     return brain_;
   }
 
+  FoodStateSoA &food_state() {
+    return food_state_;
+  }
+  const FoodStateSoA &food_state() const {
+    return food_state_;
+  }
+
+  // Create food entity (recyclable slot-based)
+  Entity create_food(Vec2 position, uint32_t slot_index, float radius,
+                     uint32_t color_rgba);
+
+  // Query all food entities
+  std::vector<Entity> query_food() const;
+
+  // Check if entity is food
+  static bool is_food(const IdentitySoA &identity, size_t idx) {
+    return identity.type[idx] == IdentitySoA::TYPE_FOOD;
+  }
+
   // Direct component access by entity
   float &pos_x(Entity e) {
     return positions_.x[index_of(e)];
@@ -133,6 +153,7 @@ private:
   StatsSoA stats_;
   VisualSoA visual_;
   BrainSoA brain_;
+  FoodStateSoA food_state_;
 
   // Entity slot recycling
   uint32_t next_entity_index_ = 1;

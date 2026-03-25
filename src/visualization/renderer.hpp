@@ -2,7 +2,6 @@
 
 #include "core/types.hpp"
 #include "simulation/entity.hpp"
-#include "simulation/environment.hpp"
 #include "simulation/registry.hpp"
 
 #include <SFML/Graphics/CircleShape.hpp>
@@ -24,9 +23,8 @@ public:
                         float cell_size);
   static void draw_boundaries(sf::RenderTarget &target, int width, int height);
 
-  void draw_food(sf::RenderTarget &target, const std::vector<Food> &food);
-
   // ECS-based rendering
+  void draw_food_ecs(sf::RenderTarget &target, const Registry &registry);
   void draw_agent_ecs(sf::RenderTarget &target, const Registry &registry,
                       Entity entity, bool selected = false);
   void draw_all_agents_ecs(sf::RenderTarget &target, const Registry &registry,
@@ -34,8 +32,7 @@ public:
   static void draw_vision_range_ecs(sf::RenderTarget &target,
                                     const Registry &registry, Entity entity);
   static void draw_sensor_lines_ecs(sf::RenderTarget &target,
-                                    const Registry &registry, Entity entity,
-                                    const std::vector<Food> &food);
+                                    const Registry &registry, Entity entity);
 
   // Color helpers
   static sf::Color species_color(int species_id);

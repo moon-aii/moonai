@@ -62,6 +62,7 @@ void Registry::clear() {
   stats_.resize(0);
   visual_.resize(0);
   brain_.resize(0);
+  food_state_.resize(0);
 
   next_entity_index_ = 1;
   free_slots_.clear();
@@ -81,6 +82,65 @@ void Registry::ensure_capacity(size_t required_size) {
   stats_.resize(required_size);
   visual_.resize(required_size);
   brain_.resize(required_size);
+  food_state_.resize(required_size);
+}
+
+Entity Registry::create_food(Vec2 position, uint32_t slot_index, float radius,
+                             uint32_t color_rgba) {
+  Entity e = create();
+  size_t idx = index_of(e);
+
+  // Identity
+  identity_.type[idx] = IdentitySoA::TYPE_FOOD;
+  identity_.species_id[idx] = 0; // Food has no species
+  identity_.entity_id[idx] = e.index;
+
+  // Position
+  positions_.x[idx] = position.x;
+  positions_.y[idx] = position.y;
+
+  // Vitals
+  vitals_.energy[idx] = 0.0f; // Food has no energy
+  vitals_.age[idx] = 0;       // Food doesn't age
+  vitals_.alive[idx] = 1;
+  vitals_.reproduction_cooldown[idx] = 0;
+
+  // Visual
+  visual_.radius[idx] = radius;
+  visual_.color_rgba[idx] = color_rgba;
+  visual_.shape_type[idx] = 0; // Circle
+
+  // Food state
+  food_state_.slot_index[idx] = slot_index;
+  food_state_.active[idx] = 1;
+
+  // Stats
+  stats_.kills[idx] = 0;
+  stats_.food_eaten[idx] = 0;
+  stats_.distance_traveled[idx] = 0.0f;
+  stats_.offspring_count[idx] = 0;
+
+  // Motion
+  motion_.vel_x[idx] = 0.0f;
+  motion_.vel_y[idx] = 0.0f;
+  motion_.speed[idx] = 0.0f;
+
+  return e;
+}
+
+std::vector<Entity> Registry::query_food() const {
+  std::vector<Entity> food_entities;
+  const auto &living = living_entities();
+
+  for (Entity e : living) {
+    size_t idx = index_of(e);
+    if (identity_.type[idx] == IdentitySoA::TYPE_FOOD &&
+        food_state_.active[idx]) {
+      food_entities.push_back(e);
+    }
+  }
+
+  return food_entities;
 }
 
 } // namespace moonai

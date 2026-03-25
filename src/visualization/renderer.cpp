@@ -62,16 +62,42 @@ void Renderer::draw_boundaries(sf::RenderTarget &target, int width,
   target.draw(border);
 }
 
-void Renderer::draw_food(sf::RenderTarget &target,
-                         const std::vector<Food> &food) {
+void Renderer::draw_food_ecs(sf::RenderTarget &target,
+                             const Registry &registry) {
   circle_.setRadius(3.0f);
   circle_.setOrigin({3.0f, 3.0f});
 
-  for (const auto &f : food) {
-    if (!f.active)
+  const auto &living = registry.living_entities();
+  const auto &positions = registry.positions();
+  const auto &identity = registry.identity();
+  const auto &food_state = registry.food_state();
+  const auto &visual = registry.visual();
+
+  for (Entity entity : living) {
+    size_t idx = registry.index_of(entity);
+
+    // Only draw food entities
+    if (identity.type[idx] != IdentitySoA::TYPE_FOOD) {
       continue;
-    circle_.setPosition({f.position.x, f.position.y});
-    circle_.setFillColor(sf::Color(100, 200, 50, 180));
+    }
+
+    // Only draw active food
+    if (!food_state.active[idx]) {
+      continue;
+    }
+
+    // Use visual color if available, otherwise use default green
+    sf::Color color(100, 200, 50, 180);
+    if (idx < visual.color_rgba.size() && visual.color_rgba[idx] != 0) {
+      uint32_t rgba = visual.color_rgba[idx];
+      color.r = static_cast<uint8_t>((rgba >> 24) & 0xFF);
+      color.g = static_cast<uint8_t>((rgba >> 16) & 0xFF);
+      color.b = static_cast<uint8_t>((rgba >> 8) & 0xFF);
+      color.a = static_cast<uint8_t>(rgba & 0xFF);
+    }
+
+    circle_.setPosition({positions.x[idx], positions.y[idx]});
+    circle_.setFillColor(color);
     circle_.setOutlineThickness(0);
     target.draw(circle_);
   }
@@ -234,8 +260,7 @@ void Renderer::draw_vision_range_ecs(sf::RenderTarget &target,
 }
 
 void Renderer::draw_sensor_lines_ecs(sf::RenderTarget &target,
-                                     const Registry &registry, Entity entity,
-                                     const std::vector<Food> &food) {
+                                     const Registry &registry, Entity entity) {
   if (!registry.valid(entity)) {
     return;
   }
@@ -291,16 +316,24 @@ void Renderer::draw_sensor_lines_ecs(sf::RenderTarget &target,
   }
 
   // Lines to nearby food
-  for (const auto &f : food) {
-    if (!f.active)
+  const auto &food_state = registry.food_state();
+  for (Entity food_entity : living) {
+    size_t food_idx = registry.index_of(food_entity);
+    if (identity.type[food_idx] != IdentitySoA::TYPE_FOOD) {
       continue;
-    Vec2 diff = f.position - pos;
+    }
+    if (!food_state.active[food_idx]) {
+      continue;
+    }
+    const auto &food_positions = registry.positions();
+    Vec2 food_pos{food_positions.x[food_idx], food_positions.y[food_idx]};
+    Vec2 diff = food_pos - pos;
     if (diff.length() > vision)
       continue;
 
     sf::Color food_line(200, 200, 50, 60);
     lines.append(sf::Vertex{{pos.x, pos.y}, food_line});
-    lines.append(sf::Vertex{{f.position.x, f.position.y}, food_line});
+    lines.append(sf::Vertex{{food_pos.x, food_pos.y}, food_line});
   }
 
   target.draw(lines);

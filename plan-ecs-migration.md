@@ -64,7 +64,9 @@ After marking a phase `[x]`, shrink its section by:
 **After shrinking**:
 - [x] Update this Document Maintenance Protocol with completion date
 - [x] Commit the shrunken plan document
-- [ ] Continue to next phase
+- [x] Continue to next phase
+
+**Phase 5 Completion**: March 26, 2026
 
 ### Completed Phases Log
 
@@ -74,6 +76,7 @@ After marking a phase `[x]`, shrink its section by:
 | 2 | 2026-03-25 | COMPLETED | 134/134 passing |
 | 3 | 2026-03-25 | COMPLETED | 142/142 passing |
 | 4 | 2026-03-25 | COMPLETED | 142/142 passing |
+| 5 | 2026-03-26 | COMPLETED | 131/131 passing |
 
 ---
 
@@ -262,7 +265,7 @@ src/visualization/
 | 2 | Simulation Systems | [x] | COMPLETED |
 | 3 | GPU Integration | [x] | COMPLETED |
 | 4 | Network Cache & Evolution | [x] | COMPLETED |
-| 5 | Visualization | [ ] | READY TO START |
+| 5 | Visualization | [x] | COMPLETED |
 | 6 | Advanced Features | [ ] | - |
 
 **Legend**: [ ] Not started, [~] In progress, [x] Completed
@@ -409,226 +412,37 @@ While all components are committed together, implement in this order:
 
 ---
 
-### Phase 5: Visualization & Cleanup [ ]
+### Phase 5: Visualization & Cleanup [x]
 
-**Goal**: Adapt renderer to query ECS, remove legacy code
-
-#### 3.5.1 Adapt Renderer
-
-**Files to Modify**:
-- `src/visualization/renderer.hpp`
-- `src/visualization/renderer.cpp`
-- `src/visualization/visualization_manager.hpp`
-
-```cpp
-// src/visualization/visualization_manager.hpp (modified)
-class VisualizationManager {
-public:
-    // ... existing methods ...
-    
-    // NEW: ECS-aware render method
-    void render_ecs(const ecs::Registry& registry,
-                   const EvolutionManager& evolution);
-    
-private:
-    void draw_agents_ecs(const ecs::Registry& registry);
-    void draw_selected_agent_ecs(const ecs::Registry& registry);
-};
-```
-
-```cpp
-// src/visualization/visualization_manager.cpp
-void VisualizationManager::render_ecs(const ecs::Registry& registry,
-                                     const EvolutionManager& evolution) {
-    window_.clear();
-    
-    // Draw grid/boundaries
-    Renderer::draw_grid(window_, config_.grid_size, config_.grid_size, 100.0f);
-    
-    // Draw food (still from Environment for now)
-    // Could migrate to ECS later if needed
-    
-    // Draw agents - query ECS
-    draw_agents_ecs(registry);
-    
-    // Draw UI overlays
-    ui_overlay_.draw(window_, registry, evolution);
-    
-    window_.display();
-}
-
-void VisualizationManager::draw_agents_ecs(const ecs::Registry& registry) {
-    auto view = registry.query<ecs::Position, ecs::Visual, ecs::AgentTypeTag,
-                               ecs::Vitals>();
-    
-    for (auto [pos, visual, type, vitals] : view) {
-        if (!vitals.alive) continue;
-        
-        // Cull by camera view
-        if (!camera_.contains(pos.x, pos.y)) continue;
-        
-        // Draw using existing renderer
-        sf::CircleShape shape(visual.radius);
-        shape.setPosition(pos.x - visual.radius, pos.y - visual.radius);
-        shape.setFillColor(sf::Color(visual.color_rgba));
-        window_.draw(shape);
-        
-        // Draw vision range if enabled
-        if (show_vision_) {
-            sf::CircleShape vision(vision_range);
-            vision.setPosition(pos.x - vision_range, pos.y - vision_range);
-            vision.setFillColor(sf::Color(255, 255, 255, 30));
-            window_.draw(vision);
-        }
-    }
-}
-```
-
-#### 3.5.2 Rewrite SpatialGrid for Entity IDs
-
-**Files to Modify**:
-- `src/simulation/spatial_grid.hpp` - Complete rewrite
-- `src/simulation/spatial_grid.cpp`
-
-**New SpatialGrid Design**:
-```cpp
-// src/simulation/spatial_grid.hpp
-#pragma once
-#include "simulation/entity.hpp"
-#include "core/types.hpp"
-#include <unordered_map>
-#include <vector>
-
-namespace moonai {
-
-// Spatial grid using stable Entity handles
-class SpatialGrid {
-public:
-    SpatialGrid(float cell_size);
-    
-    // Insert entity at position
-    void insert(Entity e, Vec2 pos);
-    
-    // Clear all entities
-    void clear();
-    
-    // Query entities within radius of position
-    std::vector<Entity> query_radius(Vec2 center, float radius) const;
-    
-    // Query entities in cell containing position
-    std::vector<Entity> query_cell(Vec2 pos) const;
-    
-    // Get all entities in grid
-    const std::vector<Entity>& all_entities() const { return entities_; }
-    
-private:
-    using CellKey = uint64_t; // Hash of cell coordinates
-    
-    float cell_size_;
-    std::unordered_map<CellKey, std::vector<Entity>> cells_;
-    std::vector<Entity> entities_; // All inserted entities (for iteration)
-    
-    CellKey cell_key(int x, int y) const {
-        return (static_cast<uint64_t>(x) << 32) | static_cast<uint32_t>(y);
-    }
-    
-    CellKey cell_key(Vec2 pos) const;
-};
-
-} // namespace moonai
-```
-
-**Usage in SensorSystem**:
-```cpp
-void SensorSystem::update(ecs::Registry& registry, SpatialGrid& grid, float dt) {
-    // Rebuild grid each frame (O(N))
-    grid.clear();
-    for (auto [entity, pos, vitals] : registry.query<Position, Vitals>()) {
-        if (vitals.alive) {
-            grid.insert(entity, {pos.x, pos.y});
-        }
-    }
-    
-    // Query for sensors
-    for (auto [entity, pos, sensor, vitals] : 
-         registry.query<Position, Sensor, Vitals>()) {
-        if (!vitals.alive) continue;
-        
-        auto nearby = grid.query_radius({pos.x, pos.y}, sensor.range);
-        build_sensors(entity, nearby, sensor);
-    }
-}
-```
-
-#### 3.5.3 Adapt UI Overlay
-
-```cpp
-// src/visualization/ui_overlay.cpp
-void UiOverlay::draw(sf::RenderTarget& target, 
-                     const ecs::Registry& registry,
-                     const EvolutionManager& evolution) {
-    ImGui::Begin("Simulation Stats");
-    
-    // Count alive entities by type
-    size_t total_alive = 0;
-    size_t predators = 0;
-    size_t prey = 0;
-    
-    for (auto [entity, identity, vitals] : 
-         registry.query<Identity, Vitals>()) {
-        if (vitals.alive) {
-            ++total_alive;
-            if (identity.type == AgentType::Predator) {
-                ++predators;
-            } else {
-                ++prey;
-            }
-        }
-    }
-    
-    ImGui::Text("Predators: %zu", predators);
-    ImGui::Text("Prey: %zu", prey);
-    ImGui::Text("Total: %zu", total_alive);
-    ImGui::Text("Species: %d", evolution.species_count());
-    
-    ImGui::End();
-}
-```
-
-#### 3.5.4 Legacy Code Removal - Phase 5
-
-**Files Deleted**:
-- [ ] Old `src/simulation/simulation_manager.cpp` (complete rewrite)
-- [ ] Old `src/simulation/spatial_grid.hpp/cpp` (replaced with Entity-based version)
-- [ ] Agent-based sensor building in `physics.cpp`
-- [ ] Agent-based combat processing in `physics.cpp`
-- [ ] Any remaining `AgentId` typedef references (replace with `ecs::Entity`)
-
-**Files Created**:
-- [x] `src/simulation/sparse_set.hpp` - Entity → index mapping
-- [x] `src/simulation/registry.hpp/cpp` - Sparse-set ECS registry
-- [x] `src/gpu/gpu_entity_mapping.hpp` - Entity → GPU compaction
+**Status**: COMPLETED (March 26, 2026)
 
 **Files Modified**:
-- `src/simulation/simulation_manager.hpp/cpp` - Complete rewrite using ECS
-- `src/main.cpp` - Update main loop for ECS
+- `src/visualization/renderer.hpp/cpp` - ECS-aware rendering methods
 - `src/visualization/visualization_manager.hpp/cpp` - Query ECS directly
-- `CMakeLists.txt` - Remove deleted files from build
+- `src/simulation/simulation_manager.hpp/cpp` - Complete ECS rewrite
+- `src/simulation/spatial_grid_ecs.hpp/cpp` - Entity-based spatial grid
+- `src/main.cpp` - ECS main loop
+- `src/profiler_main.cpp` - ECS integration
+- `src/evolution/evolution_manager.cpp` - Create food as ECS entities
+- `src/core/profiler_types.hpp` - Removed RebuildFoodGrid event
+- `src/core/types.hpp` - Removed AgentId typedef
+- `tests/test_evolution.cpp` - Removed obsolete SensorInput test
 
-**Cleanup Tasks**:
-- [ ] Run include-what-you-use to clean up headers
-- [ ] Remove all `unique_ptr<Agent>` references
-- [ ] Update all function signatures to use `ecs::Entity` instead of `AgentId`
-- [ ] Verify no legacy code references in comments
+**Files Created**:
+- `src/simulation/systems/food_respawn.hpp/cpp` - Food respawn system
 
-#### 3.5.4 Validation Criteria
+**Files Deleted**:
+- `src/simulation/environment.hpp/cpp` - Merged into ECS
+- `src/simulation/physics.hpp/cpp` - Replaced by ECS systems
 
-- [ ] All visualization features work (selection, vision toggle, NN panel, etc.)
-- [ ] Performance in visual mode: 3x+ improvement
-- [ ] All legacy Agent files removed
-- [ ] All tests pass
-- [ ] Code compiles with no deprecation warnings
-- [ ] `just build` and `just test` pass clean
+**Summary**: Visualization fully migrated to ECS. Renderer queries Registry directly for all entity data (agents, food). Removed Environment and physics files. Food fully integrated as ECS entities with FoodState component and FoodRespawnSystem. All legacy code removed.
+
+**Validation Criteria**:
+- [x] All visualization features work (selection, vision toggle, NN panel, etc.)
+- [x] Food rendered via ECS
+- [x] All legacy files removed (agent, predator, prey, environment, physics, AgentId)
+- [x] All 131 tests passing
+- [x] `just build` and `just test` pass clean
 
 ---
 

@@ -6,7 +6,6 @@
 #include "evolution/neural_network.hpp"
 #include "evolution/species.hpp"
 #include "simulation/entity.hpp"
-#include "simulation/physics.hpp"
 #include <gtest/gtest.h>
 
 using namespace moonai;
@@ -401,36 +400,6 @@ TEST(MutationTest, DeleteConnectionProducesValidNetwork) {
   NeuralNetwork nn(g);
   auto outputs = nn.activate({1.0f, 0.5f, -1.0f});
   EXPECT_EQ(outputs.size(), 2u);
-}
-
-// ── SensorInput::write_to Tests ─────────────────────────────────────────
-
-TEST(SensorInputTest, WriteToMatchesToVector) {
-  SensorInput si;
-  si.nearest_predator_dist = 0.5f;
-  si.nearest_predator_angle = -0.3f;
-  si.nearest_prey_dist = 0.8f;
-  si.nearest_prey_angle = 0.1f;
-  si.nearest_food_dist = 0.2f;
-  si.nearest_food_angle = -0.7f;
-  si.energy_level = 0.6f;
-  si.speed_x = 0.3f;
-  si.speed_y = -0.4f;
-  si.local_predator_density = 0.15f;
-  si.local_prey_density = 0.25f;
-  si.wall_left = 0.9f;
-  si.wall_right = 0.1f;
-  si.wall_top = 0.5f;
-  si.wall_bottom = 0.7f;
-
-  auto vec = si.to_vector();
-  float buf[SensorInput::SIZE];
-  si.write_to(buf);
-
-  ASSERT_EQ(vec.size(), static_cast<size_t>(SensorInput::SIZE));
-  for (int i = 0; i < SensorInput::SIZE; ++i) {
-    EXPECT_FLOAT_EQ(buf[i], vec[i]) << "Mismatch at index " << i;
-  }
 }
 
 // ── NeuralNetwork::activate_into Tests ──────────────────────────────────

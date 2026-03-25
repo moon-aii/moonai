@@ -164,6 +164,14 @@ void EvolutionManager::seed_initial_population_ecs(Registry &registry) {
     registry.brain().decision_y[idx] = 0.0f;
   }
 
+  // Create food entities
+  for (int i = 0; i < config_.food_count; ++i) {
+    Vec2 pos{rng_.next_float(0.0f, grid_size_f),
+             rng_.next_float(0.0f, grid_size_f)};
+    // Food parameters: position, slot_index, radius, color_rgba (green)
+    registry.create_food(pos, static_cast<uint32_t>(i), 3.0f, 0x00FF00FF);
+  }
+
   network_cache_.invalidate_gpu_cache();
 }
 

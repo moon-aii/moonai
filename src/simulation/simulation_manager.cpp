@@ -24,8 +24,8 @@ SimulationManager::SimulationManager(const SimulationConfig &config)
                : static_cast<std::uint64_t>(std::chrono::steady_clock::now()
                                                 .time_since_epoch()
                                                 .count())),
-      environment_(config), grid_(config.grid_size, config.grid_size,
-                                  std::max(config.vision_range, 1.0f)) {
+      grid_(config.grid_size, config.grid_size,
+            std::max(config.vision_range, 1.0f)) {
   // Initialize ECS systems
   bool has_walls = (config.boundary_mode == BoundaryMode::Clamp);
   sensor_system_ = std::make_unique<SensorSystem>(
@@ -38,6 +38,10 @@ SimulationManager::SimulationManager(const SimulationConfig &config)
       static_cast<float>(config.grid_size),
       static_cast<float>(config.grid_size), has_walls);
   combat_system_ = std::make_unique<CombatSystem>(grid_, config.attack_range);
+  food_respawn_system_ = std::make_unique<FoodRespawnSystem>(
+      static_cast<float>(config.grid_size),
+      static_cast<float>(config.grid_size), config.food_respawn_rate,
+      config.seed);
 }
 
 void SimulationManager::initialize() {
@@ -48,9 +52,8 @@ void SimulationManager::initialize(bool log_initialization) {
   current_step_ = 0;
   last_events_.clear();
 
-  environment_.initialize_food(rng_, config_.food_count);
-
-  rebuild_food_grid();
+  // Food is now initialized as ECS entities in seed_initial_population_ecs
+  // The EvolutionManager creates food entities when seeding the population
 
   if (log_initialization) {
     spdlog::info("Simulation initialized: {} food pellets (seed: {})",
@@ -68,7 +71,6 @@ void SimulationManager::step_ecs(Registry &registry, float dt) {
   // Update sensor inputs for all agents (must happen before
   // compute_actions_ecs)
   if (sensor_system_) {
-    sensor_system_->set_food_data(&environment_.food());
     sensor_system_->update(registry, dt);
   }
 
@@ -101,15 +103,10 @@ void SimulationManager::step_ecs(Registry &registry, float dt) {
     combat_system_->clear_events();
   }
 
-  // Respawn food
-  std::vector<AgentId> respawned_food;
-  environment_.step_food_deterministic(
-      config_.seed, current_step_, config_.food_respawn_rate, respawned_food);
-  for (AgentId food_id : respawned_food) {
-    const auto &food = environment_.food();
-    if (food_id < food.size() && food[food_id].active) {
-      // Food respawned - grid rebuild will pick it up
-    }
+  // Respawn food using FoodRespawnSystem
+  if (food_respawn_system_) {
+    food_respawn_system_->set_step(current_step_);
+    food_respawn_system_->update(registry, dt);
   }
 
   // Apply movement and boundary conditions using MovementSystem
@@ -136,31 +133,33 @@ void SimulationManager::rebuild_spatial_grid_ecs(const Registry &registry) {
   const auto &living = registry.living_entities();
   const auto &positions = registry.positions();
   const auto &vitals = registry.vitals();
+  const auto &food_state = registry.food_state();
+  const auto &identity = registry.identity();
 
   for (Entity entity : living) {
     size_t idx = registry.index_of(entity);
-    if (vitals.alive[idx]) {
+    // Agents: use vitals.alive, Food: use food_state.active
+    bool is_alive = vitals.alive[idx];
+    bool is_active_food = (identity.type[idx] == IdentitySoA::TYPE_FOOD) &&
+                          food_state.active[idx];
+    if (is_alive || is_active_food) {
       Vec2 pos{positions.x[idx], positions.y[idx]};
       grid_.insert(entity, pos);
     }
   }
 }
 
-void SimulationManager::rebuild_food_grid() {
-  MOONAI_PROFILE_SCOPE(ProfileEvent::RebuildFoodGrid);
-  // Food grid is now handled by SpatialGridECS if needed
-  // For now, food is queried directly from environment
-}
-
 void SimulationManager::process_food_ecs(Registry &registry) {
   MOONAI_PROFILE_SCOPE(ProfileEvent::ProcessFood);
 
   float eat_range = config_.food_pickup_range;
+  float eat_range_sq = eat_range * eat_range;
   const auto &living = registry.living_entities();
   const auto &positions = registry.positions();
   const auto &identity = registry.identity();
   auto &vitals = registry.vitals();
   auto &stats = registry.stats();
+  auto &food_state = registry.food_state();
 
   for (Entity entity : living) {
     size_t idx = registry.index_of(entity);
@@ -174,19 +173,44 @@ void SimulationManager::process_food_ecs(Registry &registry) {
     }
 
     Vec2 pos{positions.x[idx], positions.y[idx]};
-    AgentId eaten_food = 0;
+    Entity eaten_food = INVALID_ENTITY;
+
+    // Query nearby food from spatial grid
+    auto nearby = grid_.query_radius(pos, eat_range);
     bool ate_food = false;
 
-    // Query nearby food from environment directly
-    // (Using a simpler approach without spatial grid for food)
-    ate_food = environment_.try_eat_food(pos, eat_range, {}, &eaten_food);
+    for (Entity other_e : nearby) {
+      size_t other_idx = registry.index_of(other_e);
+      if (other_idx == std::numeric_limits<size_t>::max()) {
+        continue;
+      }
+
+      // Check if this is active food
+      if (identity.type[other_idx] != IdentitySoA::TYPE_FOOD ||
+          !food_state.active[other_idx]) {
+        continue;
+      }
+
+      // Check distance
+      float dx = positions.x[other_idx] - pos.x;
+      float dy = positions.y[other_idx] - pos.y;
+      float dist_sq = dx * dx + dy * dy;
+
+      if (dist_sq <= eat_range_sq) {
+        // Eat the food
+        food_state.active[other_idx] =
+            0; // Deactivate food (will respawn later)
+        eaten_food = other_e;
+        ate_food = true;
+        break;
+      }
+    }
 
     if (ate_food) {
       vitals.energy[idx] += config_.energy_gain_from_food;
       stats.food_eaten[idx]++;
-      last_events_.push_back(SimEvent{SimEvent::Food, entity,
-                                      Entity{eaten_food, 1}, INVALID_ENTITY,
-                                      INVALID_ENTITY, pos});
+      last_events_.push_back(SimEvent{SimEvent::Food, entity, eaten_food,
+                                      INVALID_ENTITY, INVALID_ENTITY, pos});
     }
   }
 }
@@ -320,7 +344,6 @@ void SimulationManager::count_alive_ecs(const Registry &registry) {
 
 void SimulationManager::refresh_state_ecs(Registry &registry) {
   rebuild_spatial_grid_ecs(registry);
-  rebuild_food_grid();
   count_alive_ecs(registry);
 }
 

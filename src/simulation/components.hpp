@@ -56,6 +56,7 @@ struct VitalsSoA {
 struct IdentitySoA {
   static constexpr uint8_t TYPE_PREDATOR = 0;
   static constexpr uint8_t TYPE_PREY = 1;
+  static constexpr uint8_t TYPE_FOOD = 2;
 
   std::vector<uint8_t> type;
   std::vector<uint32_t> species_id;
@@ -142,5 +143,19 @@ struct BrainSoA {
 
 // Genome: Evolution data (stored in EvolutionManager, not here)
 // Neural network is stored in NetworkCache outside ECS
+
+// FoodState: Food-specific data (slot index for deterministic respawn)
+struct FoodStateSoA {
+  std::vector<uint32_t> slot_index;
+  std::vector<uint8_t> active;
+
+  void resize(size_t n) {
+    slot_index.resize(n);
+    active.resize(n);
+  }
+  size_t size() const {
+    return slot_index.size();
+  }
+};
 
 } // namespace moonai

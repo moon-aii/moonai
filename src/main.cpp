@@ -3,7 +3,7 @@
 #include "data/logger.hpp"
 #include "data/metrics.hpp"
 #include "evolution/evolution_manager.hpp"
-#include "simulation/physics.hpp"
+#include "simulation/components.hpp"
 #include "simulation/registry.hpp"
 #include "simulation/simulation_manager.hpp"
 #include "visualization/visualization_manager.hpp"
@@ -55,7 +55,7 @@ int run_experiment(const std::string &name, moonai::SimulationConfig config,
   moonai::MetricsCollector metrics;
 
   simulation.initialize();
-  evolution.initialize(moonai::SensorInput::SIZE, 2);
+  evolution.initialize(moonai::SensorSoA::INPUT_COUNT, 2);
   evolution.seed_initial_population_ecs(registry);
   simulation.refresh_state_ecs(registry);
   logger.initialize(config);

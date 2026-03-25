@@ -3,10 +3,10 @@
 #include "core/config.hpp"
 #include "core/random.hpp"
 #include "simulation/entity.hpp"
-#include "simulation/environment.hpp"
 #include "simulation/spatial_grid_ecs.hpp"
 #include "simulation/systems/combat.hpp"
 #include "simulation/systems/energy.hpp"
+#include "simulation/systems/food_respawn.hpp"
 #include "simulation/systems/movement.hpp"
 #include "simulation/systems/sensor.hpp"
 
@@ -20,13 +20,11 @@ namespace moonai {
 class Registry;
 
 // Discrete interaction event recorded each step
-// Note: For Food events, target_id.index contains the food array index
-// (not a valid Entity). For all other events, target_id is a valid Entity.
 struct SimEvent {
   enum Type : uint8_t { Kill, Food, Birth, Death };
   Type type;
   Entity agent_id;  // predator (kill) or prey (food)
-  Entity target_id; // prey (kill), food array index (food), or self (death)
+  Entity target_id; // prey (kill), food (food), or self (death)
   Entity parent_a_id = INVALID_ENTITY;
   Entity parent_b_id = INVALID_ENTITY;
   Vec2 position; // where the event occurred
@@ -45,13 +43,6 @@ public:
   }
   void increment_step() {
     ++current_step_;
-  }
-
-  Environment &environment() {
-    return environment_;
-  }
-  const Environment &environment() const {
-    return environment_;
   }
 
   SpatialGridECS &spatial_grid() {
@@ -91,16 +82,12 @@ private:
   void initialize(bool log_initialization);
 
   void rebuild_spatial_grid_ecs(const Registry &registry);
-  void rebuild_food_grid();
-  // NOTE: process_energy_ecs and process_attacks_ecs removed - using
-  // EnergySystem and CombatSystem instead
   void process_food_ecs(Registry &registry);
   void process_step_deaths_ecs(Registry &registry);
   void count_alive_ecs(const Registry &registry);
 
   SimulationConfig config_;
   Random rng_;
-  Environment environment_;
   SpatialGridECS grid_;
   std::vector<SimEvent> last_events_;
   int current_step_ = 0;
@@ -112,6 +99,7 @@ private:
   std::unique_ptr<EnergySystem> energy_system_;
   std::unique_ptr<MovementSystem> movement_system_;
   std::unique_ptr<CombatSystem> combat_system_;
+  std::unique_ptr<FoodRespawnSystem> food_respawn_system_;
 };
 
 } // namespace moonai

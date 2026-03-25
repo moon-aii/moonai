@@ -1,7 +1,5 @@
 set(MOONAI_SIMULATION_SOURCES
     simulation_manager.cpp
-    environment.cpp
-    physics.cpp
     registry.cpp
     system.cpp
     spatial_grid_ecs.cpp
@@ -9,6 +7,7 @@ set(MOONAI_SIMULATION_SOURCES
     systems/sensor.cpp
     systems/combat.cpp
     systems/energy.cpp
+    systems/food_respawn.cpp
 )
 
 add_library(moonai_simulation STATIC ${MOONAI_SIMULATION_SOURCES})
