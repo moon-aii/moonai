@@ -32,7 +32,6 @@ public:
   bool should_close() const;
   void handle_events();
 
-  // Update overlay stats from external sources
   void set_fitness(float best, float avg) {
     overlay_stats_.best_fitness = best;
     overlay_stats_.avg_fitness = avg;
@@ -44,7 +43,6 @@ public:
     overlay_.push_fitness(best, avg);
   }
 
-  // Simulation control state
   bool is_paused() const {
     return paused_;
   }
@@ -67,17 +65,14 @@ public:
     return selected_entity_;
   }
 
-  // Provide activation values for the selected agent's NN panel
   void set_selected_activations(
       const std::vector<float> &vals,
       const std::unordered_map<std::uint32_t, int> &idx_map);
 
-  // Update population data for the left column chart (called per step)
   void update_population_chart(int predators, int prey) {
     overlay_.push_population(predators, prey);
   }
 
-  // Get fitness by agent type from evolution manager
   void set_fitness_by_type(float best_pred, float avg_pred, float best_prey,
                            float avg_prey) {
     overlay_stats_.best_predator_fitness = best_pred;
@@ -86,7 +81,6 @@ public:
     overlay_stats_.avg_prey_fitness = avg_prey;
   }
 
-  // Get energy distribution from simulation
   void set_energy_distribution(const float pred_dist[5],
                                const float prey_dist[5]) {
     for (int i = 0; i < 5; ++i) {
@@ -95,7 +89,6 @@ public:
     }
   }
 
-  // Update event counts
   void set_event_counts(int kills, int food, int births, int deaths) {
     overlay_stats_.kills_this_step = kills;
     overlay_stats_.food_eaten_this_step = food;
@@ -103,12 +96,10 @@ public:
     overlay_stats_.deaths_this_step = deaths;
   }
 
-  // Get left column width for viewport adjustment
   static constexpr float left_column_width() {
     return 260.0f;
   }
 
-  // Experiment selector
   void set_experiments(const std::vector<std::string> &names);
   bool in_experiment_select_mode() const {
     return experiment_select_mode_;
@@ -146,26 +137,20 @@ private:
   int speed_multiplier_ = 1;
   Entity selected_entity_ = INVALID_ENTITY;
 
-  // Activation values for selected agent's NN visualization
   std::unordered_map<std::uint32_t, float> selected_node_activations_;
 
-  // Camera state
   bool dragging_ = false;
   sf::Vector2f drag_start_;
   sf::Vector2f view_start_;
   float zoom_level_ = 1.0f;
 
-  // Pending click: stored in handle_events(), applied in render() which has sim
-  // access
   bool pending_click_ = false;
   float pending_click_x_ = 0.0f;
   float pending_click_y_ = 0.0f;
 
-  // Window dimensions
   unsigned int window_width_ = 1600;
   unsigned int window_height_ = 900;
 
-  // Experiment selector state
   bool experiment_select_mode_ = false;
   bool experiment_selected_ = false;
   std::vector<std::string> experiment_names_;

@@ -6,7 +6,6 @@
 
 namespace moonai {
 
-// Processes predator attacks and prey food consumption
 class CombatSystem : public System {
 public:
   struct KillEvent {
@@ -26,7 +25,6 @@ public:
     return "CombatSystem";
   }
 
-  // Get events from last update
   const std::vector<KillEvent> &kill_events() const {
     return kill_events_;
   }
@@ -34,7 +32,6 @@ public:
     return food_events_;
   }
 
-  // Clear events (call after processing)
   void clear_events() {
     kill_events_.clear();
     food_events_.clear();

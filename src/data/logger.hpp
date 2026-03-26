@@ -11,7 +11,6 @@
 
 namespace moonai {
 
-// Forward declarations
 class Genome;
 class Species;
 struct SimEvent;
@@ -29,7 +28,6 @@ public:
   void log_best_genome(int step, const Genome &genome);
   void log_species(int step, const std::vector<Species> &species);
 
-  // ECS-based logging methods
   void log_step(int step, const Registry &registry);
   void log_events(int step, const std::vector<SimEvent> &events);
 

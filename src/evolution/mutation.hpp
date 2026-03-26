@@ -10,8 +10,6 @@
 
 namespace moonai {
 
-// Tracks innovation numbers across structural mutations to prevent duplicate
-// innovations
 class InnovationTracker {
 public:
   InnovationTracker() = default;
@@ -19,14 +17,10 @@ public:
   // Initialize counters from an existing genome population
   void init_from_population(const std::vector<Genome> &population);
 
-  // Get or create innovation number for a connection (in_node, out_node)
-  // Returns the same innovation number if the same structural mutation
-  // has already occurred in the current cache window
   std::uint32_t get_innovation(std::uint32_t in_node, std::uint32_t out_node);
 
   std::uint32_t next_node_id();
 
-  // Reset the innovation cache (call to clear structural mutation tracking)
   void reset_mutation_window();
 
   std::uint32_t innovation_count() const {
@@ -44,7 +38,6 @@ public:
 private:
   std::uint32_t innovation_counter_ = 0;
   std::uint32_t node_counter_ = 0;
-  // Innovation cache: (in_node, out_node) -> innovation number
   std::map<std::pair<std::uint32_t, std::uint32_t>, std::uint32_t>
       innovation_cache_;
 };

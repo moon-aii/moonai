@@ -5,7 +5,6 @@
 
 namespace moonai {
 
-// Builds neural network sensor inputs from spatial queries
 class SensorSystem : public System {
 public:
   SensorSystem(const SpatialGridECS &agent_grid, float world_width,

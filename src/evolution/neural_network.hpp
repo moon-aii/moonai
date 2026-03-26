@@ -37,7 +37,6 @@ public:
     return num_outputs_;
   }
 
-  // GPU packing accessors — expose precomputed internal structures read-only
   const std::vector<Node> &raw_nodes() const {
     return nodes_;
   }
@@ -66,14 +65,10 @@ private:
   std::vector<Node> nodes_;
   std::vector<Connection> connections_;
   std::vector<std::uint32_t> evaluation_order_;
-  std::unordered_map<std::uint32_t, int> node_index_; // id -> index in nodes_
+  std::unordered_map<std::uint32_t, int> node_index_;
 
-  // Precomputed: incoming_[node_idx] = list of {from_node_idx, weight}
-  // Built once in build_evaluation_order(), eliminates per-call map allocation.
   std::vector<std::vector<std::pair<int, float>>> incoming_;
 
-  // Reused buffer for node activation values (indexed by node position in
-  // nodes_)
   std::vector<float> values_;
 
   int num_inputs_;

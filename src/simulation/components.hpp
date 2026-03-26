@@ -4,7 +4,6 @@
 
 namespace moonai {
 
-// Position: Separate x/y for GPU coalesced access
 struct PositionSoA {
   std::vector<float> x;
   std::vector<float> y;
@@ -18,7 +17,6 @@ struct PositionSoA {
   }
 };
 
-// Motion: Velocity + speed (from config)
 struct MotionSoA {
   std::vector<float> vel_x;
   std::vector<float> vel_y;
@@ -34,7 +32,6 @@ struct MotionSoA {
   }
 };
 
-// Vitals: Updated by GPU kernels
 struct VitalsSoA {
   std::vector<float> energy;
   std::vector<int> age;
@@ -52,7 +49,6 @@ struct VitalsSoA {
   }
 };
 
-// Identity: Set at birth, mostly static
 struct IdentitySoA {
   static constexpr uint8_t TYPE_PREDATOR = 0;
   static constexpr uint8_t TYPE_PREY = 1;
@@ -72,7 +68,6 @@ struct IdentitySoA {
   }
 };
 
-// Sensors: NN input/output
 struct SensorSoA {
   static constexpr int INPUT_COUNT = 15;
   static constexpr int OUTPUT_COUNT = 2;
@@ -99,7 +94,6 @@ struct SensorSoA {
   }
 };
 
-// Stats: Accumulated during step
 struct StatsSoA {
   std::vector<int> kills;
   std::vector<int> food_eaten;
@@ -117,7 +111,6 @@ struct StatsSoA {
   }
 };
 
-// Visual: Rendering data (cold)
 struct VisualSoA {
   std::vector<float> radius;
   std::vector<uint32_t> color_rgba;
@@ -130,7 +123,6 @@ struct VisualSoA {
   }
 };
 
-// Brain: NN decision outputs
 struct BrainSoA {
   std::vector<float> decision_x;
   std::vector<float> decision_y;
@@ -141,10 +133,6 @@ struct BrainSoA {
   }
 };
 
-// Genome: Evolution data (stored in EvolutionManager, not here)
-// Neural network is stored in NetworkCache outside ECS
-
-// FoodState: Food-specific data (slot index for deterministic respawn)
 struct FoodStateSoA {
   std::vector<uint32_t> slot_index;
   std::vector<uint8_t> active;

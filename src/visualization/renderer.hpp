@@ -23,7 +23,6 @@ public:
                         float cell_size);
   static void draw_boundaries(sf::RenderTarget &target, int width, int height);
 
-  // ECS-based rendering
   void draw_food_ecs(sf::RenderTarget &target, const Registry &registry);
   void draw_agent_ecs(sf::RenderTarget &target, const Registry &registry,
                       Entity entity, bool selected = false);
@@ -34,7 +33,6 @@ public:
   static void draw_sensor_lines_ecs(sf::RenderTarget &target,
                                     const Registry &registry, Entity entity);
 
-  // Color helpers
   static sf::Color species_color(int species_id);
 
   float dead_fade_alpha = 60.0f;

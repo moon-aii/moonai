@@ -4,8 +4,6 @@
 
 namespace moonai {
 
-// Entity handle: opaque stable identifier
-// Combines index + generation for validation
 struct Entity {
   uint32_t index;
   uint32_t generation;

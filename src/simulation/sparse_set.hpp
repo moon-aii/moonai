@@ -6,8 +6,6 @@
 
 namespace moonai {
 
-// Sparse set: maps Entity index -> dense component index
-// Allows O(1) entity lookup with stable handles
 class SparseSet {
 public:
   size_t insert(Entity e) {
@@ -73,7 +71,6 @@ public:
     return dense_.empty();
   }
 
-  // Dense array of active entities (for iteration)
   const std::vector<Entity> &dense() const {
     return dense_;
   }

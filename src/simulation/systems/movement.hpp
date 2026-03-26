@@ -4,7 +4,6 @@
 
 namespace moonai {
 
-// Moves agents based on neural network output (brain decisions)
 class MovementSystem : public System {
 public:
   MovementSystem(float world_width, float world_height, bool has_walls);

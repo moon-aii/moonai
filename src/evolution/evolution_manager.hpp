@@ -17,7 +17,6 @@
 
 namespace moonai {
 
-// Forward declaration
 class Registry;
 
 class EvolutionManager {
@@ -31,25 +30,18 @@ public:
   Genome create_child_genome(const Genome &parent_a,
                              const Genome &parent_b) const;
 
-  // ECS-aware methods (Phase 4)
   void seed_initial_population_ecs(Registry &registry);
 
-  // Validates parent handles before creating offspring
-  // Returns INVALID_ENTITY if parents are invalid or dead
   Entity create_offspring_ecs(Registry &registry, Entity parent_a,
                               Entity parent_b, Vec2 spawn_position);
 
   void refresh_fitness_ecs(const Registry &registry);
   void refresh_species_ecs(Registry &registry);
 
-  // Compute actions: uses NetworkCache for NN inference
-  // Note: Registry must be non-const to write brain outputs
   void compute_actions_ecs(Registry &registry, std::vector<Vec2> &actions);
 
-  // Called when entities die (cleanup)
   void on_entity_destroyed(Entity e);
 
-  // Accessors for ECS integration
   NetworkCache &network_cache() {
     return network_cache_;
   }
@@ -67,7 +59,6 @@ public:
     return static_cast<int>(species_.size());
   }
 
-  // ECS-aware fitness by type
   void get_fitness_by_type_ecs(const Registry &registry, float &best_predator,
                                float &avg_predator, float &best_prey,
                                float &avg_prey) const;
@@ -92,8 +83,6 @@ private:
   bool use_gpu_ = false;
   int species_refresh_step_ = -1;
 
-  // ECS integration (Phase 4)
-  // Entity -> Genome mapping (flat POD, fine for ECS)
   std::unordered_map<Entity, Genome, EntityHash> entity_genomes_;
 
   // Entity -> NeuralNetwork mapping (variable topology, separate cache)

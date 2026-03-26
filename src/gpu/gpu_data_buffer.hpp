@@ -13,22 +13,10 @@ typedef struct CUstream_st *cudaStream_t;
 namespace moonai {
 namespace gpu {
 
-/**
- * @brief GPU buffer abstraction providing clean ECS-GPU boundary
- *
- * Manages pinned host memory and corresponding device memory for efficient
- * async transfers between ECS and GPU. ECS fills host buffers, kernels
- * read from device buffers. Decoupled from ECS internals.
- */
 class GpuDataBuffer {
 public:
-  /**
-   * @brief Create buffer with capacity for max_entities
-   * @param max_entities Maximum number of entities this buffer can hold
-   */
   explicit GpuDataBuffer(std::size_t max_entities);
 
-  /** @brief Destructor - frees all allocated memory */
   ~GpuDataBuffer();
 
   // Disable copy/move - buffers own CUDA resources
@@ -37,7 +25,6 @@ public:
   GpuDataBuffer(GpuDataBuffer &&) = delete;
   GpuDataBuffer &operator=(GpuDataBuffer &&) = delete;
 
-  // Host buffer accessors (ECS fills these)
   [[nodiscard]] float *host_positions_x() const noexcept {
     return h_pos_x_;
   }
@@ -72,7 +59,6 @@ public:
     return h_brain_outputs_;
   }
 
-  // Device buffer accessors (kernels read/write these)
   [[nodiscard]] const float *device_positions_x() const noexcept {
     return d_pos_x_;
   }
@@ -126,7 +112,6 @@ public:
     return d_brain_outputs_;
   }
 
-  // Output buffers (kernels write here, ECS reads back)
   [[nodiscard]] float *host_outputs_energy() const noexcept {
     return h_out_energy_;
   }
@@ -181,7 +166,6 @@ public:
    */
   void download_async(std::size_t count, cudaStream_t stream);
 
-  /** @return Maximum capacity of this buffer */
   [[nodiscard]] std::size_t capacity() const noexcept {
     return capacity_;
   }
@@ -190,7 +174,6 @@ private:
   void allocate_buffers();
   void free_buffers();
 
-  // Input buffers - ECS → GPU
   float *h_pos_x_ = nullptr;
   float *h_pos_y_ = nullptr;
   float *h_vel_x_ = nullptr;
@@ -200,10 +183,9 @@ private:
   uint8_t *h_alive_ = nullptr;
   uint8_t *h_types_ = nullptr;
   uint32_t *h_species_ids_ = nullptr;
-  float *h_sensor_inputs_ = nullptr; // 15 inputs per entity
-  float *h_brain_outputs_ = nullptr; // 2 outputs per entity
+  float *h_sensor_inputs_ = nullptr;
+  float *h_brain_outputs_ = nullptr;
 
-  // Device mirrors
   float *d_pos_x_ = nullptr;
   float *d_pos_y_ = nullptr;
   float *d_vel_x_ = nullptr;
@@ -216,7 +198,6 @@ private:
   float *d_sensor_inputs_ = nullptr;
   float *d_brain_outputs_ = nullptr;
 
-  // Output buffers - GPU → ECS
   float *h_out_energy_ = nullptr;
   uint8_t *h_out_alive_ = nullptr;
   float *h_out_vel_x_ = nullptr;

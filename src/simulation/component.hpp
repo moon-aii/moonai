@@ -4,7 +4,6 @@
 
 namespace moonai {
 
-// Component traits - checks if type is suitable for component storage
 template <typename T> struct ComponentTraits {
   static constexpr bool is_valid =
       std::is_trivially_copyable_v<T> && std::is_standard_layout_v<T>;

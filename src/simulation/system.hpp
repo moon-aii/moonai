@@ -5,7 +5,6 @@
 
 namespace moonai {
 
-// Abstract base class for all ECS systems
 class System {
 public:
   virtual ~System() = default;
@@ -13,7 +12,6 @@ public:
   virtual const char *name() const = 0;
 };
 
-// System scheduler - manages execution order of systems
 class SystemScheduler {
 public:
   void add_system(std::unique_ptr<System> system);

@@ -75,14 +75,10 @@ public:
   // Set node activation values for the selected agent's NN panel
   void set_activations(const std::unordered_map<std::uint32_t, float> &vals);
 
-  // Push population data for the left column chart (called per step)
   void push_population(int predators, int prey);
 
-  // Push species count (called per report window)
   void push_species(int count);
 
-  // Experiment selector overlay
-  // Returns index of clicked experiment, or -1 if none clicked
   int draw_experiment_selector(sf::RenderTarget &target,
                                const std::vector<std::string> &names,
                                int hover_index, int scroll_offset);

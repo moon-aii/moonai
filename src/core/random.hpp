@@ -17,15 +17,12 @@ public:
   float next_gaussian(float mean, float stddev);
   bool next_bool(float probability);
 
-  // Weighted random selection: returns index based on weights
   int weighted_select(const std::vector<float> &weights);
 
-  // Shuffle a vector in-place
   template <typename T> void shuffle(std::vector<T> &vec) {
     std::shuffle(vec.begin(), vec.end(), engine_);
   }
 
-  // Pick N random indices from [0, total) without replacement
   std::vector<int> sample_indices(int total, int count);
 
   std::uint64_t seed() const {

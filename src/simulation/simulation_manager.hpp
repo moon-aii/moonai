@@ -19,7 +19,6 @@ namespace moonai {
 
 class Registry;
 
-// Discrete interaction event recorded each step
 struct SimEvent {
   enum Type : uint8_t { Kill, Food, Birth, Death };
   Type type;
@@ -59,7 +58,6 @@ public:
     return alive_prey_;
   }
 
-  // Interaction events that occurred during the last step() call
   const std::vector<SimEvent> &last_events() const {
     return last_events_;
   }
@@ -94,7 +92,6 @@ private:
   int alive_predators_ = 0;
   int alive_prey_ = 0;
 
-  // ECS Systems
   std::unique_ptr<SensorSystem> sensor_system_;
   std::unique_ptr<EnergySystem> energy_system_;
   std::unique_ptr<MovementSystem> movement_system_;

@@ -7,7 +7,6 @@
 
 namespace moonai {
 
-// Spatial grid using stable Entity handles
 class SpatialGridECS {
 public:
   SpatialGridECS(float world_width, float world_height, float cell_size);

@@ -3,7 +3,6 @@
 
 namespace moonai {
 
-// Manages energy consumption, aging, and natural death
 class EnergySystem : public System {
 public:
   EnergySystem(float predator_energy_cost, float prey_energy_cost,

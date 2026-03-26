@@ -11,98 +11,64 @@ namespace moonai {
 enum class BoundaryMode { Clamp, Wrap };
 
 struct SimulationConfig {
-  // ── Environment ─────────────────────────────────────────────────────
-  int grid_size =
-      3000; // World size in simulation units (square: N x N) [100, 20000]
-  BoundaryMode boundary_mode = BoundaryMode::Wrap; // "wrap" or "clamp"
+  int grid_size = 3000;
+  BoundaryMode boundary_mode = BoundaryMode::Wrap;
 
-  // ── Population ──────────────────────────────────────────────────────
-  int predator_count = 500; // Number of predator agents [1, ...]
-  int prey_count = 1500;    // Number of prey agents [1, ...]
+  int predator_count = 500;
+  int prey_count = 1500;
 
-  // ── Agent Parameters ────────────────────────────────────────────────
-  float predator_speed = 4.0f; // Predator max speed (units/step) [> 0]
-  float prey_speed =
-      4.5f; // Prey max speed (units/step); prey slightly faster [> 0]
-  float vision_range = 200.0f; // Radius each agent can see (units) [> 0]
-  float attack_range =
-      20.0f; // Predator kill radius (units) [> 0, < vision_range]
-  float initial_energy = 150.0f; // Starting energy; death at <= 0 [> 0]
-  float energy_drain_per_step =
-      0.08f; // Fixed energy cost per step (living cost) [>= 0]
-  float energy_gain_from_kill =
-      60.0f; // Energy predator gains per successful kill
-  float energy_gain_from_food =
-      40.0f;                       // Energy prey gains per food pellet eaten
-  float food_pickup_range = 12.0f; // Prey food detection radius (units) [> 0]
+  float predator_speed = 4.0f;
+  float prey_speed = 4.5f;
+  float vision_range = 200.0f;
+  float attack_range = 20.0f;
+  float initial_energy = 150.0f;
+  float energy_drain_per_step = 0.08f;
+  float energy_gain_from_kill = 60.0f;
+  float energy_gain_from_food = 40.0f;
+  float food_pickup_range = 12.0f;
 
-  // ── Food / Resources ────────────────────────────────────────────────
-  int food_count = 2500; // Food pellets to spawn at initialization [>= 0]
-  float food_respawn_rate =
-      0.02f; // P(respawn per empty slot per step) ∈ [0, 1]
+  int food_count = 2500;
+  float food_respawn_rate = 0.02f;
 
-  // ── Online Neuroevolution (applied at birth time) ─────────────────────
-  float mutation_rate = 0.3f;   // P(weight mutation per genome) ∈ [0, 1]
-  float crossover_rate = 0.75f; // P(use crossover vs clone) ∈ [0, 1]
-  float weight_mutation_power =
-      0.5f;                    // Std dev for Gaussian weight perturbation [> 0]
-  float add_node_rate = 0.03f; // P(add node mutation per genome) ∈ [0, 1]
-  float add_connection_rate =
-      0.05f; // P(add connection mutation per genome) ∈ [0, 1]
-  float delete_connection_rate =
-      0.01f; // P(delete connection mutation per genome) ∈ [0, 1]
-  int max_hidden_nodes =
-      100;           // Max hidden nodes per genome; 0 = unlimited [>= 0]
-  int max_steps = 0; // 0 = run indefinitely; otherwise stop after N
+  float mutation_rate = 0.3f;
+  float crossover_rate = 0.75f;
+  float weight_mutation_power = 0.5f;
+  float add_node_rate = 0.03f;
+  float add_connection_rate = 0.05f;
+  float delete_connection_rate = 0.01f;
+  int max_hidden_nodes = 100;
+  int max_steps = 0;
 
-  // ── NEAT - Speciation (Stanley 2002, Section 3.3) ───────────────────
-  float compatibility_threshold =
-      3.0f; // δ_t: genomes within this distance → same species [> 0]
-  float c1_excess = 1.0f;   // Coefficient for excess genes in δ formula
-  float c2_disjoint = 1.0f; // Coefficient for disjoint genes in δ formula
-  float c3_weight = 0.4f;   // Coefficient for avg weight diff in δ formula
-  int species_update_interval_steps =
-      60; // Rebuild species clusters every N steps [>= 1]
+  float compatibility_threshold = 3.0f;
+  float c1_excess = 1.0f;
+  float c2_disjoint = 1.0f;
+  float c3_weight = 0.4f;
+  int species_update_interval_steps = 60;
 
-  // ── Simulation ──────────────────────────────────────────────────────
-  int target_fps = 60; // Render/physics framerate cap (also sets dt) [1, 1000]
-  std::uint64_t seed = 0; // Master RNG seed; 0 = random from clock
+  int target_fps = 60;
+  std::uint64_t seed = 0;
 
-  // ── Data Logging ────────────────────────────────────────────────────
-  std::string output_dir = "output"; // Directory for CSV/JSON run data
-  int report_interval_steps = 60;    // Emit summary stats every N steps [>= 1]
+  std::string output_dir = "output";
+  int report_interval_steps = 60;
 
-  // ── Reproduction ───────────────────────────────────────────────────────
-  float mate_range = 40.0f; // Same-role mate search radius [> 0]
-  float reproduction_energy_threshold =
-      175.0f; // Both parents must exceed this energy [> 0]
-  float reproduction_energy_cost =
-      45.0f; // Energy removed from each parent on birth [> 0]
-  float offspring_initial_energy =
-      80.0f; // Child starting energy after birth [> 0]
-  int min_reproductive_age_steps =
-      90; // Minimum age before an agent can mate [>= 0]
-  int reproduction_cooldown_steps = 180; // Cooldown after mating [>= 0]
-  float birth_spawn_radius =
-      8.0f; // Child spawn jitter around parent midpoint [>= 0]
+  float mate_range = 40.0f;
+  float reproduction_energy_threshold = 175.0f;
+  float reproduction_energy_cost = 45.0f;
+  float offspring_initial_energy = 80.0f;
+  int min_reproductive_age_steps = 90;
+  int reproduction_cooldown_steps = 180;
+  float birth_spawn_radius = 8.0f;
 
-  // ── Fitness Weights (linear combination forming genome fitness) ──────
-  float fitness_survival_weight =
-      1.0f; // Reward for surviving (0 -> 1 fraction of report window)
-  float fitness_kill_weight = 5.0f; // Reward per kill (predator) or food (prey)
-  float fitness_energy_weight = 0.5f; // Reward for remaining energy ratio
-  float fitness_distance_weight =
-      0.1f; // Reserved for future distance-traveled metric
-  float complexity_penalty_weight =
-      0.01f; // Fitness penalty per node+connection [>= 0]
+  float fitness_survival_weight = 1.0f;
+  float fitness_kill_weight = 5.0f;
+  float fitness_energy_weight = 0.5f;
+  float fitness_distance_weight = 0.1f;
+  float complexity_penalty_weight = 0.01f;
 
-  // ── Neural Network ───────────────────────────────────────────────────
-  std::string activation_function =
-      "sigmoid"; // Activation fn: "sigmoid", "tanh", "relu"
+  std::string activation_function = "sigmoid";
 
-  // ── Per-Step Logging (optional, high-volume) ─────────────────────────
-  bool step_log_enabled = false; // Enable per-step agent state logging
-  int step_log_interval = 10;    // Log agent states every N steps [>= 1]
+  bool step_log_enabled = false;
+  int step_log_interval = 10;
 };
 
 struct ConfigError {
@@ -110,34 +76,22 @@ struct ConfigError {
   std::string message;
 };
 
-// ── Lua config loading ──────────────────────────────────────────────────
-// Load named configs from a Lua file.
-// The file must return a table of the form: { name = { ...params... }, ... }
-// A single-entry file (e.g. { default = {...} }) is auto-selected without
-// --experiment.
 std::map<std::string, SimulationConfig>
 load_all_configs_lua(const std::string &filepath);
 
-// ── JSON output (for config snapshots in output dirs) ───────────────────
 nlohmann::json config_to_json(const SimulationConfig &config);
 std::string fingerprint_config(const SimulationConfig &config);
 void save_config(const SimulationConfig &config, const std::string &filepath);
 
-// ── Validation ──────────────────────────────────────────────────────────
 std::vector<ConfigError> validate_config(const SimulationConfig &config);
 
-// ── CLI override ────────────────────────────────────────────────────────
-// Apply --set key=value overrides to a config. Returns errors for unknown keys.
 std::vector<ConfigError> apply_overrides(
     SimulationConfig &config,
     const std::vector<std::pair<std::string, std::string>> &overrides);
 
-// Apply float-valued overrides from Lua hooks (e.g. { mutation_rate = 0.5 }).
-// Only applies to recognized float/int fields. Logs warnings for unknown keys.
 void apply_overrides_float(SimulationConfig &config,
                            const std::map<std::string, float> &overrides);
 
-// ── CLI ─────────────────────────────────────────────────────────────────
 struct CLIArgs {
   std::string config_path = "config.lua";
   std::uint64_t seed_override = 0; // 0 = use config seed

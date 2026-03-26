@@ -6,7 +6,6 @@
 
 namespace moonai {
 
-// Forward declaration
 class Registry;
 class EvolutionManager;
 
@@ -26,7 +25,6 @@ struct StepMetrics {
 
 class MetricsCollector {
 public:
-  // ECS-based collection method
   StepMetrics collect_ecs(int step, const Registry &registry,
                           const EvolutionManager &evolution, int births,
                           int deaths, int num_species);
