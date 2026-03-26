@@ -35,8 +35,6 @@ public:
 
   static sf::Color species_color(int species_id);
 
-  float dead_fade_alpha = 60.0f;
-
 private:
   sf::CircleShape circle_;
   sf::ConvexShape triangle_;

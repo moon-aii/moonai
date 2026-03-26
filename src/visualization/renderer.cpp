@@ -108,15 +108,10 @@ void Renderer::draw_agent_ecs(sf::RenderTarget &target,
   }
 
   size_t idx = registry.index_of(entity);
-  const auto &vitals = registry.vitals();
   const auto &positions = registry.positions();
   const auto &motion = registry.motion();
   const auto &identity = registry.identity();
   const auto &visual = registry.visual();
-
-  bool alive = vitals.alive[idx] != 0;
-  float alpha = alive ? 255.0f : dead_fade_alpha;
-  auto a = static_cast<std::uint8_t>(alpha);
 
   sf::Color base_color;
   if (idx < visual.color_rgba.size() && visual.color_rgba[idx] != 0) {
@@ -132,7 +127,6 @@ void Renderer::draw_agent_ecs(sf::RenderTarget &target,
       base_color = sf::Color(60, 200, 80);
     }
   }
-  base_color.a = static_cast<uint8_t>(base_color.a * alpha / 255.0f);
 
   if (selected) {
     base_color.r = std::min(255, base_color.r + 60);
@@ -142,7 +136,7 @@ void Renderer::draw_agent_ecs(sf::RenderTarget &target,
 
   sf::Color outline_color(std::min(255, base_color.r + 30),
                           std::min(255, base_color.g + 30),
-                          std::min(255, base_color.b + 30), a);
+                          std::min(255, base_color.b + 30));
 
   float visual_radius = (idx < visual.radius.size() && visual.radius[idx] > 0)
                             ? visual.radius[idx]
@@ -196,20 +190,10 @@ void Renderer::draw_all_agents_ecs(sf::RenderTarget &target,
                                    const Registry &registry,
                                    Entity selected_entity) {
   const auto &living = registry.living_entities();
+  const auto &vitals = registry.vitals();
   for (Entity entity : living) {
     size_t idx = registry.index_of(entity);
-    const auto &vitals = registry.vitals();
     if (vitals.alive[idx]) {
-      bool is_selected = (entity == selected_entity);
-      draw_agent_ecs(target, registry, entity, is_selected);
-    }
-  }
-
-  // Draw dead agents (faded)
-  for (Entity entity : living) {
-    size_t idx = registry.index_of(entity);
-    const auto &vitals = registry.vitals();
-    if (!vitals.alive[idx]) {
       bool is_selected = (entity == selected_entity);
       draw_agent_ecs(target, registry, entity, is_selected);
     }
