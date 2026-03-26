@@ -166,9 +166,11 @@ TEST(CLIArgsTest, SetOverrides) {
 TEST(ApplyOverrides, ValidOverrides) {
   SimulationConfig config;
   std::vector<std::pair<std::string, std::string>> overrides = {
-      {"mutation_rate", "0.1"},        {"prey_count", "75"},
-      {"activation_function", "tanh"}, {"step_log_enabled", "true"},
-      {"boundary_mode", "clamp"},      {"seed", "42"},
+      {"mutation_rate", "0.1"},
+      {"prey_count", "75"},
+      {"activation_function", "tanh"},
+      {"boundary_mode", "clamp"},
+      {"seed", "42"},
   };
 
   auto errors = apply_overrides(config, overrides);
@@ -176,7 +178,6 @@ TEST(ApplyOverrides, ValidOverrides) {
   EXPECT_FLOAT_EQ(config.mutation_rate, 0.1f);
   EXPECT_EQ(config.prey_count, 75);
   EXPECT_EQ(config.activation_function, "tanh");
-  EXPECT_TRUE(config.step_log_enabled);
   EXPECT_EQ(config.boundary_mode, BoundaryMode::Clamp);
   EXPECT_EQ(config.seed, 42u);
 }

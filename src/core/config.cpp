@@ -109,8 +109,6 @@ SimulationConfig table_to_config(const sol::table &tbl) {
   lua_get(tbl, "fitness_distance_weight", config.fitness_distance_weight);
   lua_get(tbl, "complexity_penalty_weight", config.complexity_penalty_weight);
   lua_get(tbl, "activation_function", config.activation_function);
-  lua_get_bool(tbl, "step_log_enabled", config.step_log_enabled);
-  lua_get(tbl, "step_log_interval", config.step_log_interval);
 
   return config;
 }
@@ -179,8 +177,6 @@ load_all_configs_lua(const std::string &filepath) {
     t["fitness_distance_weight"] = d.fitness_distance_weight;
     t["complexity_penalty_weight"] = d.complexity_penalty_weight;
     t["activation_function"] = d.activation_function;
-    t["step_log_enabled"] = d.step_log_enabled;
-    t["step_log_interval"] = d.step_log_interval;
     lua["moonai_defaults"] = t;
   }
 
@@ -274,8 +270,6 @@ nlohmann::json config_to_json(const SimulationConfig &config) {
   j["fitness_distance_weight"] = config.fitness_distance_weight;
   j["complexity_penalty_weight"] = config.complexity_penalty_weight;
   j["activation_function"] = config.activation_function;
-  j["step_log_enabled"] = config.step_log_enabled;
-  j["step_log_interval"] = config.step_log_interval;
 
   return j;
 }
@@ -360,7 +354,6 @@ std::vector<ConfigError> validate_config(const SimulationConfig &config) {
         "must be in [1, 1000]");
   check(config.report_interval_steps >= 1, "report_interval_steps",
         "must be >= 1");
-  check(config.step_log_interval >= 1, "step_log_interval", "must be >= 1");
   check(config.mate_range > 0.0f, "mate_range", "must be > 0");
   check(config.reproduction_energy_threshold > 0.0f,
         "reproduction_energy_threshold", "must be > 0");
@@ -406,8 +399,6 @@ std::vector<ConfigError> apply_overrides(
         config.target_fps = std::stoi(val);
       else if (key == "report_interval_steps")
         config.report_interval_steps = std::stoi(val);
-      else if (key == "step_log_interval")
-        config.step_log_interval = std::stoi(val);
       else if (key == "min_reproductive_age_steps")
         config.min_reproductive_age_steps = std::stoi(val);
       else if (key == "reproduction_cooldown_steps")
@@ -488,9 +479,6 @@ std::vector<ConfigError> apply_overrides(
         config.output_dir = val;
       else if (key == "activation_function")
         config.activation_function = val;
-      // Bool fields
-      else if (key == "step_log_enabled")
-        config.step_log_enabled = (val == "true" || val == "1");
       // Unknown key
       else {
         errors.push_back({key, "unknown config key"});

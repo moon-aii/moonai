@@ -3,8 +3,6 @@
 #include "data/metrics.hpp"
 #include "evolution/genome.hpp"
 #include "evolution/species.hpp"
-#include "simulation/registry.hpp"
-#include "simulation/simulation_manager.hpp"
 
 #include <chrono>
 #include <filesystem>
@@ -15,33 +13,11 @@
 
 namespace moonai {
 
-namespace {
-
-const char *event_name(SimEvent::Type type) {
-  switch (type) {
-    case SimEvent::Kill:
-      return "kill";
-    case SimEvent::Food:
-      return "food";
-    case SimEvent::Birth:
-      return "birth";
-    case SimEvent::Death:
-      return "death";
-  }
-  return "unknown";
-}
-
-} // namespace
-
 Logger::Logger(const std::string &output_dir, std::uint64_t seed,
                const std::string &name)
     : base_dir_(output_dir), name_(name), seed_(seed) {}
 
 Logger::~Logger() {
-  flush_steps();
-  if (events_file_.is_open() && !events_buffer_.empty()) {
-    events_file_ << events_buffer_;
-  }
   if (genomes_file_.is_open()) {
     genomes_file_ << "\n]";
     genomes_file_.close();
@@ -51,12 +27,6 @@ Logger::~Logger() {
   }
   if (species_file_.is_open()) {
     species_file_.close();
-  }
-  if (steps_file_.is_open()) {
-    steps_file_.close();
-  }
-  if (events_file_.is_open()) {
-    events_file_.close();
   }
 }
 
@@ -115,18 +85,6 @@ bool Logger::initialize(const SimulationConfig &config) {
   }
   genomes_file_ << "[";
 
-  if (config.step_log_enabled) {
-    steps_file_.open(run_dir_ + "/steps.csv");
-    events_file_.open(run_dir_ + "/events.csv");
-    if (!steps_file_.is_open() || !events_file_.is_open()) {
-      return false;
-    }
-    steps_file_ << "step,agent_id,type,alive,x,y,energy,kills,food_eaten,"
-                   "offspring_count,species_id\n";
-    events_file_
-        << "step,event_type,agent_id,target_id,parent_a_id,parent_b_id,x,y\n";
-  }
-
   return true;
 }
 
@@ -173,74 +131,6 @@ void Logger::log_species(int step, const std::vector<Species> &species) {
   }
 }
 
-void Logger::log_step(int step, const Registry &registry) {
-  if (!steps_file_.is_open()) {
-    return;
-  }
-
-  const auto &living = registry.living_entities();
-  const auto &positions = registry.positions();
-  const auto &vitals = registry.vitals();
-  const auto &identity = registry.identity();
-  const auto &stats = registry.stats();
-
-  for (Entity entity : living) {
-    size_t idx = registry.index_of(entity);
-    if (!vitals.alive[idx]) {
-      continue;
-    }
-
-    std::string type_str = (identity.type[idx] == IdentitySoA::TYPE_PREDATOR)
-                               ? "predator"
-                               : "prey";
-
-    steps_buffer_ += std::to_string(step) + "," + std::to_string(entity.index) +
-                     "," + type_str + "," + "1" + "," +
-                     std::to_string(positions.x[idx]) + "," +
-                     std::to_string(positions.y[idx]) + "," +
-                     std::to_string(vitals.energy[idx]) + "," +
-                     std::to_string(stats.kills[idx]) + "," +
-                     std::to_string(stats.food_eaten[idx]) + "," +
-                     std::to_string(stats.offspring_count[idx]) + "," +
-                     std::to_string(identity.species_id[idx]) + "\n";
-    ++steps_buffered_;
-  }
-
-  if (steps_buffered_ >= STEP_FLUSH_EVERY) {
-    flush_steps();
-  }
-}
-
-void Logger::log_events(int step, const std::vector<SimEvent> &events) {
-  if (!events_file_.is_open() || events.empty()) {
-    return;
-  }
-  for (const auto &event : events) {
-    events_buffer_ += std::to_string(step) + "," + event_name(event.type) +
-                      "," + std::to_string(event.agent_id.index) + "," +
-                      std::to_string(event.target_id.index) + "," +
-                      std::to_string(event.parent_a_id.index) + "," +
-                      std::to_string(event.parent_b_id.index) + "," +
-                      std::to_string(event.position.x) + "," +
-                      std::to_string(event.position.y) + "\n";
-    ++events_buffered_;
-  }
-  if (events_buffered_ >= STEP_FLUSH_EVERY) {
-    events_file_ << events_buffer_;
-    events_buffer_.clear();
-    events_buffered_ = 0;
-  }
-}
-
-void Logger::flush_steps() {
-  if (!steps_file_.is_open() || steps_buffer_.empty()) {
-    return;
-  }
-  steps_file_ << steps_buffer_;
-  steps_buffer_.clear();
-  steps_buffered_ = 0;
-}
-
 void Logger::flush() {
   if (stats_file_.is_open()) {
     stats_file_.flush();
@@ -250,18 +140,6 @@ void Logger::flush() {
   }
   if (species_file_.is_open()) {
     species_file_.flush();
-  }
-  flush_steps();
-  if (events_file_.is_open() && !events_buffer_.empty()) {
-    events_file_ << events_buffer_;
-    events_buffer_.clear();
-    events_buffered_ = 0;
-  }
-  if (steps_file_.is_open()) {
-    steps_file_.flush();
-  }
-  if (events_file_.is_open()) {
-    events_file_.flush();
   }
 }
 

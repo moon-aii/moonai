@@ -97,8 +97,6 @@ SimulationConfig table_to_config(const sol::table &tbl) {
   lua_get(tbl, "fitness_distance_weight", config.fitness_distance_weight);
   lua_get(tbl, "complexity_penalty_weight", config.complexity_penalty_weight);
   lua_get(tbl, "activation_function", config.activation_function);
-  lua_get_bool(tbl, "step_log_enabled", config.step_log_enabled);
-  lua_get(tbl, "step_log_interval", config.step_log_interval);
 
   return config;
 }
@@ -152,8 +150,6 @@ void inject_defaults(sol::state &lua) {
   t["fitness_distance_weight"] = d.fitness_distance_weight;
   t["complexity_penalty_weight"] = d.complexity_penalty_weight;
   t["activation_function"] = d.activation_function;
-  t["step_log_enabled"] = d.step_log_enabled;
-  t["step_log_interval"] = d.step_log_interval;
   lua["moonai_defaults"] = t;
 }
 
@@ -205,8 +201,6 @@ sol::table config_to_table(sol::state &lua, const SimulationConfig &c) {
   t["fitness_distance_weight"] = c.fitness_distance_weight;
   t["complexity_penalty_weight"] = c.complexity_penalty_weight;
   t["activation_function"] = c.activation_function;
-  t["step_log_enabled"] = c.step_log_enabled;
-  t["step_log_interval"] = c.step_log_interval;
   return t;
 }
 

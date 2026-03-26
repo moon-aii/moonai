@@ -49,6 +49,8 @@ Session::Session(const SessionConfig &cfg)
                     std::chrono::steady_clock::now().time_since_epoch().count())
               : cfg.seed),
       simulation_(cfg.sim_config), evolution_(cfg.sim_config, rng_),
+      logger_(cfg.output_dir, cfg.seed,
+              cfg.run_name_override.value_or(cfg.experiment_name)),
       steps_executed_(0), births_in_window_(0), deaths_in_window_(0) {
   // Validate config
   const auto errors = validate_config(cfg_.sim_config);
@@ -65,13 +67,8 @@ Session::Session(const SessionConfig &cfg)
   evolution_.seed_initial_population_ecs(registry_);
   simulation_.refresh_state_ecs(registry_);
 
-  // Initialize logger if enabled
-  if (cfg_.enable_logger) {
-    std::string run_name =
-        cfg_.run_name_override.value_or(cfg_.experiment_name);
-    logger_ = std::make_unique<Logger>(cfg_.output_dir, cfg_.seed, run_name);
-    logger_->initialize(cfg_.sim_config);
-  }
+  // Initialize logger
+  logger_.initialize(cfg_.sim_config);
 
   // Initialize visualization if not headless
   if (!cfg_.headless) {
@@ -105,8 +102,8 @@ EvolutionManager &Session::evolution() {
 MetricsCollector &Session::metrics() {
   return metrics_;
 }
-Logger *Session::logger() {
-  return logger_.get();
+Logger &Session::logger() {
+  return logger_;
 }
 VisualizationManager *Session::visualization() {
   return visualization_.get();
@@ -210,15 +207,6 @@ void Session::step(float dt) {
   }
 
   ++steps_executed_;
-
-  // Log step if enabled
-  if (logger_) {
-    if (cfg_.sim_config.step_log_enabled &&
-        (steps_executed_ % cfg_.sim_config.step_log_interval) == 0) {
-      logger_->log_step(steps_executed_, registry_);
-    }
-    logger_->log_events(steps_executed_, simulation_.last_events());
-  }
 }
 
 StepMetrics Session::record_and_log(int births, int deaths) {
@@ -245,26 +233,24 @@ StepMetrics Session::record_and_log(int births, int deaths) {
       metrics_.collect_ecs(steps_executed_, registry_, evolution_, births,
                            deaths, evolution_.species_count());
 
-  if (logger_) {
-    logger_->log_report(snapshot);
+  logger_.log_report(snapshot);
 
-    // Find and log best genome
-    const Genome *best_genome = nullptr;
-    float best_fitness = -std::numeric_limits<float>::infinity();
-    for (Entity e : registry_.living_entities()) {
-      const auto *genome = evolution_.genome_for(e);
-      if (genome && genome->fitness() > best_fitness) {
-        best_fitness = genome->fitness();
-        best_genome = genome;
-      }
+  // Find and log best genome
+  const Genome *best_genome = nullptr;
+  float best_fitness = -std::numeric_limits<float>::infinity();
+  for (Entity e : registry_.living_entities()) {
+    const auto *genome = evolution_.genome_for(e);
+    if (genome && genome->fitness() > best_fitness) {
+      best_fitness = genome->fitness();
+      best_genome = genome;
     }
-    if (best_genome) {
-      logger_->log_best_genome(steps_executed_, *best_genome);
-    }
-
-    logger_->log_species(steps_executed_, evolution_.species());
-    logger_->flush();
   }
+  if (best_genome) {
+    logger_.log_best_genome(steps_executed_, *best_genome);
+  }
+
+  logger_.log_species(steps_executed_, evolution_.species());
+  logger_.flush();
 
   reset_window_counters();
   return snapshot;
@@ -360,9 +346,7 @@ StopReason Session::run() {
       record_and_log(births_in_window_, deaths_in_window_);
     }
 
-    if (logger_) {
-      logger_->flush();
-    }
+    logger_.flush();
 
     stop_reason =
         (g_running_ == 0) ? StopReason::Signal : StopReason::Completed;
@@ -447,9 +431,7 @@ StopReason Session::run() {
       record_and_log(births_in_window_, deaths_in_window_);
     }
 
-    if (logger_) {
-      logger_->flush();
-    }
+    logger_.flush();
   }
 
   // Log stop reason

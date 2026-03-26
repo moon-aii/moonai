@@ -27,7 +27,6 @@ int run_experiment(const std::string &name, moonai::SimulationConfig config,
   session_cfg.seed = args.seed_override != 0 ? args.seed_override : config.seed;
   session_cfg.headless = headless;
   session_cfg.enable_gpu = !args.no_gpu;
-  session_cfg.enable_logger = true;
   session_cfg.run_name_override =
       args.run_name.empty() ? std::nullopt : std::optional(args.run_name);
   // Default interaction settings for normal run
@@ -43,9 +42,7 @@ int run_experiment(const std::string &name, moonai::SimulationConfig config,
   moonai::Session session(session_cfg);
   session.run();
 
-  if (session.logger()) {
-    spdlog::info("Output saved to: {}", session.logger()->run_dir());
-  }
+  spdlog::info("Output saved to: {}", session.logger().run_dir());
 
   return 0;
 }

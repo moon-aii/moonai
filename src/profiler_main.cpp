@@ -346,7 +346,6 @@ RunResult run_profiler(const std::string &experiment_name,
   session_cfg.seed = seed;
   session_cfg.headless = headless;
   session_cfg.enable_gpu = !no_gpu;
-  session_cfg.enable_logger = false;       // Profiler doesn't need logger
   session_cfg.enable_interactions = false; // Disable pause, step, selection
   session_cfg.auto_run = true;             // Run continuously
   session_cfg.speed_multiplier = 1;        // Normal speed

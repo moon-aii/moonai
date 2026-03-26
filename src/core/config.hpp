@@ -49,7 +49,7 @@ struct SimulationConfig {
   std::uint64_t seed = 0;
 
   std::string output_dir = "output";
-  int report_interval_steps = 100;
+  int report_interval_steps = 1000;
 
   float mate_range = 60.0f;
   float reproduction_energy_threshold = 180.0f;
@@ -66,9 +66,6 @@ struct SimulationConfig {
   float complexity_penalty_weight = 0.01f;
 
   std::string activation_function = "sigmoid";
-
-  bool step_log_enabled = false;
-  int step_log_interval = 10;
 };
 
 struct ConfigError {

@@ -306,16 +306,6 @@ experiments["adaptive"] = extend(moonai_defaults, {
 
 Set `seed` to `0` for random seed, or a fixed value for reproducible experiments.
 
-### Per-Step Logging
-
-Enable `step_log_enabled = true` to write `steps.csv` alongside the usual outputs. Every `step_log_interval` steps, one row per agent is appended:
-
-```
-step,agent_id,type,alive,x,y,energy,kills,food_eaten
-```
-
-Writes are buffered (flush every 500 rows) to minimise I/O overhead.
-
 ## Running Experiments
 
 ### Quick start (full pipeline)
@@ -538,7 +528,6 @@ Each run writes to `output/{experiment_name}/` (named experiments) or `output/YY
 | `stats.csv` | One row per report window: `step, predator_count, prey_count, births, deaths, best_fitness, avg_fitness, num_species, avg_complexity, avg_predator_energy, avg_prey_energy` |
 | `species.csv` | One row per species per generation |
 | `genomes.json` | Best genome snapshots (nodes + connections JSON) |
-| `steps.csv` | Per-step agent states (only when `step_log_enabled: true`) |
 
 ## C++ Code Style
 

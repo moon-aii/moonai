@@ -25,7 +25,6 @@ struct SessionConfig {
   std::uint64_t seed = 0;
   bool headless = false;
   bool enable_gpu = true;
-  bool enable_logger = true;
   std::optional<std::string> run_name_override;
   int max_steps_override = 0;
 
@@ -54,7 +53,7 @@ public:
   SimulationManager &simulation();
   EvolutionManager &evolution();
   MetricsCollector &metrics();
-  Logger *logger();
+  Logger &logger();
   VisualizationManager *visualization();
 
   const Registry &registry() const;
@@ -87,7 +86,7 @@ private:
   SimulationManager simulation_;
   EvolutionManager evolution_;
   MetricsCollector metrics_;
-  std::unique_ptr<Logger> logger_;
+  Logger logger_;
   std::unique_ptr<VisualizationManager> visualization_;
 
   int steps_executed_ = 0;
