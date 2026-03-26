@@ -32,10 +32,8 @@ NeuralNetwork::NeuralNetwork(const Genome &genome,
 }
 
 std::vector<float> NeuralNetwork::activate(const std::vector<float> &inputs) {
-  // Reset all node values
   std::fill(values_.begin(), values_.end(), 0.0f);
 
-  // Set input and bias values
   int idx = 0;
   for (size_t i = 0; i < nodes_.size(); ++i) {
     if (nodes_[i].type == NodeType::Input &&
@@ -46,7 +44,6 @@ std::vector<float> NeuralNetwork::activate(const std::vector<float> &inputs) {
     }
   }
 
-  // Evaluate in topological order using precomputed incoming adjacency list
   for (auto node_id : evaluation_order_) {
     int ni = node_index_.at(node_id);
     float sum = 0.0f;
@@ -56,7 +53,6 @@ std::vector<float> NeuralNetwork::activate(const std::vector<float> &inputs) {
     values_[ni] = apply_activation(sum, activation_fn_);
   }
 
-  // Collect outputs in node order
   std::vector<float> outputs;
   for (size_t i = 0; i < nodes_.size(); ++i) {
     if (nodes_[i].type == NodeType::Output) {
@@ -69,10 +65,8 @@ std::vector<float> NeuralNetwork::activate(const std::vector<float> &inputs) {
 
 void NeuralNetwork::activate_into(const float *inputs, int n_in, float *outputs,
                                   int n_out) {
-  // Reset all node values
   std::fill(values_.begin(), values_.end(), 0.0f);
 
-  // Set input and bias values
   int idx = 0;
   for (size_t i = 0; i < nodes_.size(); ++i) {
     if (nodes_[i].type == NodeType::Input && idx < n_in) {
@@ -82,7 +76,6 @@ void NeuralNetwork::activate_into(const float *inputs, int n_in, float *outputs,
     }
   }
 
-  // Evaluate in topological order using precomputed incoming adjacency list
   for (auto node_id : evaluation_order_) {
     int ni = node_index_.at(node_id);
     float sum = 0.0f;
@@ -92,7 +85,6 @@ void NeuralNetwork::activate_into(const float *inputs, int n_in, float *outputs,
     values_[ni] = apply_activation(sum, activation_fn_);
   }
 
-  // Collect outputs in node order
   int out_idx = 0;
   for (size_t i = 0; i < nodes_.size() && out_idx < n_out; ++i) {
     if (nodes_[i].type == NodeType::Output) {
@@ -102,11 +94,8 @@ void NeuralNetwork::activate_into(const float *inputs, int n_in, float *outputs,
 }
 
 void NeuralNetwork::build_evaluation_order() {
-  // Kahn's algorithm for topological sort
-  // Only sort hidden and output nodes (inputs/bias don't need evaluation)
   evaluation_order_.clear();
 
-  // Collect nodes that need evaluation
   std::unordered_set<std::uint32_t> eval_nodes;
   for (const auto &node : nodes_) {
     if (node.type == NodeType::Hidden || node.type == NodeType::Output) {
@@ -114,9 +103,7 @@ void NeuralNetwork::build_evaluation_order() {
     }
   }
 
-  // Build adjacency list and in-degree count (only for eval nodes)
-  std::unordered_map<std::uint32_t, std::vector<std::uint32_t>>
-      adj; // from -> [to]
+  std::unordered_map<std::uint32_t, std::vector<std::uint32_t>> adj;
   std::unordered_map<std::uint32_t, int> in_degree;
 
   for (auto nid : eval_nodes) {
@@ -126,17 +113,12 @@ void NeuralNetwork::build_evaluation_order() {
   for (const auto &conn : connections_) {
     if (eval_nodes.count(conn.to)) {
       adj[conn.from].push_back(conn.to);
-      // Only count in-degree from other eval nodes.
-      // Connections from input/bias nodes don't block evaluation
-      // because input values are pre-set before the eval loop.
       if (eval_nodes.count(conn.from)) {
         in_degree[conn.to]++;
       }
     }
   }
 
-  // Start with nodes that have no incoming connections from other eval nodes
-  // (or only from input/bias nodes)
   std::queue<std::uint32_t> ready;
   for (auto nid : eval_nodes) {
     if (in_degree[nid] == 0) {
@@ -159,8 +141,6 @@ void NeuralNetwork::build_evaluation_order() {
     }
   }
 
-  // If some nodes weren't reached (cycles), append them sorted for determinism
-  // This handles recurrent connections gracefully
   std::unordered_set<std::uint32_t> ordered_set(evaluation_order_.begin(),
                                                 evaluation_order_.end());
   std::vector<std::uint32_t> cycle_nodes;
@@ -171,8 +151,6 @@ void NeuralNetwork::build_evaluation_order() {
   evaluation_order_.insert(evaluation_order_.end(), cycle_nodes.begin(),
                            cycle_nodes.end());
 
-  // Build incoming adjacency list: incoming_[node_idx] = {from_idx, weight}
-  // This is used by activate() to avoid per-call map allocation.
   incoming_.assign(nodes_.size(), {});
   for (const auto &conn : connections_) {
     auto it_to = node_index_.find(conn.to);
@@ -185,12 +163,12 @@ void NeuralNetwork::build_evaluation_order() {
 
 float NeuralNetwork::apply_activation(float x, ActivationFn fn) {
   switch (fn) {
-  case ActivationFn::Tanh:
-    return std::tanh(x);
-  case ActivationFn::ReLU:
-    return std::max(0.0f, x);
-  default:
-    return 1.0f / (1.0f + std::exp(-4.9f * x));
+    case ActivationFn::Tanh:
+      return std::tanh(x);
+    case ActivationFn::ReLU:
+      return std::max(0.0f, x);
+    default:
+      return 1.0f / (1.0f + std::exp(-4.9f * x));
   }
 }
 

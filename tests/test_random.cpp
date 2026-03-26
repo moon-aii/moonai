@@ -105,7 +105,6 @@ TEST(RandomTest, ShuffleMaintainsElements) {
   std::vector<int> shuffled = original;
   rng.shuffle(shuffled);
 
-  // Same elements
   std::set<int> orig_set(original.begin(), original.end());
   std::set<int> shuf_set(shuffled.begin(), shuffled.end());
   EXPECT_EQ(orig_set, shuf_set);
@@ -129,11 +128,9 @@ TEST(RandomTest, SampleIndices) {
 
   EXPECT_EQ(indices.size(), 10u);
 
-  // All unique
   std::set<int> unique(indices.begin(), indices.end());
   EXPECT_EQ(unique.size(), 10u);
 
-  // All in range
   for (int idx : indices) {
     EXPECT_GE(idx, 0);
     EXPECT_LT(idx, 100);

@@ -76,17 +76,14 @@ void Renderer::draw_food_ecs(sf::RenderTarget &target,
   for (Entity entity : living) {
     size_t idx = registry.index_of(entity);
 
-    // Only draw food entities
     if (identity.type[idx] != IdentitySoA::TYPE_FOOD) {
       continue;
     }
 
-    // Only draw active food
     if (!food_state.active[idx]) {
       continue;
     }
 
-    // Use visual color if available, otherwise use default green
     sf::Color color(100, 200, 50, 180);
     if (idx < visual.color_rgba.size() && visual.color_rgba[idx] != 0) {
       uint32_t rgba = visual.color_rgba[idx];
@@ -121,17 +118,14 @@ void Renderer::draw_agent_ecs(sf::RenderTarget &target,
   float alpha = alive ? 255.0f : dead_fade_alpha;
   auto a = static_cast<std::uint8_t>(alpha);
 
-  // Use VisualSoA colors if available, otherwise fall back to type-based colors
   sf::Color base_color;
   if (idx < visual.color_rgba.size() && visual.color_rgba[idx] != 0) {
-    // Unpack RGBA from uint32_t
     uint32_t rgba = visual.color_rgba[idx];
     base_color.r = static_cast<uint8_t>((rgba >> 24) & 0xFF);
     base_color.g = static_cast<uint8_t>((rgba >> 16) & 0xFF);
     base_color.b = static_cast<uint8_t>((rgba >> 8) & 0xFF);
     base_color.a = static_cast<uint8_t>(rgba & 0xFF);
   } else {
-    // Fallback to type-based colors
     if (identity.type[idx] == IdentitySoA::TYPE_PREDATOR) {
       base_color = sf::Color(220, 60, 60);
     } else {
@@ -141,7 +135,6 @@ void Renderer::draw_agent_ecs(sf::RenderTarget &target,
   base_color.a = static_cast<uint8_t>(base_color.a * alpha / 255.0f);
 
   if (selected) {
-    // Brighten for selection
     base_color.r = std::min(255, base_color.r + 60);
     base_color.g = std::min(255, base_color.g + 60);
     base_color.b = std::min(255, base_color.b + 60);
@@ -151,21 +144,16 @@ void Renderer::draw_agent_ecs(sf::RenderTarget &target,
                           std::min(255, base_color.g + 30),
                           std::min(255, base_color.b + 30), a);
 
-  // Use visual radius if available, otherwise use defaults
   float visual_radius = (idx < visual.radius.size() && visual.radius[idx] > 0)
                             ? visual.radius[idx]
                             : 8.0f;
 
-  // Use shape_type if available, otherwise default based on agent type
-  // shape == 0 means "use default", shape == 1 means triangle, shape == 2 means
-  // circle
   uint8_t shape = (idx < visual.shape_type.size()) ? visual.shape_type[idx] : 0;
   bool is_triangle =
       (shape == 1) ||
       (shape == 0 && identity.type[idx] == IdentitySoA::TYPE_PREDATOR);
 
   if (is_triangle) {
-    // Draw as triangle pointing in movement direction
     float size = visual_radius;
     Vec2 vel{motion.vel_x[idx], motion.vel_y[idx]};
     float angle = std::atan2(vel.y, vel.x);
@@ -173,17 +161,13 @@ void Renderer::draw_agent_ecs(sf::RenderTarget &target,
     float x = positions.x[idx];
     float y = positions.y[idx];
 
-    // Triangle vertices relative to center, rotated by angle
     float cos_a = std::cos(angle);
     float sin_a = std::sin(angle);
 
-    // Tip (forward)
     triangle_.setPoint(0, {x + cos_a * size * 1.5f, y + sin_a * size * 1.5f});
-    // Left rear
     float lx = -size * 0.8f, ly = -size * 0.7f;
     triangle_.setPoint(
         1, {x + cos_a * lx - sin_a * ly, y + sin_a * lx + cos_a * ly});
-    // Right rear
     float rx = -size * 0.8f, ry = size * 0.7f;
     triangle_.setPoint(
         2, {x + cos_a * rx - sin_a * ry, y + sin_a * rx + cos_a * ry});
@@ -194,7 +178,6 @@ void Renderer::draw_agent_ecs(sf::RenderTarget &target,
 
     target.draw(triangle_);
   } else {
-    // Draw as circle
     float radius = visual_radius;
     circle_.setRadius(radius);
     circle_.setOrigin({radius, radius});
@@ -241,14 +224,8 @@ void Renderer::draw_vision_range_ecs(sf::RenderTarget &target,
 
   size_t idx = registry.index_of(entity);
   const auto &positions = registry.positions();
-  const auto &sensors = registry.sensors();
 
-  // Get sensor range (use a default or from config)
-  float r = 100.0f; // Default vision range
-  if (idx * SensorSoA::INPUT_COUNT < sensors.inputs.size()) {
-    // Could extract from sensor config if stored there
-    // For now use default
-  }
+  float r = 100.0f;
 
   sf::CircleShape vision(r, 60);
   vision.setOrigin({r, r});
@@ -269,19 +246,16 @@ void Renderer::draw_sensor_lines_ecs(sf::RenderTarget &target,
   const auto &positions = registry.positions();
   const auto &vitals = registry.vitals();
   const auto &identity = registry.identity();
-  const auto &sensors = registry.sensors();
 
   if (!vitals.alive[idx]) {
     return;
   }
 
   Vec2 pos{positions.x[idx], positions.y[idx]};
-  float vision = 100.0f; // Default vision range
+  float vision = 100.0f;
 
   sf::VertexArray lines(sf::PrimitiveType::Lines);
 
-  // We need a spatial query to find nearby entities
-  // For now, iterate all entities (optimization: use spatial grid)
   const auto &living = registry.living_entities();
   for (Entity other_entity : living) {
     if (other_entity == entity) {
@@ -315,7 +289,6 @@ void Renderer::draw_sensor_lines_ecs(sf::RenderTarget &target,
     lines.append(sf::Vertex{{other_pos.x, other_pos.y}, line_color});
   }
 
-  // Lines to nearby food
   const auto &food_state = registry.food_state();
   for (Entity food_entity : living) {
     size_t food_idx = registry.index_of(food_entity);

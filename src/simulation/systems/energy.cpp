@@ -21,24 +21,20 @@ void EnergySystem::update(Registry &registry, float dt) {
       continue;
     }
 
-    // Increment age
     vitals.age[i]++;
 
-    // Consume energy based on agent type
     float energy_cost = (identity.type[i] == IdentitySoA::TYPE_PREDATOR)
                             ? predator_energy_cost_
                             : prey_energy_cost_;
 
     vitals.energy[i] -= energy_cost * dt;
 
-    // Check for death by starvation or old age (max_age_ == 0 means unlimited)
     bool died_of_starvation = vitals.energy[i] <= 0.0f;
     bool died_of_age = (max_age_ > 0.0f && vitals.age[i] >= max_age_);
     if (died_of_starvation || died_of_age) {
       vitals.alive[i] = 0;
     }
 
-    // Decrement reproduction cooldown
     if (vitals.reproduction_cooldown[i] > 0) {
       vitals.reproduction_cooldown[i]--;
     }

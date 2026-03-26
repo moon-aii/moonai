@@ -53,7 +53,6 @@ StepMetrics MetricsCollector::collect_ecs(int step, const Registry &registry,
         prey_energy_sum / static_cast<float>(prey_energy_count);
   }
 
-  // Get fitness and complexity from evolution manager
   std::vector<float> fitnesses;
   float complexity_sum = 0.0f;
   int genome_count = 0;

@@ -24,7 +24,6 @@ void CombatSystem::process_predator_attacks(Registry &registry) {
 
   const size_t count = registry.size();
 
-  // For each predator, check for nearby prey to attack
   for (size_t predator_idx = 0; predator_idx < count; ++predator_idx) {
     if (!vitals.alive[predator_idx]) {
       continue;
@@ -36,13 +35,11 @@ void CombatSystem::process_predator_attacks(Registry &registry) {
 
     Vec2 predator_pos{positions.x[predator_idx], positions.y[predator_idx]};
 
-    // Query nearby entities
     auto nearby = agent_grid_.query_radius(predator_pos, attack_range_);
 
     Entity predator_entity;
     bool found_predator = false;
 
-    // Find the predator entity handle
     const auto &living = registry.living_entities();
     for (size_t i = 0; i < living.size(); ++i) {
       if (registry.index_of(living[i]) == predator_idx) {
@@ -56,7 +53,6 @@ void CombatSystem::process_predator_attacks(Registry &registry) {
       continue;
     }
 
-    // Check each nearby entity
     for (Entity prey_entity : nearby) {
       size_t prey_idx = registry.index_of(prey_entity);
 
@@ -72,21 +68,17 @@ void CombatSystem::process_predator_attacks(Registry &registry) {
         continue;
       }
 
-      // Check distance
       Vec2 prey_pos{positions.x[prey_idx], positions.y[prey_idx]};
       float dx = prey_pos.x - predator_pos.x;
       float dy = prey_pos.y - predator_pos.y;
       float dist_sq = dx * dx + dy * dy;
 
       if (dist_sq <= attack_range_sq_) {
-        // Kill the prey
         vitals.alive[prey_idx] = 0;
         stats.kills[predator_idx]++;
 
-        // Record kill event
         kill_events_.push_back({predator_entity, prey_entity});
 
-        // Only one kill per predator per step
         break;
       }
     }

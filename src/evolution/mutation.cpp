@@ -8,7 +8,6 @@ namespace moonai {
 
 void InnovationTracker::init_from_population(
     const std::vector<Genome> &population) {
-  // Find max innovation number and max node id across all genomes
   for (const auto &genome : population) {
     for (const auto &conn : genome.connections()) {
       if (conn.innovation >= innovation_counter_) {
@@ -46,12 +45,9 @@ void InnovationTracker::reset_mutation_window() {
 void Mutation::mutate_weights(Genome &genome, Random &rng, float power) {
   for (auto &conn : genome.connections()) {
     if (rng.next_bool(0.9f)) {
-      // Perturb
       conn.weight += rng.next_gaussian(0.0f, power);
-      // Clamp to reasonable range
       conn.weight = std::clamp(conn.weight, -8.0f, 8.0f);
     } else {
-      // Replace with random
       conn.weight = rng.next_float(-2.0f, 2.0f);
     }
   }
@@ -63,8 +59,6 @@ void Mutation::add_connection(Genome &genome, Random &rng,
   if (nodes.size() < 2)
     return;
 
-  // Cycle detection: DFS from 'to_id' looking for 'from_id'.
-  // If found, adding from->to would create a cycle (recurrent connection).
   auto would_create_cycle = [&](std::uint32_t from_id,
                                 std::uint32_t to_id) -> bool {
     std::unordered_set<std::uint32_t> visited;
@@ -92,21 +86,16 @@ void Mutation::add_connection(Genome &genome, Random &rng,
     const auto &from = nodes[from_idx];
     const auto &to = nodes[to_idx];
 
-    // Don't connect to input/bias nodes
     if (to.type == NodeType::Input || to.type == NodeType::Bias)
       continue;
-    // Don't connect from output nodes
     if (from.type == NodeType::Output)
       continue;
-    // No self-connections
     if (from.id == to.id)
       continue;
 
-    // Check if connection already exists
     if (genome.has_connection(from.id, to.id))
       continue;
 
-    // Reject cycle-creating connections to keep networks feed-forward
     if (would_create_cycle(from.id, to.id))
       continue;
 
@@ -119,7 +108,6 @@ void Mutation::add_connection(Genome &genome, Random &rng,
 
 void Mutation::add_node(Genome &genome, Random &rng, InnovationTracker &tracker,
                         int max_hidden_nodes) {
-  // Enforce cap on hidden node count (0 = unlimited)
   if (max_hidden_nodes > 0) {
     int hidden_count = static_cast<int>(std::count_if(
         genome.nodes().begin(), genome.nodes().end(),
@@ -132,7 +120,6 @@ void Mutation::add_node(Genome &genome, Random &rng, InnovationTracker &tracker,
   if (conns.empty())
     return;
 
-  // Pick a random enabled connection
   std::vector<int> indices(conns.size());
   std::iota(indices.begin(), indices.end(), 0);
   std::vector<int> enabled_indices;
@@ -146,8 +133,6 @@ void Mutation::add_node(Genome &genome, Random &rng, InnovationTracker &tracker,
   int idx = enabled_indices[rng.next_int(
       0, static_cast<int>(enabled_indices.size()) - 1)];
 
-  // Copy out fields before any add_connection/add_node call that could
-  // reallocate conns
   std::uint32_t in_id = conns[idx].in_node;
   std::uint32_t out_id = conns[idx].out_node;
   float old_weight = conns[idx].weight;
@@ -156,11 +141,9 @@ void Mutation::add_node(Genome &genome, Random &rng, InnovationTracker &tracker,
   std::uint32_t new_id = tracker.next_node_id();
   genome.add_node({new_id, NodeType::Hidden});
 
-  // Connection from original source to new node with weight 1.0
   std::uint32_t innov1 = tracker.get_innovation(in_id, new_id);
   genome.add_connection({in_id, new_id, 1.0f, true, innov1});
 
-  // Connection from new node to original target with original weight
   std::uint32_t innov2 = tracker.get_innovation(new_id, out_id);
   genome.add_connection({new_id, out_id, old_weight, true, innov2});
 }
@@ -199,8 +182,6 @@ void Mutation::mutate(Genome &genome, Random &rng,
     delete_connection(genome, rng);
   }
 
-  // Safety: ensure at least one connection is enabled to prevent degenerate
-  // networks
   bool any_enabled =
       std::any_of(genome.connections().begin(), genome.connections().end(),
                   [](const auto &conn) { return conn.enabled; });

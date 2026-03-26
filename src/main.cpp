@@ -104,7 +104,6 @@ int run_experiment(const std::string &name, moonai::SimulationConfig config,
                                         evolution.species_count());
     logger.log_report(snapshot);
 
-    // Find best genome
     const moonai::Genome *best_genome = nullptr;
     float best_fitness = -std::numeric_limits<float>::infinity();
     for (moonai::Entity e : registry.living_entities()) {
@@ -137,7 +136,6 @@ int run_experiment(const std::string &name, moonai::SimulationConfig config,
       return;
     }
 
-    // Activate network with current sensors
     const float *sensors = registry.sensors().input_ptr(idx);
     std::vector<float> sensor_vec(sensors,
                                   sensors + moonai::SensorSoA::INPUT_COUNT);
@@ -152,10 +150,8 @@ int run_experiment(const std::string &name, moonai::SimulationConfig config,
   };
 
   auto advance_one_step = [&]() {
-    // Get actions from neural networks
     evolution.compute_actions_ecs(registry, actions);
 
-    // Apply actions to movement
     size_t action_idx = 0;
     for (moonai::Entity e : registry.living_entities()) {
       size_t idx = registry.index_of(e);
@@ -164,7 +160,6 @@ int run_experiment(const std::string &name, moonai::SimulationConfig config,
       }
 
       if (action_idx < actions.size()) {
-        // Apply action to velocity
         float dx = actions[action_idx].x;
         float dy = actions[action_idx].y;
         float speed = registry.motion().speed[idx];
@@ -172,11 +167,9 @@ int run_experiment(const std::string &name, moonai::SimulationConfig config,
         registry.motion().vel_x[idx] = dx * speed;
         registry.motion().vel_y[idx] = dy * speed;
 
-        // Update position
         registry.positions().x[idx] += registry.motion().vel_x[idx] * dt;
         registry.positions().y[idx] += registry.motion().vel_y[idx] * dt;
 
-        // Track distance traveled
         registry.stats().distance_traveled[idx] +=
             std::sqrt(dx * dx + dy * dy) * speed * dt;
 
@@ -184,10 +177,8 @@ int run_experiment(const std::string &name, moonai::SimulationConfig config,
       }
     }
 
-    // Run simulation step
     simulation.step_ecs(registry, dt);
 
-    // Process reproduction
     auto pairs = simulation.find_reproduction_pairs_ecs(registry);
     for (const auto &pair : pairs) {
       moonai::Entity child = evolution.create_offspring_ecs(
@@ -197,16 +188,13 @@ int run_experiment(const std::string &name, moonai::SimulationConfig config,
       }
     }
 
-    // Update fitness
     evolution.refresh_fitness_ecs(registry);
 
-    // Update species periodically
     if (config.species_update_interval_steps > 0 &&
         (steps_executed % config.species_update_interval_steps) == 0) {
       evolution.refresh_species_ecs(registry);
     }
 
-    // Count events
     for (const auto &event : simulation.last_events()) {
       if (event.type == moonai::SimEvent::Death) {
         deaths_in_window++;
@@ -215,14 +203,12 @@ int run_experiment(const std::string &name, moonai::SimulationConfig config,
 
     ++steps_executed;
 
-    // Log per-step data if enabled
     if (config.step_log_enabled &&
         (steps_executed % config.step_log_interval) == 0) {
       logger.log_step(steps_executed, registry);
     }
     logger.log_events(steps_executed, simulation.last_events());
 
-    // Log report window
     if ((steps_executed % config.report_interval_steps) == 0) {
       const auto snapshot = record_window();
       spdlog::info(

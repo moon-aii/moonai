@@ -8,12 +8,10 @@ Entity Registry::create() {
   uint32_t generation;
 
   if (!free_slots_.empty()) {
-    // Recycle a slot
     index = free_slots_.back();
     free_slots_.pop_back();
     generation = generations_[index];
   } else {
-    // Create new slot
     index = next_entity_index_++;
     generation = 1;
     if (index >= generations_.size()) {
@@ -24,7 +22,6 @@ Entity Registry::create() {
 
   Entity e{index, generation};
 
-  // Insert into sparse set and resize component arrays
   size_t dense_idx = sparse_set_.insert(e);
   ensure_capacity(dense_idx + 1);
 
@@ -36,10 +33,8 @@ void Registry::destroy(Entity e) {
     return;
   }
 
-  // Remove from sparse set (this doesn't invalidate other handles)
   sparse_set_.remove(e);
 
-  // Mark slot for recycling
   generations_[e.index]++;
   free_slots_.push_back(e.index);
 }
@@ -90,37 +85,30 @@ Entity Registry::create_food(Vec2 position, uint32_t slot_index, float radius,
   Entity e = create();
   size_t idx = index_of(e);
 
-  // Identity
   identity_.type[idx] = IdentitySoA::TYPE_FOOD;
-  identity_.species_id[idx] = 0; // Food has no species
+  identity_.species_id[idx] = 0;
   identity_.entity_id[idx] = e.index;
 
-  // Position
   positions_.x[idx] = position.x;
   positions_.y[idx] = position.y;
 
-  // Vitals
-  vitals_.energy[idx] = 0.0f; // Food has no energy
-  vitals_.age[idx] = 0;       // Food doesn't age
+  vitals_.energy[idx] = 0.0f;
+  vitals_.age[idx] = 0;
   vitals_.alive[idx] = 1;
   vitals_.reproduction_cooldown[idx] = 0;
 
-  // Visual
   visual_.radius[idx] = radius;
   visual_.color_rgba[idx] = color_rgba;
-  visual_.shape_type[idx] = 0; // Circle
+  visual_.shape_type[idx] = 0;
 
-  // Food state
   food_state_.slot_index[idx] = slot_index;
   food_state_.active[idx] = 1;
 
-  // Stats
   stats_.kills[idx] = 0;
   stats_.food_eaten[idx] = 0;
   stats_.distance_traveled[idx] = 0.0f;
   stats_.offspring_count[idx] = 0;
 
-  // Motion
   motion_.vel_x[idx] = 0.0f;
   motion_.vel_y[idx] = 0.0f;
   motion_.speed[idx] = 0.0f;
