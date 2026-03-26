@@ -21,7 +21,6 @@ class SuiteMember:
 class ProfileSuite:
     path: Path
     name: str
-    experiment: str
     windows: int
     avg_window_ms: float
     stddev: float
@@ -78,7 +77,6 @@ def _parse_suite(path: Path, data: dict) -> ProfileSuite:
     return ProfileSuite(
         path=path,
         name=path.stem,
-        experiment=str(suite.get("experiment_name", "")),
         windows=int(suite.get("windows", 0)),
         avg_window_ms=float(aggregate.get("avg_window_ms", 0.0)),
         stddev=float(aggregate.get("avg_window_ms_stddev", 0.0)),

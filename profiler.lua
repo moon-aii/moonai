@@ -1,11 +1,7 @@
-local profiler_seeds = { 41, 42, 43, 44, 45, 46 }
-
 return {
-    baseline = {
-        config_path = "config.lua",
-        experiment = "baseline_seed42",
-        windows = 30,
+    base = {
+        windows = 6,
+        seeds = { 41, 42, 43, 44, 45, 46 },
         output_dir = "output/profiles",
-        seeds = profiler_seeds,
     },
 }

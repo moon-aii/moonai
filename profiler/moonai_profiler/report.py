@@ -80,7 +80,6 @@ def _build_section(suite: ProfileSuite) -> dict:
 
     return {
         "name": suite.name,
-        "experiment_name": suite.experiment,
         "mode": "suite",
         "total_window_count": suite.windows,
         "kept_run_count": len(suite.kept),

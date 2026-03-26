@@ -53,8 +53,6 @@ struct RunConfig {
   bool cuda_compiled = false;
   bool openmp_compiled = false;
   std::string suite;
-  std::string base_experiment;
-  std::string config_fingerprint;
 };
 
 struct WindowRecord {
@@ -90,16 +88,11 @@ public:
   void finish_window(const WindowMeta &meta);
   nlohmann::json finish_run(std::int64_t run_total_ns);
 
-  const std::string &output_dir() const {
-    return output_dir_;
-  }
-
 private:
   Profiler() = default;
 
   std::atomic<bool> enabled_{false};
   std::string experiment_;
-  std::string output_dir_;
   std::string generated_at_utc_;
   std::uint64_t seed_ = 0;
   int total_steps_ = 0;
@@ -108,8 +101,6 @@ private:
   bool cuda_compiled_ = false;
   bool openmp_compiled_ = false;
   std::string suite_;
-  std::string base_experiment_;
-  std::string config_fingerprint_;
 
   bool window_cpu_used_ = false;
   bool window_gpu_used_ = false;
@@ -160,7 +151,7 @@ std::string utc_timestamp_for_path(std::chrono::system_clock::time_point now) {
   gmtime_r(&time, &tm);
 #endif
   std::ostringstream oss;
-  oss << std::put_time(&tm, "%Y%m%d_%H%M%S");
+  oss << std::put_time(&tm, "%Y-%m-%d_%H-%M-%S");
   return oss.str();
 }
 
@@ -193,36 +184,10 @@ void Profiler::start_run(const RunConfig &cfg) {
   cuda_compiled_ = cfg.cuda_compiled;
   openmp_compiled_ = cfg.openmp_compiled;
   suite_ = cfg.suite;
-  base_experiment_ = cfg.base_experiment;
-  config_fingerprint_ = cfg.config_fingerprint;
   window_cpu_used_ = false;
   window_gpu_used_ = false;
   window_active_ = false;
   records_.clear();
-
-  try {
-    const std::filesystem::path base_path(cfg.output_root);
-    std::string run_name;
-    if (!experiment_.empty()) {
-      run_name = detail::utc_timestamp_for_path(now) + "_" +
-                 detail::sanitize_path_component(experiment_);
-    } else {
-      run_name =
-          detail::utc_timestamp_for_path(now) + "_seed" + std::to_string(seed_);
-    }
-    std::filesystem::path candidate = base_path / run_name;
-    for (int suffix = 2; std::filesystem::exists(candidate); ++suffix) {
-      candidate = base_path / (run_name + "_" + std::to_string(suffix));
-    }
-    std::filesystem::create_directories(candidate);
-    output_dir_ = candidate.string();
-  } catch (const std::exception &e) {
-    output_dir_.clear();
-    set_enabled(false);
-    spdlog::error("Failed to initialize profiler output under '{}': {}",
-                  cfg.output_root, e.what());
-    return;
-  }
 
   for (auto &d : current_durations_)
     d.store(0, std::memory_order_relaxed);
@@ -309,11 +274,8 @@ nlohmann::json Profiler::finish_run(std::int64_t run_total_ns) {
   profile["schema_version"] = 4; // Removed counters
   profile["generated_at_utc"] = generated_at_utc_;
   profile["run"] = {{"experiment_name", experiment_},
-                    {"base_experiment_name", base_experiment_},
                     {"suite_name", suite_},
-                    {"output_dir", output_dir_},
                     {"seed", seed_},
-                    {"config_fingerprint", config_fingerprint_},
                     {"total_steps", total_steps_},
                     {"report_interval_steps", report_interval_},
                     {"gpu_allowed", gpu_allowed_},
@@ -400,8 +362,6 @@ void mark_gpu_used(bool used) {
 
 struct SuiteConfig {
   std::string name;
-  std::string config_path = "config.lua";
-  std::string experiment;
   std::vector<std::uint64_t> seeds;
   int windows = 24;
   std::string output_dir = "output/profiles";
@@ -441,10 +401,6 @@ load_suites_lua(const std::string &filepath) {
       suite.name = key.as<std::string>();
       const sol::table tbl = value.as<sol::table>();
 
-      if (auto entry = tbl["config_path"]; entry.valid())
-        suite.config_path = entry.get<std::string>();
-      if (auto entry = tbl["experiment"]; entry.valid())
-        suite.experiment = entry.get<std::string>();
       if (auto entry = tbl["windows"]; entry.valid())
         suite.windows = entry.get<int>();
       if (auto entry = tbl["output_dir"]; entry.valid())
@@ -461,11 +417,6 @@ load_suites_lua(const std::string &filepath) {
         }
       }
 
-      if (suite.experiment.empty()) {
-        spdlog::warn("Profiler suite '{}' missing required field 'experiment'",
-                     suite.name);
-        continue;
-      }
       if (suite.seeds.empty()) {
         spdlog::warn("Profiler suite '{}' has no seeds", suite.name);
         continue;
@@ -562,7 +513,7 @@ std::string utc_timestamp_for_path() {
   std::tm utc;
   gmtime_r(&time, &utc);
   char buf[32];
-  std::strftime(buf, sizeof(buf), "%Y%m%d_%H%M%S", &utc);
+  std::strftime(buf, sizeof(buf), "%Y-%m-%d_%H-%M-%S", &utc);
   return std::string(buf);
 }
 
@@ -588,7 +539,7 @@ RunResult run_suite_member(const moonai::profiler::SuiteConfig &suite,
 
   // Initialize run config
   moonai::profiler::RunConfig run_cfg;
-  run_cfg.experiment = suite.experiment;
+  run_cfg.experiment = suite.name;
   run_cfg.output_root = suite.output_dir;
   run_cfg.seed = seed;
   run_cfg.total_steps = config.max_steps;
@@ -605,8 +556,6 @@ RunResult run_suite_member(const moonai::profiler::SuiteConfig &suite,
   run_cfg.openmp_compiled = false;
 #endif
   run_cfg.suite = suite.name;
-  run_cfg.base_experiment = suite.experiment;
-  run_cfg.config_fingerprint = moonai::fingerprint_config(config);
   profiler.start_run(run_cfg);
 
   const auto run_start = std::chrono::steady_clock::now();
@@ -729,12 +678,7 @@ void write_suite_manifest(const moonai::profiler::SuiteConfig &suite,
 
   nlohmann::json manifest;
   manifest["schema_version"] = 3;
-  manifest["suite"] = {
-      {"name", suite.name},
-      {"config_path", suite.config_path},
-      {"experiment_name", suite.experiment},
-      {"windows", suite.windows},
-      {"config_fingerprint", moonai::fingerprint_config(config)}};
+  manifest["suite"] = {{"name", suite.name}, {"windows", suite.windows}};
 
   nlohmann::json run_rows = nlohmann::json::array();
   for (const auto &run : runs) {
@@ -795,13 +739,7 @@ int main(int argc, const char *argv[]) {
   }
 
   const auto &suite = suite_it->second;
-  auto configs = moonai::load_all_configs_lua(suite.config_path);
-  auto config_it = configs.find(suite.experiment);
-  if (config_it == configs.end()) {
-    spdlog::error("Experiment '{}' not found in '{}'", suite.experiment,
-                  suite.config_path);
-    return 1;
-  }
+  moonai::SimulationConfig config;
 
   std::vector<RunResult> runs;
   runs.reserve(suite.seeds.size());
@@ -809,10 +747,9 @@ int main(int argc, const char *argv[]) {
       std::filesystem::path(suite.output_dir) /
       (utc_timestamp_for_path() + "_" + suite.name + ".json");
   for (std::uint64_t seed : suite.seeds)
-    runs.push_back(
-        run_suite_member(suite, config_it->second, seed, args.no_gpu));
+    runs.push_back(run_suite_member(suite, config, seed, args.no_gpu));
 
-  write_suite_manifest(suite, config_it->second, std::move(runs), output_path);
+  write_suite_manifest(suite, config, std::move(runs), output_path);
   spdlog::info("Profiler output written to: {}", output_path.string());
   return 0;
 }
