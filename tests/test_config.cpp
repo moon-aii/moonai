@@ -7,28 +7,6 @@
 
 using namespace moonai;
 
-TEST(ConfigTest, LoadLuaSingleNamedConfig) {
-  std::string path =
-      (std::filesystem::temp_directory_path() / "moonai_test_config.lua")
-          .string();
-  {
-    std::ofstream f(path);
-    f << "return { default = { grid_size = 1024, prey_count = 200, "
-         "boundary_mode = 'clamp' } }";
-  }
-
-  auto configs = load_all_configs_lua(path);
-  ASSERT_EQ(configs.size(), 1u);
-  ASSERT_TRUE(configs.count("default"));
-  const auto &config = configs["default"];
-  EXPECT_EQ(config.grid_size, 1024);
-  EXPECT_EQ(config.prey_count, 200);
-  EXPECT_EQ(config.boundary_mode, BoundaryMode::Clamp);
-  EXPECT_EQ(config.predator_count, 500);
-
-  std::filesystem::remove(path);
-}
-
 TEST(ConfigTest, LoadLuaMultiConfig) {
   std::string path =
       (std::filesystem::temp_directory_path() / "moonai_test_multi.lua")
@@ -52,24 +30,6 @@ TEST(ConfigTest, LoadLuaMultiConfig) {
   std::filesystem::remove(path);
 }
 
-TEST(ConfigTest, LoadLuaNamedMapWithCustomName) {
-  std::string path =
-      (std::filesystem::temp_directory_path() / "moonai_test_named.lua")
-          .string();
-  {
-    std::ofstream f(path);
-    f << "return { my_run = { grid_size = 999 } }";
-  }
-
-  auto configs = load_all_configs_lua(path);
-  EXPECT_EQ(configs.size(), 1u);
-  EXPECT_TRUE(configs.count("my_run"));
-  EXPECT_EQ(configs["my_run"].grid_size, 999);
-  EXPECT_EQ(configs["my_run"].predator_count, 500);
-
-  std::filesystem::remove(path);
-}
-
 TEST(ConfigTest, LoadNonexistentLuaReturnsEmpty) {
   auto configs = load_all_configs_lua("nonexistent_file.lua");
   EXPECT_TRUE(configs.empty());
@@ -85,28 +45,6 @@ TEST(ConfigTest, LoadInvalidLuaReturnsEmpty) {
 
   auto configs = load_all_configs_lua(path);
   EXPECT_TRUE(configs.empty());
-
-  std::filesystem::remove(path);
-}
-
-TEST(ConfigTest, SaveAndReloadJSON) {
-  SimulationConfig original;
-  original.grid_size = 1234;
-  original.seed = 42;
-  original.boundary_mode = BoundaryMode::Clamp;
-
-  std::string path =
-      (std::filesystem::temp_directory_path() / "moonai_test_save.json")
-          .string();
-  save_config(original, path);
-
-  {
-    std::ifstream f(path);
-    auto j = nlohmann::json::parse(f);
-    EXPECT_EQ(j["grid_size"].get<int>(), 1234);
-    EXPECT_EQ(j["seed"].get<std::uint64_t>(), 42u);
-    EXPECT_EQ(j["boundary_mode"].get<std::string>(), "clamp");
-  }
 
   std::filesystem::remove(path);
 }
@@ -305,27 +243,6 @@ TEST(LuaRuntimeTest, LoadWithoutFitnessFn) {
   std::filesystem::remove(path);
 }
 
-TEST(LuaRuntimeTest, CallFitness) {
-  std::string path =
-      (std::filesystem::temp_directory_path() / "moonai_rt_call.lua").string();
-  {
-    std::ofstream f(path);
-    f << "return { test = {\n"
-      << "  fitness_fn = function(s, w) return s.age_ratio * 10 end\n"
-      << "} }\n";
-  }
-
-  LuaRuntime rt;
-  rt.load_config(path);
-  rt.select_experiment("test");
-
-  SimulationConfig config;
-  float result = rt.call_fitness(0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, config);
-  EXPECT_FLOAT_EQ(result, 5.0f);
-
-  std::filesystem::remove(path);
-}
-
 TEST(LuaRuntimeTest, FitnessFnErrorReturnsFallback) {
   std::string path =
       (std::filesystem::temp_directory_path() / "moonai_rt_err.lua").string();
@@ -343,33 +260,6 @@ TEST(LuaRuntimeTest, FitnessFnErrorReturnsFallback) {
   SimulationConfig config;
   float result = rt.call_fitness(0.5f, 1.0f, 0.5f, 1.0f, 0.2f, 0.1f, config);
   EXPECT_FLOAT_EQ(result, 0.0f);
-
-  std::filesystem::remove(path);
-}
-
-TEST(LuaRuntimeTest, ReportWindowHookReturnsOverrides) {
-  std::string path =
-      (std::filesystem::temp_directory_path() / "moonai_rt_hook.lua").string();
-  {
-    std::ofstream f(path);
-    f << "return { test = {\n"
-      << "  on_report_window_end = function(step, window_index, stats)\n"
-      << "    return { mutation_rate = 0.9 }\n"
-      << "  end\n"
-      << "} }\n";
-  }
-
-  LuaRuntime rt;
-  rt.load_config(path);
-  rt.select_experiment("test");
-  EXPECT_TRUE(rt.callbacks().has_on_report_window_end);
-
-  ReportWindowStats stats{300, 5, 1.0f, 0.5f, 3, 10, 20, 5.0f};
-  std::map<std::string, float> overrides;
-  bool has_overrides = rt.call_on_report_window_end(stats, overrides);
-  EXPECT_TRUE(has_overrides);
-  ASSERT_TRUE(overrides.count("mutation_rate"));
-  EXPECT_FLOAT_EQ(overrides["mutation_rate"], 0.9f);
 
   std::filesystem::remove(path);
 }

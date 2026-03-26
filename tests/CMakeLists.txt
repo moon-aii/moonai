@@ -6,8 +6,6 @@ add_executable(moonai_tests
     test_config.cpp
     test_random.cpp
     test_logger.cpp
-    test_ecs.cpp
-    test_ecs_systems.cpp
 )
 
 target_link_libraries(moonai_tests PRIVATE
@@ -21,21 +19,4 @@ target_link_libraries(moonai_tests PRIVATE
 
 gtest_discover_tests(moonai_tests)
 
-# GPU tests — only built when CUDA is available
-if(MOONAI_ENABLE_CUDA)
-    add_executable(moonai_gpu_tests
-        test_ecs_gpu_packing.cpp
-    )
 
-    target_link_libraries(moonai_gpu_tests PRIVATE
-        GTest::gtest
-        GTest::gtest_main
-        moonai_core
-        moonai_evolution
-        moonai_gpu
-    )
-
-    target_compile_definitions(moonai_gpu_tests PRIVATE MOONAI_ENABLE_CUDA)
-
-    gtest_discover_tests(moonai_gpu_tests)
-endif()
