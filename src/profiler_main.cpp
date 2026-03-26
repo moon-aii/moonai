@@ -22,12 +22,9 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
-#include <limits>
 #include <map>
-#include <numeric>
 #include <sstream>
 #include <string>
-#include <string_view>
 #include <vector>
 
 namespace moonai {
@@ -242,36 +239,9 @@ nlohmann::json Profiler::finish_run(std::int64_t run_total_ns) {
   if (!enabled())
     return nlohmann::json{};
 
-  // Compute aggregates inline
-  std::array<std::int64_t, event_count> total_durations{};
-  std::array<int, event_count> active_duration_windows{};
-  int cpu_windows = 0;
-  int gpu_windows = 0;
-  int min_predators = std::numeric_limits<int>::max();
-  int max_predators = 0;
-  int min_prey = std::numeric_limits<int>::max();
-  int max_prey = 0;
-
-  for (const auto &r : records_) {
-    if (r.cpu_used)
-      ++cpu_windows;
-    if (r.gpu_used)
-      ++gpu_windows;
-    min_predators = std::min(min_predators, r.meta.predator_count);
-    max_predators = std::max(max_predators, r.meta.predator_count);
-    min_prey = std::min(min_prey, r.meta.prey_count);
-    max_prey = std::max(max_prey, r.meta.prey_count);
-
-    for (std::size_t i = 0; i < total_durations.size(); ++i) {
-      total_durations[i] += r.durations_ns[i];
-      if (r.durations_ns[i] > 0)
-        ++active_duration_windows[i];
-    }
-  }
-
-  // Build JSON output
+  // Build JSON output - raw data only, no aggregation
   nlohmann::json profile;
-  profile["schema_version"] = 4; // Removed counters
+  profile["schema_version"] = 5; // Raw data version
   profile["generated_at_utc"] = generated_at_utc_;
   profile["run"] = {{"experiment_name", experiment_},
                     {"suite_name", suite_},
@@ -297,7 +267,7 @@ nlohmann::json Profiler::finish_run(std::int64_t run_total_ns) {
   }
   profile["event_definitions"] = std::move(event_defs);
 
-  // Per-window data
+  // Per-window raw data
   nlohmann::json window_rows = nlohmann::json::array();
   for (const auto &r : records_) {
     nlohmann::json durations;
@@ -318,34 +288,10 @@ nlohmann::json Profiler::finish_run(std::int64_t run_total_ns) {
   }
   profile["windows"] = std::move(window_rows);
 
-  // Summary with pre-computed aggregates
+  // Minimal summary - just timing info
   nlohmann::json summary;
   summary["window_count"] = static_cast<int>(records_.size());
   summary["run_total_ms"] = static_cast<double>(run_total_ns) / 1'000'000.0;
-  summary["cpu_window_count"] = cpu_windows;
-  summary["gpu_window_count"] = gpu_windows;
-  summary["population_ranges"] = {
-      {"predator_min", records_.empty() ? 0 : min_predators},
-      {"predator_max", records_.empty() ? 0 : max_predators},
-      {"prey_min", records_.empty() ? 0 : min_prey},
-      {"prey_max", records_.empty() ? 0 : max_prey}};
-
-  // Event aggregates
-  nlohmann::json durations_json;
-  for (std::size_t i = 0; i < total_durations.size(); ++i) {
-    const double total_ms =
-        static_cast<double>(total_durations[i]) / 1'000'000.0;
-    const int active = active_duration_windows[i];
-    durations_json[std::string(PROFILE_EVENTS[i].name)] = {
-        {"total_ms", total_ms},
-        {"avg_ms_per_window",
-         records_.empty() ? 0.0
-                          : total_ms / static_cast<double>(records_.size())},
-        {"nonzero_window_count", active},
-        {"avg_ms_per_nonzero_window",
-         active == 0 ? 0.0 : total_ms / static_cast<double>(active)}};
-  }
-  summary["events"] = std::move(durations_json);
   profile["summary"] = std::move(summary);
 
   return profile;
@@ -468,44 +414,8 @@ Args parse_args(int argc, const char *argv[]) {
 
 struct RunResult {
   std::uint64_t seed = 0;
-  double avg_window_ms = 0.0;
-  double run_total_ms = 0.0;
-  int window_count = 0;
-  std::string disposition = "kept";
   nlohmann::json profile;
 };
-
-double json_number(const nlohmann::json &value) {
-  return value.is_number() ? value.get<double>() : 0.0;
-}
-
-nlohmann::json aggregate_event_stats(const std::vector<const RunResult *> &runs,
-                                     const std::string &key) {
-  nlohmann::json aggregated = nlohmann::json::object();
-  if (runs.empty())
-    return aggregated;
-
-  const auto &first = runs.front()->profile["summary"][key];
-  if (!first.is_object())
-    return aggregated;
-
-  for (auto it = first.begin(); it != first.end(); ++it) {
-    if (!it.value().is_object())
-      continue;
-    nlohmann::json stats = nlohmann::json::object();
-    for (auto jt = it.value().begin(); jt != it.value().end(); ++jt) {
-      double sum = 0.0;
-      for (const auto *run : runs) {
-        const auto &source = run->profile["summary"][key];
-        if (source.contains(it.key()) && source[it.key()].contains(jt.key()))
-          sum += json_number(source[it.key()][jt.key()]);
-      }
-      stats[jt.key()] = sum / static_cast<double>(runs.size());
-    }
-    aggregated[it.key()] = std::move(stats);
-  }
-  return aggregated;
-}
 
 std::string utc_timestamp_for_path() {
   const auto now = std::chrono::system_clock::now();
@@ -625,11 +535,6 @@ RunResult run_suite_member(const moonai::profiler::SuiteConfig &suite,
   RunResult result;
   result.seed = seed;
   result.profile = std::move(profile_json);
-  const auto &summary = result.profile["summary"];
-  result.avg_window_ms =
-      json_number(summary["events"]["window_total"]["avg_ms_per_window"]);
-  result.run_total_ms = json_number(summary["run_total_ms"]);
-  result.window_count = summary["window_count"].get<int>();
   return result;
 }
 
@@ -637,78 +542,16 @@ void write_suite_manifest(const moonai::profiler::SuiteConfig &suite,
                           const moonai::SimulationConfig &config,
                           std::vector<RunResult> runs,
                           const std::filesystem::path &output_path) {
-  std::sort(runs.begin(), runs.end(), [](const auto &lhs, const auto &rhs) {
-    return lhs.avg_window_ms < rhs.avg_window_ms;
-  });
-
-  std::vector<const RunResult *> kept;
-  if (runs.size() > 2) {
-    runs.front().disposition = "dropped_fastest";
-    runs.back().disposition = "dropped_slowest";
-    for (std::size_t i = 1; i + 1 < runs.size(); ++i)
-      kept.push_back(&runs[i]);
-  } else {
-    for (auto &run : runs)
-      kept.push_back(&run);
-  }
-
-  const double avg_window_ms =
-      kept.empty() ? 0.0
-                   : std::accumulate(kept.begin(), kept.end(), 0.0,
-                                     [](double sum, const auto *r) {
-                                       return sum + r->avg_window_ms;
-                                     }) /
-                         static_cast<double>(kept.size());
-  const double avg_run_total_ms =
-      kept.empty() ? 0.0
-                   : std::accumulate(kept.begin(), kept.end(), 0.0,
-                                     [](double sum, const auto *r) {
-                                       return sum + r->run_total_ms;
-                                     }) /
-                         static_cast<double>(kept.size());
-
-  double variance = 0.0;
-  for (const auto *r : kept) {
-    const double diff = r->avg_window_ms - avg_window_ms;
-    variance += diff * diff;
-  }
-  const double stddev =
-      kept.empty() ? 0.0
-                   : std::sqrt(variance / static_cast<double>(kept.size()));
-
   nlohmann::json manifest;
-  manifest["schema_version"] = 3;
+  manifest["schema_version"] = 4; // Raw data version
   manifest["suite"] = {{"name", suite.name}, {"windows", suite.windows}};
 
   nlohmann::json run_rows = nlohmann::json::array();
   for (const auto &run : runs) {
-    run_rows.push_back({{"seed", run.seed},
-                        {"avg_window_ms", run.avg_window_ms},
-                        {"run_total_ms", run.run_total_ms},
-                        {"window_count", run.window_count},
-                        {"disposition", run.disposition},
-                        {"profile_data", run.profile}});
+    run_rows.push_back({{"seed", run.seed}, {"profile_data", run.profile}});
   }
   manifest["runs"] = std::move(run_rows);
-
-  auto calc_avg = [&](const char *key) -> double {
-    if (kept.empty())
-      return 0.0;
-    return std::accumulate(kept.begin(), kept.end(), 0.0,
-                           [&](double sum, const auto *r) {
-                             return sum +
-                                    json_number(r->profile["summary"][key]);
-                           }) /
-           static_cast<double>(kept.size());
-  };
-
-  manifest["aggregate"] = {
-      {"avg_window_ms", avg_window_ms},
-      {"avg_window_ms_stddev", stddev},
-      {"avg_run_total_ms", avg_run_total_ms},
-      {"cpu_window_count_avg", calc_avg("cpu_window_count")},
-      {"gpu_window_count_avg", calc_avg("gpu_window_count")},
-      {"events", aggregate_event_stats(kept, "events")}};
+  // Note: All analysis (outlier removal, averaging, etc.) moved to Python
 
   std::filesystem::create_directories(output_path.parent_path());
   std::ofstream file(output_path);
