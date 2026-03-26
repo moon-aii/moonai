@@ -73,9 +73,7 @@ def generate_report(input_dir: Path, output_dir: Path) -> None:
 
 def _build_section(suite: ProfileSuite) -> dict:
     """Build a report section for a single suite."""
-    top_name, top_avg = _top_event(suite)
     dropped_str = ", ".join(f"seed {m.seed} ({m.disposition})" for m in suite.dropped)
-    top_values = suite.events.get(top_name, {})
 
     return {
         "name": suite.name,
@@ -84,10 +82,6 @@ def _build_section(suite: ProfileSuite) -> dict:
         "trim_note": f"6 runs total; dropped {dropped_str}; averaged the remaining 4 runs"
         if dropped_str
         else "All runs kept",
-        "avg_window_ms": f"{suite.avg_window_ms:.2f}",
-        "top_event_name": top_name,
-        "top_event_total_ms": f"{top_values.get('total_ms', 0.0):.2f}",
-        "top_event_avg_ms": f"{top_avg:.2f}",
         "path": str(suite.path),
         "summary_events": _format_events(suite.events),
         "charts": [c.__dict__ for c in _suite_charts(suite)],

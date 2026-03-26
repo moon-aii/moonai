@@ -351,12 +351,7 @@
       <summary>{{ run.name }}</summary>
       <div class="details-body">
         <p class="run-meta">
-          <em>{{ run.trim_note }}</em> &ensp;|&ensp;
-          <em>Avg window:</em> {{ run.avg_window_ms }} ms
-        </p>
-        <p class="run-meta">
-          <em>Top event:</em> {{ run.top_event_name }} ({{ run.top_event_avg_ms }} ms/window,
-          {{ run.top_event_total_ms }} ms total)
+          <em>{{ run.trim_note }}</em>
         </p>
 
         {% if run.members %}
