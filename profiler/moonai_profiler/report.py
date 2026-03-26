@@ -79,7 +79,6 @@ def _build_section(suite: ProfileSuite) -> dict:
 
     return {
         "name": suite.name,
-        "mode": "suite",
         "total_window_count": suite.windows,
         "kept_run_count": len(suite.kept),
         "trim_note": f"6 runs total; dropped {dropped_str}; averaged the remaining 4 runs"
@@ -89,21 +88,8 @@ def _build_section(suite: ProfileSuite) -> dict:
         "top_event_name": top_name,
         "top_event_total_ms": f"{top_values.get('total_ms', 0.0):.2f}",
         "top_event_avg_ms": f"{top_avg:.2f}",
-        "top_event_nonzero_window_count": str(
-            int(top_values.get("nonzero_window_count", 0))
-        ),
         "path": str(suite.path),
-        "run_meta": suite.raw.get("suite", {}),
-        "run_notes": [
-            "Profiler suites run six fixed seeds from profiler.lua.",
-            "The fastest and slowest runs are dropped before aggregation.",
-            "Aggregate timing tables use the remaining four runs only.",
-        ],
-        "summary_meta": {
-            "path_count_note": "cpu_window_count and gpu_window_count are non-exclusive; fallback windows can count toward both.",
-        },
         "summary_events": _format_events(suite.events),
-        "summary_gpu_stage_timings": [],  # Placeholder - can be populated if needed
         "charts": [c.__dict__ for c in _suite_charts(suite)],
         "members": [
             {

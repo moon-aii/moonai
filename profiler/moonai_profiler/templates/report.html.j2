@@ -327,7 +327,7 @@
           <td>{{ row.total_windows }}</td>
           <td>{{ row.kept_runs }}</td>
           <td>{{ row.avg_window_ms }}</td>
-          <td>{{ row.top_event }} ({{ row.top_event_nonzero_window_count }} active avg)</td>
+          <td>{{ row.top_event }}</td>
           <td>{{ row.top_event_avg_ms }}</td>
         </tr>
         {% endfor %}
@@ -354,31 +354,13 @@
       <summary>{{ run.name }}</summary>
       <div class="details-body">
         <p class="run-meta">
-          <em>Suite dir:</em> {{ run.name }} &ensp;|&ensp;
-          <em>Mode:</em> {{ run.mode }} &ensp;|&ensp;
           <em>{{ run.trim_note }}</em> &ensp;|&ensp;
           <em>Avg window:</em> {{ run.avg_window_ms }} ms
         </p>
         <p class="run-meta">
           <em>Top event:</em> {{ run.top_event_name }} ({{ run.top_event_avg_ms }} ms/window,
-          {{ run.top_event_nonzero_window_count }} active avg,
           {{ run.top_event_total_ms }} ms total)
         </p>
-
-        {% if run.summary_meta.path_count_note %}
-        <div class="note">{{ run.summary_meta.path_count_note }}</div>
-        {% endif %}
-
-        {% if run.run_notes %}
-        <h3>Profiler Notes</h3>
-        <table>
-          <tbody>
-            {% for note in run.run_notes %}
-            <tr><td>{{ note }}</td></tr>
-            {% endfor %}
-          </tbody>
-        </table>
-        {% endif %}
 
         {% if run.members %}
         <h3>Suite Members</h3>
@@ -416,22 +398,6 @@
           {% endfor %}
         </div>
 
-        <h3>Run Metadata</h3>
-        <table>
-          <tbody>
-            {% for key, value in run.run_meta.items() %}
-            <tr>
-              <th>{{ key }}</th>
-              <td>{{ value }}</td>
-            </tr>
-            {% endfor %}
-            <tr>
-              <th>profile_path</th>
-              <td><code>{{ run.path }}</code></td>
-            </tr>
-          </tbody>
-        </table>
-
         <h3>Summary Events</h3>
         <table>
           <caption>Aggregate event summary computed from the four kept suite runs.</caption>
@@ -458,41 +424,6 @@
             {% endfor %}
           </tbody>
         </table>
-
-        <h3>Resident GPU Tick Breakdown</h3>
-        {% if run.summary_gpu_stage_timings %}
-        <div class="note">
-          These stage timings are device elapsed measurements collected inside the real resident GPU step path.
-          They decompose <code>gpu_resident_step</code> and may not sum exactly to the top-level event table.
-        </div>
-        <table>
-          <caption>Aggregate resident GPU stage timings computed from the four kept suite runs.</caption>
-          <thead>
-            <tr>
-              <th>Stage</th>
-              <th>% of gpu_resident_step</th>
-              <th>Avg / Window</th>
-              <th>Nonzero Windows</th>
-              <th>Avg / Nonzero Window</th>
-              <th>Total (ms)</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for row in run.summary_gpu_stage_timings %}
-            <tr>
-              <td>{{ row.name }}</td>
-              <td>{{ row.percentage }}</td>
-              <td>{{ row.avg_ms_per_window }}</td>
-              <td>{{ row.nonzero_window_count }}</td>
-              <td>{{ row.avg_ms_per_nonzero_window }}</td>
-              <td>{{ row.total_ms }}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-        {% else %}
-        <div class="empty">No resident GPU stage timings were recorded for this suite.</div>
-        {% endif %}
       </div>
     </details>
     {% endfor %}
