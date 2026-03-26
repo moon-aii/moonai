@@ -2,16 +2,11 @@ find_package(GTest CONFIG REQUIRED)
 include(GoogleTest)
 
 add_executable(moonai_tests
-    test_genome.cpp
-    test_neural_network.cpp
+    test_evolution.cpp
     test_config.cpp
     test_random.cpp
     test_logger.cpp
-    test_evolution.cpp
-    test_ecs_entity.cpp
-    test_ecs_sparse_set.cpp
-    test_ecs_registry.cpp
-    test_ecs_performance.cpp
+    test_ecs.cpp
     test_ecs_systems.cpp
 )
 

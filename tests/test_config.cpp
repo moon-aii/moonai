@@ -24,7 +24,6 @@ TEST(ConfigTest, LoadLuaSingleNamedConfig) {
   EXPECT_EQ(config.grid_size, 1024);
   EXPECT_EQ(config.prey_count, 200);
   EXPECT_EQ(config.boundary_mode, BoundaryMode::Clamp);
-  // Unspecified fields keep defaults
   EXPECT_EQ(config.predator_count, 500);
 
   std::filesystem::remove(path);
@@ -66,7 +65,6 @@ TEST(ConfigTest, LoadLuaNamedMapWithCustomName) {
   EXPECT_EQ(configs.size(), 1u);
   EXPECT_TRUE(configs.count("my_run"));
   EXPECT_EQ(configs["my_run"].grid_size, 999);
-  // Unspecified fields keep defaults
   EXPECT_EQ(configs["my_run"].predator_count, 500);
 
   std::filesystem::remove(path);
@@ -102,7 +100,6 @@ TEST(ConfigTest, SaveAndReloadJSON) {
           .string();
   save_config(original, path);
 
-  // Verify the JSON is parseable and correct
   {
     std::ifstream f(path);
     auto j = nlohmann::json::parse(f);
@@ -122,7 +119,7 @@ TEST(ConfigValidation, ValidDefaultConfig) {
 
 TEST(ConfigValidation, InvalidGridSize) {
   SimulationConfig config;
-  config.grid_size = 10; // too small
+  config.grid_size = 10;
   auto errors = validate_config(config);
   EXPECT_FALSE(errors.empty());
   bool found = false;
@@ -135,7 +132,7 @@ TEST(ConfigValidation, InvalidGridSize) {
 
 TEST(ConfigValidation, InvalidMutationRate) {
   SimulationConfig config;
-  config.mutation_rate = 1.5f; // > 1
+  config.mutation_rate = 1.5f;
   auto errors = validate_config(config);
   EXPECT_FALSE(errors.empty());
 }

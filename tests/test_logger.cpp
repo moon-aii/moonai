@@ -49,20 +49,16 @@ TEST_F(LoggerTest, StatsCSVHasSeedAndHeader) {
   logger.log_report(metrics);
   logger.flush();
 
-  // Read the file
   std::ifstream f(logger.run_dir() + "/stats.csv");
   std::string line;
 
-  // First line: seed comment
   std::getline(f, line);
   EXPECT_NE(line.find("12345"), std::string::npos);
 
-  // Second line: header
   std::getline(f, line);
   EXPECT_NE(line.find("step"), std::string::npos);
   EXPECT_NE(line.find("best_fitness"), std::string::npos);
 
-  // Third line: data
   std::getline(f, line);
   EXPECT_NE(line.find("0,50,150"), std::string::npos);
 }
@@ -78,10 +74,8 @@ TEST_F(LoggerTest, GenomeExportIsValidJSON) {
     g.set_fitness(1.23f);
     logger.log_best_genome(0, g);
     logger.flush();
-    // Logger destructor closes the JSON array
   }
 
-  // Read and parse JSON
   std::ifstream f(
       std::filesystem::directory_iterator(test_dir_)->path().string() +
       "/genomes.json");
@@ -102,7 +96,6 @@ TEST_F(LoggerTest, ConfigSnapshotIsSaved) {
   config.grid_size = 999;
   logger.initialize(config);
 
-  // Verify the JSON snapshot is correct by parsing it directly
   std::ifstream f(logger.run_dir() + "/config.json");
   auto j = nlohmann::json::parse(f);
   EXPECT_EQ(j["grid_size"].get<int>(), 999);

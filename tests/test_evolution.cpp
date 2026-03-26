@@ -31,7 +31,6 @@ TEST(InnovationTrackerTest, ResetClearsGenerationCache) {
   std::uint32_t i1 = tracker.get_innovation(0, 3);
   tracker.reset_mutation_window();
   std::uint32_t i2 = tracker.get_innovation(0, 3);
-  // After reset, same structural mutation gets a new innovation number
   EXPECT_NE(i1, i2);
 }
 
@@ -52,9 +51,7 @@ TEST(InnovationTrackerTest, InitFromPopulation) {
   InnovationTracker tracker;
   tracker.init_from_population(pop);
 
-  // Next innovation should be > 5
   EXPECT_GE(tracker.innovation_count(), 6u);
-  // Next node id should be > 10
   EXPECT_GE(tracker.node_count(), 11u);
 }
 
@@ -71,7 +68,6 @@ TEST(MutationTest, MutateWeightsChangesWeights) {
 
   Mutation::mutate_weights(g, rng, 0.5f);
 
-  // At least one weight should have changed
   bool changed = (g.connections()[0].weight != original_w0 ||
                   g.connections()[1].weight != original_w1);
   EXPECT_TRUE(changed);
@@ -82,7 +78,6 @@ TEST(MutationTest, WeightsAreClamped) {
   g.add_connection({0, 2, 7.5f, true, 0});
 
   Random rng(42);
-  // Mutate many times to push weight toward clamp
   for (int i = 0; i < 100; ++i) {
     Mutation::mutate_weights(g, rng, 2.0f);
   }
@@ -102,7 +97,6 @@ TEST(MutationTest, AddConnectionCreatesValidConnection) {
 
   EXPECT_GE(static_cast<int>(g.connections().size()), initial_conns);
 
-  // Verify connection is valid
   for (const auto &conn : g.connections()) {
     EXPECT_TRUE(g.has_node(conn.in_node));
     EXPECT_TRUE(g.has_node(conn.out_node));
@@ -121,9 +115,7 @@ TEST(MutationTest, AddNodeSplitsConnection) {
   Mutation::add_node(g, rng, tracker);
 
   EXPECT_EQ(static_cast<int>(g.nodes().size()), initial_nodes + 1);
-  // Original connection should be disabled
   EXPECT_FALSE(g.connections()[0].enabled);
-  // Two new connections should be added
   EXPECT_EQ(g.connections().size(), 3u);
 }
 
@@ -132,7 +124,6 @@ TEST(MutationTest, MutatedGenomeProducesValidNetwork) {
   InnovationTracker tracker;
   Random rng(42);
 
-  // Fully connect initial genome
   for (const auto &in_node : g.nodes()) {
     if (in_node.type != NodeType::Input && in_node.type != NodeType::Bias)
       continue;
@@ -144,7 +135,6 @@ TEST(MutationTest, MutatedGenomeProducesValidNetwork) {
     }
   }
 
-  // Apply many mutations
   SimulationConfig config;
   config.mutation_rate = 1.0f;
   config.add_connection_rate = 0.5f;
@@ -154,7 +144,6 @@ TEST(MutationTest, MutatedGenomeProducesValidNetwork) {
     Mutation::mutate(g, rng, config, tracker);
   }
 
-  // Should still produce a valid network
   NeuralNetwork nn(g);
   auto outputs = nn.activate({1.0f, 0.5f, -1.0f});
   EXPECT_EQ(outputs.size(), 2u);
@@ -181,8 +170,6 @@ TEST(CrossoverTest, ChildHasCorrectStructure) {
 
   EXPECT_EQ(child.num_inputs(), 2);
   EXPECT_EQ(child.num_outputs(), 1);
-  // Child should have connections from fitter parent (at least matching +
-  // excess)
   EXPECT_GE(child.connections().size(), 1u);
 }
 
@@ -190,7 +177,7 @@ TEST(CrossoverTest, FitterParentContributesExcessGenes) {
   Genome a(2, 1);
   a.add_connection({0, 3, 1.0f, true, 0});
   a.add_connection({1, 3, 0.5f, true, 1});
-  a.add_connection({2, 3, 0.3f, true, 2}); // excess
+  a.add_connection({2, 3, 0.3f, true, 2});
   a.set_fitness(10.0f);
 
   Genome b(2, 1);
@@ -200,16 +187,12 @@ TEST(CrossoverTest, FitterParentContributesExcessGenes) {
   Random rng(42);
   Genome child = Crossover::crossover(a, b, rng);
 
-  // Child should have all 3 connections (matching + disjoint + excess from
-  // fitter)
   EXPECT_EQ(child.connections().size(), 3u);
 }
 
 TEST(CrossoverTest, DisabledGeneHandling) {
-  // If a gene is disabled in either parent, 75% chance disabled in child
-  // Test statistically
   Genome a(2, 1);
-  a.add_connection({0, 3, 1.0f, false, 0}); // disabled
+  a.add_connection({0, 3, 1.0f, false, 0});
   a.set_fitness(10.0f);
 
   Genome b(2, 1);
@@ -226,7 +209,6 @@ TEST(CrossoverTest, DisabledGeneHandling) {
     }
   }
 
-  // Should be roughly 75% disabled (allow wide margin for randomness)
   float ratio = static_cast<float>(disabled_count) / trials;
   EXPECT_GT(ratio, 0.5f);
   EXPECT_LT(ratio, 0.95f);
@@ -238,7 +220,6 @@ TEST(CrossoverTest, ChildProducesValidNetwork) {
   InnovationTracker tracker;
   Random rng(42);
 
-  // Fully connect both parents
   for (auto *g : {&a, &b}) {
     for (const auto &in_node : g->nodes()) {
       if (in_node.type != NodeType::Input && in_node.type != NodeType::Bias)
@@ -281,7 +262,7 @@ TEST(SpeciesTest, IncompatibleGenomesDontMatch) {
   Species s(rep);
 
   Genome different(2, 1);
-  different.add_connection({0, 3, 0.5f, true, 10}); // very different innovation
+  different.add_connection({0, 3, 0.5f, true, 10});
   different.add_connection({1, 3, 0.5f, true, 11});
 
   EXPECT_FALSE(s.is_compatible(different, 0.1f, 1.0f, 1.0f, 0.4f));
@@ -321,21 +302,13 @@ TEST(SpeciesTest, AverageFitnessUsesMembers) {
 // ── Regression Tests for Bug Fixes ─────────────────────────────────────
 
 TEST(GenomeTest, CompatibilityDistanceWithOutOfOrderInnovations) {
-  // Genome A has connections at innovations 5 and 2, added OUT OF ORDER
-  // so back() returns innovation 2, not the true max 5.
   Genome a(2, 1);
-  a.add_connection({0, 3, 1.0f, true, 5}); // innovation 5 added first
-  a.add_connection(
-      {1, 3, 1.0f, true, 2}); // innovation 2 added second → back() = 2
+  a.add_connection({0, 3, 1.0f, true, 5});
+  a.add_connection({1, 3, 1.0f, true, 2});
 
-  // Genome B has only innovation 2
   Genome b(2, 1);
   b.add_connection({0, 3, 1.0f, true, 2});
 
-  // Correct: max_a = 5, max_b = 2, min_max = 2
-  // innovation 2: matching (weight diff = 0)
-  // innovation 5: excess (in A only, 5 > min_max=2)
-  // delta = c1*1/n + 0 + 0 = 1.0*1/2 = 0.5 (c1=1, n=max(2,1)=2)
   float delta = Genome::compatibility_distance(a, b, 1.0f, 1.0f, 0.4f);
   EXPECT_NEAR(delta, 0.5f, 0.001f);
 }
@@ -346,7 +319,7 @@ TEST(MutationTest, DeleteConnectionReducesCount) {
   Genome g(2, 1);
   g.add_connection({0, 3, 1.0f, true, 0});
   g.add_connection({1, 3, 0.5f, true, 1});
-  g.add_connection({2, 3, 0.3f, true, 2}); // bias
+  g.add_connection({2, 3, 0.3f, true, 2});
 
   EXPECT_EQ(g.connections().size(), 3u);
 
@@ -365,7 +338,6 @@ TEST(MutationTest, DeleteConnectionKeepsAtLeastOne) {
   Random rng(42);
   Mutation::delete_connection(g, rng);
 
-  // Should not delete the last connection
   EXPECT_EQ(g.connections().size(), 1u);
 }
 
@@ -374,7 +346,6 @@ TEST(MutationTest, DeleteConnectionProducesValidNetwork) {
   InnovationTracker tracker;
   Random rng(42);
 
-  // Fully connect
   for (const auto &in_node : g.nodes()) {
     if (in_node.type != NodeType::Input && in_node.type != NodeType::Bias)
       continue;
@@ -388,7 +359,6 @@ TEST(MutationTest, DeleteConnectionProducesValidNetwork) {
 
   size_t initial_conns = g.connections().size();
 
-  // Delete several connections
   for (int i = 0; i < 3; ++i) {
     Mutation::delete_connection(g, rng);
   }
@@ -396,7 +366,6 @@ TEST(MutationTest, DeleteConnectionProducesValidNetwork) {
   EXPECT_LT(g.connections().size(), initial_conns);
   EXPECT_GE(g.connections().size(), 1u);
 
-  // Should still produce a valid network
   NeuralNetwork nn(g);
   auto outputs = nn.activate({1.0f, 0.5f, -1.0f});
   EXPECT_EQ(outputs.size(), 2u);
@@ -409,7 +378,6 @@ TEST(NeuralNetworkTest, ActivateIntoMatchesActivate) {
   InnovationTracker tracker;
   Random rng(42);
 
-  // Fully connect
   for (const auto &in_node : g.nodes()) {
     if (in_node.type != NodeType::Input && in_node.type != NodeType::Bias)
       continue;
@@ -434,7 +402,6 @@ TEST(NeuralNetworkTest, ActivateIntoMatchesActivate) {
   NeuralNetwork nn(g);
   auto vec_out = nn.activate(inputs);
 
-  // Reset and use activate_into
   NeuralNetwork nn2(g);
   float out_buf[2];
   nn2.activate_into(inputs.data(), 3, out_buf, 2);
@@ -445,20 +412,222 @@ TEST(NeuralNetworkTest, ActivateIntoMatchesActivate) {
   }
 }
 
+// ── Genome Tests ─────────────────────────────────────────────────────────
+
+TEST(GenomeTest, ConstructorCreatesInputAndOutputNodes) {
+  Genome g(3, 2);
+
+  EXPECT_EQ(g.nodes().size(), 6u);
+  EXPECT_EQ(g.num_inputs(), 3);
+  EXPECT_EQ(g.num_outputs(), 2);
+}
+
+TEST(GenomeTest, AddConnection) {
+  Genome g(2, 1);
+  g.add_connection({0, 3, 0.5f, true, 0});
+
+  EXPECT_EQ(g.connections().size(), 1u);
+  EXPECT_FLOAT_EQ(g.connections()[0].weight, 0.5f);
+}
+
+TEST(GenomeTest, HasConnection) {
+  Genome g(2, 1);
+  g.add_connection({0, 3, 0.5f, true, 0});
+
+  EXPECT_TRUE(g.has_connection(0, 3));
+  EXPECT_FALSE(g.has_connection(1, 3));
+  EXPECT_FALSE(g.has_connection(3, 0));
+}
+
+TEST(GenomeTest, HasNode) {
+  Genome g(2, 1);
+  EXPECT_TRUE(g.has_node(0));
+  EXPECT_TRUE(g.has_node(1));
+  EXPECT_TRUE(g.has_node(2));
+  EXPECT_TRUE(g.has_node(3));
+  EXPECT_FALSE(g.has_node(4));
+}
+
+TEST(GenomeTest, MaxNodeId) {
+  Genome g(2, 1);
+  EXPECT_EQ(g.max_node_id(), 3u);
+
+  g.add_node({10, NodeType::Hidden});
+  EXPECT_EQ(g.max_node_id(), 10u);
+}
+
+TEST(GenomeTest, Complexity) {
+  Genome g(2, 1);
+  EXPECT_EQ(g.complexity(), 4);
+
+  g.add_connection({0, 3, 0.5f, true, 0});
+  EXPECT_EQ(g.complexity(), 5);
+}
+
+TEST(GenomeTest, CompatibilityDistanceSameGenome) {
+  Genome g(2, 1);
+  g.add_connection({0, 3, 0.5f, true, 0});
+
+  float dist = Genome::compatibility_distance(g, g, 1.0f, 1.0f, 0.4f);
+  EXPECT_FLOAT_EQ(dist, 0.0f);
+}
+
+TEST(GenomeTest, CompatibilityDistanceDifferentWeights) {
+  Genome a(2, 1);
+  a.add_connection({0, 3, 1.0f, true, 0});
+
+  Genome b(2, 1);
+  b.add_connection({0, 3, 0.0f, true, 0});
+
+  float dist = Genome::compatibility_distance(a, b, 0.0f, 0.0f, 1.0f);
+  EXPECT_FLOAT_EQ(dist, 1.0f);
+}
+
+TEST(GenomeTest, CompatibilityDistanceWithExcess) {
+  Genome a(2, 1);
+  a.add_connection({0, 3, 0.5f, true, 0});
+  a.add_connection({1, 3, 0.5f, true, 1});
+  a.add_connection({2, 3, 0.5f, true, 2});
+
+  Genome b(2, 1);
+  b.add_connection({0, 3, 0.5f, true, 0});
+
+  float dist = Genome::compatibility_distance(a, b, 1.0f, 0.0f, 0.0f);
+  EXPECT_GT(dist, 0.0f);
+}
+
+TEST(GenomeTest, FitnessDefaultsToZero) {
+  Genome g(2, 1);
+  EXPECT_FLOAT_EQ(g.fitness(), 0.0f);
+}
+
+TEST(GenomeTest, AdjustedFitness) {
+  Genome g(2, 1);
+  g.set_adjusted_fitness(0.5f);
+  EXPECT_FLOAT_EQ(g.adjusted_fitness(), 0.5f);
+}
+
+TEST(GenomeTest, JsonRoundTrip) {
+  Genome g(3, 2);
+  g.add_connection({0, 4, 0.5f, true, 0});
+  g.add_connection({1, 5, -0.3f, false, 1});
+  g.add_node({10, NodeType::Hidden});
+  g.set_fitness(42.0f);
+
+  std::string json = g.to_json();
+  Genome restored = Genome::from_json(json);
+
+  EXPECT_EQ(restored.num_inputs(), 3);
+  EXPECT_EQ(restored.num_outputs(), 2);
+  EXPECT_EQ(restored.nodes().size(), g.nodes().size());
+  EXPECT_EQ(restored.connections().size(), 2u);
+  EXPECT_FLOAT_EQ(restored.fitness(), 42.0f);
+  EXPECT_FLOAT_EQ(restored.connections()[0].weight, 0.5f);
+  EXPECT_FALSE(restored.connections()[1].enabled);
+}
+
+// ── Neural Network Tests ─────────────────────────────────────────────────
+
+TEST(NeuralNetworkTest, ActivateReturnsCorrectOutputCount) {
+  Genome g(3, 2);
+
+  std::uint32_t innov = 0;
+  for (int i = 0; i < 3; ++i) {
+    for (int o = 4; o <= 5; ++o) {
+      g.add_connection({static_cast<std::uint32_t>(i),
+                        static_cast<std::uint32_t>(o), 0.5f, true, innov++});
+    }
+  }
+
+  NeuralNetwork nn(g);
+  auto outputs = nn.activate({1.0f, 0.5f, -1.0f});
+
+  EXPECT_EQ(outputs.size(), 2u);
+}
+
+TEST(NeuralNetworkTest, OutputsAreBounded) {
+  Genome g(2, 1);
+  g.add_connection({0, 3, 100.0f, true, 0});
+
+  NeuralNetwork nn(g);
+  auto outputs = nn.activate({1.0f, 0.0f});
+
+  EXPECT_GE(outputs[0], 0.0f);
+  EXPECT_LE(outputs[0], 1.0f);
+}
+
+TEST(NeuralNetworkTest, BiasNodeIsActive) {
+  Genome g(1, 1);
+  g.add_connection({1, 2, 1.0f, true, 0});
+
+  NeuralNetwork nn(g);
+  auto outputs = nn.activate({0.0f});
+
+  EXPECT_GT(outputs[0], 0.9f);
+}
+
+TEST(NeuralNetworkTest, DisabledConnectionsIgnored) {
+  Genome g(1, 1);
+  g.add_connection({0, 2, 100.0f, false, 0});
+  g.add_connection({1, 2, 0.0f, true, 1});
+
+  NeuralNetwork nn(g);
+  auto outputs = nn.activate({1.0f});
+
+  EXPECT_NEAR(outputs[0], 0.5f, 0.01f);
+}
+
+TEST(NeuralNetworkTest, HiddenNodeTopologicalSort) {
+  Genome g(1, 1);
+  g.add_node({3, NodeType::Hidden});
+
+  g.add_connection({0, 3, 1.0f, true, 0});
+  g.add_connection({3, 2, 1.0f, true, 1});
+
+  NeuralNetwork nn(g);
+  auto outputs = nn.activate({1.0f});
+
+  EXPECT_GT(outputs[0], 0.9f);
+  EXPECT_LE(outputs[0], 1.0f);
+}
+
+TEST(NeuralNetworkTest, MultipleHiddenLayers) {
+  Genome g(1, 1);
+  g.add_node({3, NodeType::Hidden});
+  g.add_node({4, NodeType::Hidden});
+
+  g.add_connection({0, 3, 1.0f, true, 0});
+  g.add_connection({3, 4, 1.0f, true, 1});
+  g.add_connection({4, 2, 1.0f, true, 2});
+
+  NeuralNetwork nn(g);
+  auto outputs = nn.activate({1.0f});
+
+  EXPECT_GE(outputs[0], 0.0f);
+  EXPECT_LE(outputs[0], 1.0f);
+}
+
+TEST(NeuralNetworkTest, ZeroInputsProduceDefaultOutput) {
+  Genome g(2, 1);
+  g.add_connection({0, 3, 1.0f, true, 0});
+  g.add_connection({1, 3, 1.0f, true, 1});
+
+  NeuralNetwork nn(g);
+  auto outputs = nn.activate({0.0f, 0.0f});
+
+  EXPECT_NEAR(outputs[0], 0.5f, 0.01f);
+}
+
 // ── Default Fitness Formula Regression Tests ─────────────────────────────
 
 TEST(FitnessComputationTest, DefaultFormulaClampedAtZero) {
-  // Formula result should never go below zero
   SimulationConfig config;
-  // All-zero inputs, alive_bonus=0 → result should be 0 or clamped to 0
   const float result =
-      std::max(0.0f,
-               config.fitness_survival_weight * 0.0f +
-                   config.fitness_kill_weight * 0.0f +
-                   config.fitness_energy_weight * 0.0f + 0.0f // alive_bonus
-                   + config.fitness_distance_weight * 0.0f -
-                   config.complexity_penalty_weight *
-                       100.0f); // large complexity penalty
+      std::max(0.0f, config.fitness_survival_weight * 0.0f +
+                         config.fitness_kill_weight * 0.0f +
+                         config.fitness_energy_weight * 0.0f + 0.0f +
+                         config.fitness_distance_weight * 0.0f -
+                         config.complexity_penalty_weight * 100.0f);
 
   EXPECT_FLOAT_EQ(result, 0.0f);
 }
