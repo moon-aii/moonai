@@ -30,9 +30,8 @@ int run_experiment(const std::string &name, moonai::SimulationConfig config,
   session_cfg.enable_gpu = !args.no_gpu;
   session_cfg.run_name_override =
       args.run_name.empty() ? std::nullopt : std::optional(args.run_name);
-  // Default interaction settings for normal run
-  session_cfg.enable_interactions = true;
-  session_cfg.auto_run = false;
+  // Normal run: interactive GUI mode
+  session_cfg.interactive = true;
   session_cfg.speed_multiplier = 1;
 
   if (args.max_steps_override != 0) {
@@ -42,8 +41,6 @@ int run_experiment(const std::string &name, moonai::SimulationConfig config,
   // Create Session and run - signals handled internally
   moonai::Session session(session_cfg);
   session.run();
-
-  spdlog::info("Output saved to: {}", session.logger().run_dir());
 
   return 0;
 }

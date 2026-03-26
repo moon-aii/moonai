@@ -21,24 +21,19 @@ namespace moonai {
 
 // Static signal handling members
 volatile sig_atomic_t Session::g_running_ = 1;
-bool Session::handlers_registered_ = false;
 
 void Session::signal_handler(int) {
   g_running_ = 0;
 }
 
 void Session::register_signal_handlers() {
-  if (!handlers_registered_) {
+  static bool registered = false;
+  if (!registered) {
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
-    handlers_registered_ = true;
+    registered = true;
   }
   g_running_ = 1; // Reset for this session
-}
-
-void Session::restore_signal_handlers() {
-  // Note: We don't actually restore old handlers for simplicity
-  // The handlers remain registered but g_running_ is reset for new sessions
 }
 
 Session::Session(const SessionConfig &cfg)
@@ -51,7 +46,7 @@ Session::Session(const SessionConfig &cfg)
       simulation_(cfg.sim_config), evolution_(cfg.sim_config, rng_),
       logger_(cfg.sim_config.output_dir, cfg.sim_config.seed,
               cfg.run_name_override.value_or(cfg.experiment_name)),
-      steps_executed_(0), births_in_window_(0), deaths_in_window_(0) {
+      steps_executed_(0) {
   // Validate config
   const auto errors = validate_config(cfg_.sim_config);
   if (!errors.empty()) {
@@ -84,63 +79,6 @@ Session::Session(const SessionConfig &cfg)
 
   // Register signal handlers
   register_signal_handlers();
-}
-
-Session::~Session() {
-  restore_signal_handlers();
-}
-
-Registry &Session::registry() {
-  return registry_;
-}
-SimulationManager &Session::simulation() {
-  return simulation_;
-}
-EvolutionManager &Session::evolution() {
-  return evolution_;
-}
-MetricsCollector &Session::metrics() {
-  return metrics_;
-}
-Logger &Session::logger() {
-  return logger_;
-}
-VisualizationManager *Session::visualization() {
-  return visualization_.get();
-}
-
-const Registry &Session::registry() const {
-  return registry_;
-}
-const SimulationManager &Session::simulation() const {
-  return simulation_;
-}
-const EvolutionManager &Session::evolution() const {
-  return evolution_;
-}
-const MetricsCollector &Session::metrics() const {
-  return metrics_;
-}
-
-int Session::steps_executed() const {
-  return steps_executed_;
-}
-int Session::births_in_window() const {
-  return births_in_window_;
-}
-int Session::deaths_in_window() const {
-  return deaths_in_window_;
-}
-
-void Session::record_birth() {
-  ++births_in_window_;
-}
-void Session::record_death() {
-  ++deaths_in_window_;
-}
-void Session::reset_window_counters() {
-  births_in_window_ = 0;
-  deaths_in_window_ = 0;
 }
 
 void Session::step(float dt) {
@@ -182,8 +120,7 @@ void Session::step(float dt) {
     Entity child = evolution_.create_offspring_ecs(
         registry_, pair.parent_a, pair.parent_b, pair.spawn_position);
     if (child != INVALID_ENTITY) {
-      ++births_in_window_;
-      // Record birth event
+      // Record birth event (births counted from events in MetricsCollector)
       simulation_.record_event(SimEvent{SimEvent::Birth, child, child,
                                         pair.parent_a, pair.parent_b,
                                         pair.spawn_position});
@@ -199,17 +136,13 @@ void Session::step(float dt) {
     evolution_.refresh_species_ecs(registry_);
   }
 
-  // Record deaths
-  for (const auto &event : simulation_.last_events()) {
-    if (event.type == SimEvent::Death) {
-      ++deaths_in_window_;
-    }
-  }
+  // Note: Deaths are recorded by SimulationManager and counted from events
+  // in MetricsCollector
 
   ++steps_executed_;
 }
 
-StepMetrics Session::record_and_log(int births, int deaths) {
+StepMetrics Session::record_and_log() {
   evolution_.refresh_species_ecs(registry_);
 
   float best_predator = 0.0f, avg_predator = 0.0f;
@@ -229,9 +162,8 @@ StepMetrics Session::record_and_log(int births, int deaths) {
     }
   }
 
-  auto snapshot =
-      metrics_.collect_ecs(steps_executed_, registry_, evolution_, births,
-                           deaths, evolution_.species_count());
+  auto snapshot = metrics_.collect_ecs(steps_executed_, registry_, evolution_,
+                                       simulation_, evolution_.species_count());
 
   logger_.log_report(snapshot);
 
@@ -252,12 +184,11 @@ StepMetrics Session::record_and_log(int births, int deaths) {
   logger_.log_species(steps_executed_, evolution_.species());
   logger_.flush();
 
-  reset_window_counters();
   return snapshot;
 }
 
 void Session::update_selected_visualization() {
-  if (!visualization_ || !cfg_.enable_interactions) {
+  if (!visualization_ || !cfg_.interactive) {
     return;
   }
 
@@ -305,23 +236,18 @@ void Session::log_report(const StepMetrics &snapshot) const {
       snapshot.births, snapshot.deaths, snapshot.num_species);
 }
 
-void Session::log_stop_reason(StopReason reason) const {
-  switch (reason) {
-    case StopReason::UserQuit:
-      spdlog::info("Simulation stopped by user (window closed)");
-      break;
-    case StopReason::Signal:
-      spdlog::info("Simulation stopped by signal (Ctrl+C)");
-      break;
-    case StopReason::Completed:
-      // Don't log for normal completion
-      break;
+void Session::log_early_stop(bool user_quit) const {
+  if (user_quit) {
+    spdlog::info("Simulation stopped by user (window closed)");
+  } else {
+    spdlog::info("Simulation stopped by signal (Ctrl+C)");
   }
 }
 
-StopReason Session::run() {
+bool Session::run() {
   const float dt = 1.0f / static_cast<float>(cfg_.sim_config.target_fps);
-  StopReason stop_reason = StopReason::Completed;
+  bool completed = true;
+  bool user_quit = false;
 
   if (cfg_.headless) {
     // Headless mode: run as fast as possible
@@ -330,7 +256,7 @@ StopReason Session::run() {
 
       // Check for report interval
       if (steps_executed_ % cfg_.sim_config.report_interval_steps == 0) {
-        auto snapshot = record_and_log(births_in_window_, deaths_in_window_);
+        auto snapshot = record_and_log();
         log_report(snapshot);
 
         // Call custom callback if provided
@@ -341,20 +267,18 @@ StopReason Session::run() {
     }
 
     // Final record if needed
-    if (births_in_window_ > 0 || deaths_in_window_ > 0 ||
-        metrics_.history().empty()) {
-      record_and_log(births_in_window_, deaths_in_window_);
+    if (metrics_.history().empty()) {
+      record_and_log();
     }
 
     logger_.flush();
 
-    stop_reason =
-        (g_running_ == 0) ? StopReason::Signal : StopReason::Completed;
+    completed = (g_running_ != 0);
   } else {
     // GUI mode
     if (!visualization_) {
       spdlog::error("Visualization requested but not initialized");
-      return StopReason::Completed;
+      return true;
     }
 
     while (should_continue()) {
@@ -368,18 +292,19 @@ StopReason Session::run() {
 
       // Check for window close
       if (visualization_->should_close()) {
-        stop_reason = StopReason::UserQuit;
+        completed = false;
+        user_quit = true;
         break;
       }
 
       // Check signal during loop
       if (g_running_ == 0) {
-        stop_reason = StopReason::Signal;
+        completed = false;
         break;
       }
 
-      // Handle pause (unless auto_run)
-      if (!cfg_.auto_run && visualization_->is_paused() &&
+      // Handle pause (when interactive)
+      if (cfg_.interactive && visualization_->is_paused() &&
           !visualization_->should_step()) {
         MOONAI_PROFILE_SCOPE("render");
         visualization_->render_ecs(registry_, evolution_, simulation_,
@@ -387,13 +312,13 @@ StopReason Session::run() {
         continue;
       }
 
-      if (!cfg_.auto_run) {
+      if (cfg_.interactive) {
         visualization_->clear_step();
       }
 
       // Run simulation steps
-      int steps_to_run = cfg_.auto_run ? cfg_.speed_multiplier
-                                       : visualization_->speed_multiplier();
+      int steps_to_run = cfg_.interactive ? visualization_->speed_multiplier()
+                                          : cfg_.speed_multiplier;
       steps_to_run = std::max(1, steps_to_run);
 
       for (int i = 0; i < steps_to_run && should_continue(); ++i) {
@@ -401,7 +326,7 @@ StopReason Session::run() {
 
         // Check for report interval
         if (steps_executed_ % cfg_.sim_config.report_interval_steps == 0) {
-          auto snapshot = record_and_log(births_in_window_, deaths_in_window_);
+          auto snapshot = record_and_log();
           log_report(snapshot);
 
           // Call custom callback if provided
@@ -411,8 +336,8 @@ StopReason Session::run() {
         }
       }
 
-      // Update selected visualization (only if interactions enabled)
-      if (cfg_.enable_interactions) {
+      // Update selected visualization (only if interactive)
+      if (cfg_.interactive) {
         MOONAI_PROFILE_SCOPE("update_selected");
         update_selected_visualization();
       }
@@ -426,18 +351,21 @@ StopReason Session::run() {
     }
 
     // Final record if needed
-    if (births_in_window_ > 0 || deaths_in_window_ > 0 ||
-        metrics_.history().empty()) {
-      record_and_log(births_in_window_, deaths_in_window_);
+    if (metrics_.history().empty()) {
+      record_and_log();
     }
 
     logger_.flush();
   }
 
-  // Log stop reason
-  log_stop_reason(stop_reason);
+  // Log early stop
+  if (!completed) {
+    log_early_stop(user_quit);
+  }
 
-  return stop_reason;
+  spdlog::info("Output saved to: {}", logger_.run_dir());
+
+  return completed;
 }
 
 } // namespace moonai

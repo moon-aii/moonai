@@ -2,6 +2,7 @@
 
 #include "evolution/evolution_manager.hpp"
 #include "simulation/registry.hpp"
+#include "simulation/simulation_manager.hpp"
 
 #include <algorithm>
 #include <numeric>
@@ -10,13 +11,24 @@ namespace moonai {
 
 StepMetrics MetricsCollector::collect_ecs(int step, const Registry &registry,
                                           const EvolutionManager &evolution,
-                                          int births, int deaths,
+                                          const SimulationManager &simulation,
                                           int num_species) {
   StepMetrics metrics;
   metrics.step = step;
+  metrics.num_species = num_species;
+
+  // Count births and deaths from events
+  int births = 0;
+  int deaths = 0;
+  for (const auto &event : simulation.last_events()) {
+    if (event.type == SimEvent::Birth) {
+      ++births;
+    } else if (event.type == SimEvent::Death) {
+      ++deaths;
+    }
+  }
   metrics.births = births;
   metrics.deaths = deaths;
-  metrics.num_species = num_species;
 
   float predator_energy_sum = 0.0f;
   float prey_energy_sum = 0.0f;

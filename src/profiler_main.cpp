@@ -312,6 +312,7 @@ Args parse_args(int argc, const char *argv[]) {
 struct RunResult {
   std::uint64_t seed = 0;
   nlohmann::json profile;
+  bool completed = false; // true if simulation ran to completion
 };
 
 std::string utc_timestamp_for_path() {
@@ -345,9 +346,8 @@ RunResult run_profiler(const std::string &experiment_name,
   session_cfg.experiment_name = experiment_name;
   session_cfg.headless = headless;
   session_cfg.enable_gpu = !no_gpu;
-  session_cfg.enable_interactions = false; // Disable pause, step, selection
-  session_cfg.auto_run = true;             // Run continuously
-  session_cfg.speed_multiplier = 1;        // Normal speed
+  session_cfg.interactive = false;  // Display-only mode: no pause, auto-run
+  session_cfg.speed_multiplier = 1; // Normal speed
 
   // Set up profiler window tracking via callback
   session_cfg.on_report_callback = [&profiler, &current_window,
@@ -399,43 +399,22 @@ RunResult run_profiler(const std::string &experiment_name,
 
   // Create Session and run - signals handled internally
   Session session(session_cfg);
-  auto stop_reason = session.run();
+  bool completed = session.run();
 
-  // If stopped early, fill remaining windows with empty data
-  while (current_window < windows) {
-    // Get current state for the remaining windows
-    auto &evolution = session.evolution();
-    auto &metrics = session.metrics();
-    auto &registry = session.registry();
+  RunResult result;
+  result.seed = seed;
 
-    evolution.refresh_species_ecs(registry);
-    const auto snapshot =
-        metrics.collect_ecs(session.steps_executed(), registry, evolution, 0, 0,
-                            evolution.species_count());
-    profiler.finish_window({current_window, snapshot.predator_count,
-                            snapshot.prey_count, snapshot.num_species,
-                            snapshot.best_fitness, snapshot.avg_fitness,
-                            snapshot.avg_genome_complexity});
-    current_window++;
-    if (current_window < windows) {
-      profiler.start_window(current_window);
-    }
+  if (!completed) {
+    spdlog::info("Run stopped early, skipping profile generation");
+    result.completed = false;
+    return result;
   }
 
   const auto run_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
                           std::chrono::steady_clock::now() - run_start)
                           .count();
-  auto profile_json = profiler.finish_run(run_ns);
-
-  RunResult result;
-  result.seed = seed;
-  result.profile = std::move(profile_json);
-
-  if (stop_reason == StopReason::UserQuit) {
-    spdlog::info("Run stopped by user (window closed)");
-  } else if (stop_reason == StopReason::Signal) {
-    spdlog::info("Run stopped by signal (Ctrl+C)");
-  }
+  result.profile = profiler.finish_run(run_ns);
+  result.completed = true;
 
   return result;
 }
@@ -449,7 +428,9 @@ void write_manifest(const std::string &experiment_name, int windows,
 
   nlohmann::json run_rows = nlohmann::json::array();
   for (const auto &run : runs) {
-    run_rows.push_back({{"seed", run.seed}, {"profile_data", run.profile}});
+    if (run.completed) {
+      run_rows.push_back({{"seed", run.seed}, {"profile_data", run.profile}});
+    }
   }
   manifest["runs"] = std::move(run_rows);
 

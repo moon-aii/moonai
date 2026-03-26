@@ -1,6 +1,7 @@
 #pragma once
 
 #include "evolution/genome.hpp"
+#include "simulation/simulation_manager.hpp"
 
 #include <vector>
 
@@ -8,6 +9,7 @@ namespace moonai {
 
 class Registry;
 class EvolutionManager;
+class SimulationManager;
 
 struct StepMetrics {
   int step = 0;
@@ -26,8 +28,8 @@ struct StepMetrics {
 class MetricsCollector {
 public:
   StepMetrics collect_ecs(int step, const Registry &registry,
-                          const EvolutionManager &evolution, int births,
-                          int deaths, int num_species);
+                          const EvolutionManager &evolution,
+                          const SimulationManager &simulation, int num_species);
 
   const std::vector<StepMetrics> &history() const {
     return history_;

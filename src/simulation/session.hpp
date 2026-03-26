@@ -22,59 +22,18 @@ struct SessionConfig {
   SimulationConfig sim_config;
   std::string experiment_name;
   bool headless = false;
+  bool interactive = true;
   bool enable_gpu = true;
+  int speed_multiplier = 1;
   std::optional<std::string> run_name_override;
-
-  // Event loop configuration
-  bool enable_interactions = true; // Allow pause, step, selection
-  bool auto_run = false;           // Ignore pause, run continuously
-  int speed_multiplier = 1;        // Steps per frame (1 = normal)
-
-  // Optional callback for custom report handling (e.g., profiler window
-  // tracking)
   std::function<void(const StepMetrics &)> on_report_callback = nullptr;
 };
-
-enum class StopReason { Completed, UserQuit, Signal };
 
 class Session {
 public:
   explicit Session(const SessionConfig &cfg);
-  ~Session();
 
-  Session(const Session &) = delete;
-  Session &operator=(const Session &) = delete;
-
-  // Component access
-  Registry &registry();
-  SimulationManager &simulation();
-  EvolutionManager &evolution();
-  MetricsCollector &metrics();
-  Logger &logger();
-  VisualizationManager *visualization();
-
-  const Registry &registry() const;
-  const SimulationManager &simulation() const;
-  const EvolutionManager &evolution() const;
-  const MetricsCollector &metrics() const;
-
-  // Core operations
-  void step(float dt);
-  StepMetrics record_and_log(int births_in_window, int deaths_in_window);
-
-  // Run the full simulation loop
-  // Handles signals internally, logs reports, returns stop reason
-  StopReason run();
-
-  // State
-  int steps_executed() const;
-  int births_in_window() const;
-  int deaths_in_window() const;
-
-  // Increment counters (called by caller when births/deaths occur)
-  void record_birth();
-  void record_death();
-  void reset_window_counters();
+  bool run();
 
 private:
   SessionConfig cfg_;
@@ -87,22 +46,20 @@ private:
   std::unique_ptr<VisualizationManager> visualization_;
 
   int steps_executed_ = 0;
-  int births_in_window_ = 0;
-  int deaths_in_window_ = 0;
   std::vector<Vec2> actions_buffer_;
 
   // Signal handling (static - shared across all sessions)
   static volatile std::sig_atomic_t g_running_;
   static void signal_handler(int);
   static void register_signal_handlers();
-  static void restore_signal_handlers();
-  static bool handlers_registered_;
 
   // Internal helpers
+  void step(float dt);
+  StepMetrics record_and_log();
   void update_selected_visualization();
   bool should_continue() const;
   void log_report(const StepMetrics &snapshot) const;
-  void log_stop_reason(StopReason reason) const;
+  void log_early_stop(bool user_quit) const;
 };
 
 } // namespace moonai
