@@ -1,5 +1,5 @@
 #include "core/config.hpp"
-#include "core/profiler_types.hpp"
+#include "core/profiler_macros.hpp"
 #include "core/random.hpp"
 #include "data/metrics.hpp"
 #include "evolution/evolution_manager.hpp"
@@ -14,7 +14,6 @@
 #include <sol/sol.hpp>
 
 #include <algorithm>
-#include <array>
 #include <atomic>
 #include <chrono>
 #include <cmath>
@@ -25,6 +24,7 @@
 #include <map>
 #include <sstream>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace moonai {
@@ -56,7 +56,7 @@ struct WindowRecord {
   WindowMeta meta;
   bool cpu_used = false;
   bool gpu_used = false;
-  std::array<std::int64_t, event_count> durations_ns{};
+  std::unordered_map<std::string, std::int64_t> durations_ns;
 };
 
 class Profiler {
@@ -81,7 +81,7 @@ public:
   void mark_gpu_used() {
     window_gpu_used_ = true;
   }
-  void add_duration(ProfileEvent event, std::int64_t ns);
+  void add_duration(const char *event_name, std::int64_t ns);
   void finish_window(const WindowMeta &meta);
   nlohmann::json finish_run(std::int64_t run_total_ns);
 
@@ -104,13 +104,12 @@ private:
   bool window_active_ = false;
   std::chrono::steady_clock::time_point window_start_{};
   std::vector<WindowRecord> records_;
-  std::array<std::atomic<std::int64_t>, event_count> current_durations_{};
+  std::unordered_map<std::string, std::int64_t> current_durations_;
 };
 
-// ScopedTimer implementation (declared in profiler_types.hpp under
-// MOONAI_BUILD_PROFILER)
-ScopedTimer::ScopedTimer(ProfileEvent event)
-    : event_(event), active_(Profiler::instance().enabled()) {
+// ScopedTimer implementation (declared in profiler_macros.hpp)
+ScopedTimer::ScopedTimer(const char *event_name)
+    : event_name_(event_name), active_(Profiler::instance().enabled()) {
   if (active_) {
     start_ = std::chrono::steady_clock::now();
   }
@@ -123,7 +122,7 @@ ScopedTimer::~ScopedTimer() {
   const auto ns =
       std::chrono::duration_cast<std::chrono::nanoseconds>(end - start_)
           .count();
-  Profiler::instance().add_duration(event_, ns);
+  Profiler::instance().add_duration(event_name_, ns);
 }
 
 namespace detail {
@@ -185,9 +184,7 @@ void Profiler::start_run(const RunConfig &cfg) {
   window_gpu_used_ = false;
   window_active_ = false;
   records_.clear();
-
-  for (auto &d : current_durations_)
-    d.store(0, std::memory_order_relaxed);
+  current_durations_.clear();
 }
 
 void Profiler::start_window(int window_index) {
@@ -198,15 +195,13 @@ void Profiler::start_window(int window_index) {
   window_gpu_used_ = false;
   window_active_ = true;
   window_start_ = std::chrono::steady_clock::now();
-  for (auto &d : current_durations_)
-    d.store(0, std::memory_order_relaxed);
+  current_durations_.clear();
 }
 
-void Profiler::add_duration(ProfileEvent event, std::int64_t ns) {
+void Profiler::add_duration(const char *event_name, std::int64_t ns) {
   if (!enabled())
     return;
-  current_durations_[static_cast<std::size_t>(event)].fetch_add(
-      ns, std::memory_order_relaxed);
+  current_durations_[event_name] += ns;
 }
 
 void Profiler::finish_window(const WindowMeta &meta) {
@@ -223,14 +218,13 @@ void Profiler::finish_window(const WindowMeta &meta) {
     const auto window_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
                                window_end - window_start_)
                                .count();
-    current_durations_[static_cast<std::size_t>(ProfileEvent::WindowTotal)]
-        .store(window_ns, std::memory_order_relaxed);
+    record.durations_ns["window_total"] = window_ns;
     window_active_ = false;
   }
 
-  for (std::size_t i = 0; i < record.durations_ns.size(); ++i)
-    record.durations_ns[i] =
-        current_durations_[i].load(std::memory_order_relaxed);
+  for (const auto &[name, value] : current_durations_) {
+    record.durations_ns[name] = value;
+  }
 
   records_.push_back(std::move(record));
 }
@@ -258,22 +252,13 @@ nlohmann::json Profiler::finish_run(std::int64_t run_total_ns) {
                     {"cuda_compiled", cuda_compiled_},
                     {"openmp_compiled", openmp_compiled_}};
 
-  // Event definitions from constexpr array
-  nlohmann::json event_defs = nlohmann::json::array();
-  for (const auto &def : PROFILE_EVENTS) {
-    event_defs.push_back({{"name", std::string(def.name)},
-                          {"is_window_duration", def.is_window_duration},
-                          {"description", std::string(def.description)}});
-  }
-  profile["event_definitions"] = std::move(event_defs);
-
   // Per-window raw data
   nlohmann::json window_rows = nlohmann::json::array();
   for (const auto &r : records_) {
     nlohmann::json durations;
-    for (std::size_t i = 0; i < r.durations_ns.size(); ++i)
-      durations[std::string(PROFILE_EVENTS[i].name)] =
-          static_cast<double>(r.durations_ns[i]) / 1'000'000.0;
+    for (const auto &[name, ns] : r.durations_ns) {
+      durations[name] = static_cast<double>(ns) / 1'000'000.0;
+    }
 
     window_rows.push_back({{"window_index", r.meta.index},
                            {"cpu_used", r.cpu_used},
@@ -596,3 +581,21 @@ int main(int argc, const char *argv[]) {
   spdlog::info("Profiler output written to: {}", output_path.string());
   return 0;
 }
+
+// Profiler macros - defined at end of file
+#ifndef MOONAI_BUILD_PROFILER
+
+#define MOONAI_PROFILE_SCOPE(event_name) ((void)0)
+#define MOONAI_PROFILE_MARK_CPU_USED(value) ((void)0)
+#define MOONAI_PROFILE_MARK_GPU_USED(value) ((void)0)
+
+#else
+
+#define MOONAI_PROFILE_SCOPE(event_name)                                       \
+  ::moonai::profiler::ScopedTimer _moonai_scoped_timer(event_name)
+#define MOONAI_PROFILE_MARK_CPU_USED(value)                                    \
+  ::moonai::profiler::mark_cpu_used(value)
+#define MOONAI_PROFILE_MARK_GPU_USED(value)                                    \
+  ::moonai::profiler::mark_gpu_used(value)
+
+#endif

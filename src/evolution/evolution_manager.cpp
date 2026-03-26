@@ -1,6 +1,5 @@
 #include "evolution/evolution_manager.hpp"
-
-#include "core/profiler_types.hpp"
+#include "core/profiler_macros.hpp"
 #include "evolution/crossover.hpp"
 #include "simulation/registry.hpp"
 

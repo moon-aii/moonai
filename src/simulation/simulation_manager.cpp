@@ -1,5 +1,5 @@
 #include "simulation/simulation_manager.hpp"
-#include "core/profiler_types.hpp"
+#include "core/profiler_macros.hpp"
 #include "simulation/registry.hpp"
 #include "simulation/spatial_grid_ecs.hpp"
 #include "simulation/systems/combat.hpp"
@@ -62,7 +62,7 @@ void SimulationManager::initialize(bool log_initialization) {
 }
 
 void SimulationManager::step_ecs(Registry &registry, float dt) {
-  MOONAI_PROFILE_SCOPE(ProfileEvent::SimulationStep);
+  MOONAI_PROFILE_SCOPE("simulation_step");
   last_events_.clear();
 
   // Update spatial grid
@@ -111,7 +111,7 @@ void SimulationManager::step_ecs(Registry &registry, float dt) {
 
   // Apply movement and boundary conditions using MovementSystem
   if (movement_system_) {
-    MOONAI_PROFILE_SCOPE(ProfileEvent::BoundaryApply);
+    MOONAI_PROFILE_SCOPE("boundary_apply");
     movement_system_->update(registry, dt);
   }
 
@@ -127,7 +127,7 @@ void SimulationManager::reset() {
 }
 
 void SimulationManager::rebuild_spatial_grid_ecs(const Registry &registry) {
-  MOONAI_PROFILE_SCOPE(ProfileEvent::RebuildSpatialGrid);
+  MOONAI_PROFILE_SCOPE("rebuild_spatial_grid");
   grid_.clear();
 
   const auto &living = registry.living_entities();
@@ -150,7 +150,7 @@ void SimulationManager::rebuild_spatial_grid_ecs(const Registry &registry) {
 }
 
 void SimulationManager::process_food_ecs(Registry &registry) {
-  MOONAI_PROFILE_SCOPE(ProfileEvent::ProcessFood);
+  MOONAI_PROFILE_SCOPE("process_food");
 
   float eat_range = config_.food_pickup_range;
   float eat_range_sq = eat_range * eat_range;
@@ -216,7 +216,7 @@ void SimulationManager::process_food_ecs(Registry &registry) {
 }
 
 void SimulationManager::process_step_deaths_ecs(Registry &registry) {
-  MOONAI_PROFILE_SCOPE(ProfileEvent::DeathCheck);
+  MOONAI_PROFILE_SCOPE("death_check");
 
   const auto &living = registry.living_entities();
   auto &vitals = registry.vitals();
@@ -321,7 +321,7 @@ SimulationManager::find_reproduction_pairs_ecs(const Registry &registry) const {
 }
 
 void SimulationManager::count_alive_ecs(const Registry &registry) {
-  MOONAI_PROFILE_SCOPE(ProfileEvent::CountAlive);
+  MOONAI_PROFILE_SCOPE("count_alive");
 
   alive_predators_ = 0;
   alive_prey_ = 0;
