@@ -54,8 +54,6 @@ struct RunConfig {
 
 struct WindowRecord {
   WindowMeta meta;
-  bool cpu_used = false;
-  bool gpu_used = false;
   std::unordered_map<std::string, std::int64_t> durations_ns;
 };
 
@@ -75,12 +73,6 @@ public:
 
   void start_run(const RunConfig &cfg);
   void start_window(int window_index);
-  void mark_cpu_used() {
-    window_cpu_used_ = true;
-  }
-  void mark_gpu_used() {
-    window_gpu_used_ = true;
-  }
   void add_duration(const char *event_name, std::int64_t ns);
   void finish_window(const WindowMeta &meta);
   nlohmann::json finish_run(std::int64_t run_total_ns);
@@ -99,8 +91,6 @@ private:
   bool openmp_compiled_ = false;
   std::string suite_;
 
-  bool window_cpu_used_ = false;
-  bool window_gpu_used_ = false;
   bool window_active_ = false;
   std::chrono::steady_clock::time_point window_start_{};
   std::vector<WindowRecord> records_;
@@ -180,8 +170,6 @@ void Profiler::start_run(const RunConfig &cfg) {
   cuda_compiled_ = cfg.cuda_compiled;
   openmp_compiled_ = cfg.openmp_compiled;
   suite_ = cfg.suite;
-  window_cpu_used_ = false;
-  window_gpu_used_ = false;
   window_active_ = false;
   records_.clear();
   current_durations_.clear();
@@ -191,8 +179,6 @@ void Profiler::start_window(int window_index) {
   (void)window_index;
   if (!enabled())
     return;
-  window_cpu_used_ = false;
-  window_gpu_used_ = false;
   window_active_ = true;
   window_start_ = std::chrono::steady_clock::now();
   current_durations_.clear();
@@ -210,8 +196,6 @@ void Profiler::finish_window(const WindowMeta &meta) {
 
   WindowRecord record;
   record.meta = meta;
-  record.cpu_used = window_cpu_used_;
-  record.gpu_used = window_gpu_used_;
 
   if (window_active_) {
     const auto window_end = std::chrono::steady_clock::now();
@@ -261,8 +245,6 @@ nlohmann::json Profiler::finish_run(std::int64_t run_total_ns) {
     }
 
     window_rows.push_back({{"window_index", r.meta.index},
-                           {"cpu_used", r.cpu_used},
-                           {"gpu_used", r.gpu_used},
                            {"predator_count", r.meta.predator_count},
                            {"prey_count", r.meta.prey_count},
                            {"species_count", r.meta.species_count},
@@ -280,15 +262,6 @@ nlohmann::json Profiler::finish_run(std::int64_t run_total_ns) {
   profile["summary"] = std::move(summary);
 
   return profile;
-}
-
-void mark_cpu_used(bool used) {
-  if (used)
-    Profiler::instance().mark_cpu_used();
-}
-void mark_gpu_used(bool used) {
-  if (used)
-    Profiler::instance().mark_gpu_used();
 }
 
 struct SuiteConfig {
