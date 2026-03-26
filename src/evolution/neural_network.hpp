@@ -24,13 +24,23 @@ public:
   std::vector<float> activate(const std::vector<float> &inputs);
   void activate_into(const float *inputs, int n_in, float *outputs, int n_out);
 
-  int num_nodes() const { return static_cast<int>(nodes_.size()); }
-  int num_connections() const { return static_cast<int>(connections_.size()); }
-  int num_inputs() const { return num_inputs_; }
-  int num_outputs() const { return num_outputs_; }
+  int num_nodes() const {
+    return static_cast<int>(nodes_.size());
+  }
+  int num_connections() const {
+    return static_cast<int>(connections_.size());
+  }
+  int num_inputs() const {
+    return num_inputs_;
+  }
+  int num_outputs() const {
+    return num_outputs_;
+  }
 
   // GPU packing accessors — expose precomputed internal structures read-only
-  const std::vector<Node> &raw_nodes() const { return nodes_; }
+  const std::vector<Node> &raw_nodes() const {
+    return nodes_;
+  }
   const std::vector<std::uint32_t> &eval_order() const {
     return evaluation_order_;
   }
@@ -42,7 +52,9 @@ public:
   }
 
   // Returns activation values from the most recent activate() call
-  const std::vector<float> &last_activations() const { return values_; }
+  const std::vector<float> &last_activations() const {
+    return values_;
+  }
 
 private:
   struct Connection {

@@ -169,6 +169,19 @@ clean-all: clean
     rm -rf analysis/output/
     rm -rf profiler/output/
 
+# ─── Code Quality ───────────────────────────────────────────────────────────
+
+# Run code quality checks: auto-format all C++ files and run static analysis
+[group('lint')]
+lint: configure
+    find src \( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.cu" -o -name "*.cuh" \) | xargs clang-format --style=file -i
+    cppcheck --enable=warning,style,performance \
+        --std=c++17 \
+        --suppress=missingIncludeSystem \
+        --suppress=*:*/vcpkg_installed/* \
+        --project={{build-dir}}/compile_commands.json \
+        2>&1 | head -100 || true
+
 # ─── Development ────────────────────────────────────────────────────────────
 
 # Generate compile_commands.json for IDE/LSP integration

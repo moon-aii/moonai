@@ -536,24 +536,17 @@ Each run writes to `output/{experiment_name}/` (named experiments) or `output/YY
 
 ## C++ Code Style
 
-MoonAI follows the **LLVM coding style** (2-space indentation, LLVM brace breaking, etc.) enforced automatically during compilation.
+MoonAI follows the **LLVM coding style** (2-space indentation, LLVM brace breaking, etc.).
 
-### Automatic Formatting and Static Analysis
+### Code Quality Tools
 
-The build system automatically runs code quality tools on every source file during compilation:
+Code formatting and static analysis are available via just commands:
 
-| Tool | Purpose | When It Runs |
-|------|---------|--------------|
-| **clang-format** | Code formatting (LLVM style) | Every file compilation |
-| **cppcheck** | Static analysis (warnings, style, performance) | Every file compilation |
+| Command | Purpose |
+|---------|---------|
+| `just lint` | Auto-format all C++ files and run cppcheck static analysis |
 
-**No manual action required** — both tools run transparently when you build with `just build`, `just run`, or `just test`. The project uses CMake's built-in integration:
-
-```cmake
-# CMakeLists.txt
-set(CMAKE_CXX_CLANG_FORMAT "${CLANG_FORMAT_EXE};--style=file")
-set(CMAKE_CXX_CPPCHECK "${CPPCHECK_EXECUTABLE};--enable=warning,style,performance;...")
-```
+**Run manually before committing** — these are not automatic during build.
 
 ### Style Configuration
 

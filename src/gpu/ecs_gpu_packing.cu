@@ -1,5 +1,5 @@
-#include "gpu/ecs_gpu_packing.hpp"
 #include "core/types.hpp"
+#include "gpu/ecs_gpu_packing.hpp"
 #include <stdexcept>
 
 namespace moonai {

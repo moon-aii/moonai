@@ -34,22 +34,40 @@ public:
   bool has_node(std::uint32_t id) const;
   std::uint32_t max_node_id() const;
 
-  const std::vector<NodeGene> &nodes() const { return nodes_; }
-  std::vector<NodeGene> &nodes() { return nodes_; }
+  const std::vector<NodeGene> &nodes() const {
+    return nodes_;
+  }
+  std::vector<NodeGene> &nodes() {
+    return nodes_;
+  }
   const std::vector<ConnectionGene> &connections() const {
     return connections_;
   }
-  std::vector<ConnectionGene> &connections() { return connections_; }
+  std::vector<ConnectionGene> &connections() {
+    return connections_;
+  }
 
-  float fitness() const { return fitness_; }
-  void set_fitness(float f) { fitness_ = f; }
+  float fitness() const {
+    return fitness_;
+  }
+  void set_fitness(float f) {
+    fitness_ = f;
+  }
 
   // Adjusted fitness (after species sharing)
-  float adjusted_fitness() const { return adjusted_fitness_; }
-  void set_adjusted_fitness(float f) { adjusted_fitness_ = f; }
+  float adjusted_fitness() const {
+    return adjusted_fitness_;
+  }
+  void set_adjusted_fitness(float f) {
+    adjusted_fitness_ = f;
+  }
 
-  int num_inputs() const { return num_inputs_; }
-  int num_outputs() const { return num_outputs_; }
+  int num_inputs() const {
+    return num_inputs_;
+  }
+  int num_outputs() const {
+    return num_outputs_;
+  }
 
   // Genome complexity (nodes + connections)
   int complexity() const;

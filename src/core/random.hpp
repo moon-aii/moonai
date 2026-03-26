@@ -28,8 +28,12 @@ public:
   // Pick N random indices from [0, total) without replacement
   std::vector<int> sample_indices(int total, int count);
 
-  std::uint64_t seed() const { return seed_; }
-  std::mt19937_64 &engine() { return engine_; }
+  std::uint64_t seed() const {
+    return seed_;
+  }
+  std::mt19937_64 &engine() {
+    return engine_;
+  }
 
 private:
   std::uint64_t seed_;

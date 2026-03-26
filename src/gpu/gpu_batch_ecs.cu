@@ -1,5 +1,5 @@
-#include "gpu/gpu_batch_ecs.hpp"
 #include "gpu/cuda_utils.cuh"
+#include "gpu/gpu_batch_ecs.hpp"
 #include <algorithm>
 #include <cub/cub.cuh>
 
@@ -11,16 +11,14 @@ constexpr int kThreadsPerBlock = 256;
 }
 
 // Kernel: Build sensor inputs from agent data
-__global__ void kernel_build_sensors(const float* __restrict__ pos_x,
-                                     const float* __restrict__ pos_y,
-                                     const uint8_t* __restrict__ types,
-                                     const float* __restrict__ energy,
-                                     float* __restrict__ sensor_inputs,
-                                     int count, float world_width,
-                                     float world_height, float max_energy,
-                                     bool has_walls) {
+__global__ void kernel_build_sensors(
+    const float *__restrict__ pos_x, const float *__restrict__ pos_y,
+    const uint8_t *__restrict__ types, const float *__restrict__ energy,
+    float *__restrict__ sensor_inputs, int count, float world_width,
+    float world_height, float max_energy, bool has_walls) {
   const int idx = blockIdx.x * blockDim.x + threadIdx.x;
-  if (idx >= count) return;
+  if (idx >= count)
+    return;
 
   // Sensor input layout (15 floats per agent):
   // 0-1: nearest predator (dist, angle)
@@ -31,7 +29,7 @@ __global__ void kernel_build_sensors(const float* __restrict__ pos_x,
   // 9-10: local density (predators, prey)
   // 11-14: wall proximity (left, right, top, bottom)
 
-  float* out = sensor_inputs + idx * 15;
+  float *out = sensor_inputs + idx * 15;
 
   // Initialize sensors
   for (int i = 0; i < 15; ++i) {
@@ -46,29 +44,27 @@ __global__ void kernel_build_sensors(const float* __restrict__ pos_x,
     float x = pos_x[idx];
     float y = pos_y[idx];
     // Normalize by world size
-    out[11] = x / world_width;        // left
-    out[12] = (world_width - x) / world_width;  // right
-    out[13] = y / world_height;       // top
+    out[11] = x / world_width;                   // left
+    out[12] = (world_width - x) / world_width;   // right
+    out[13] = y / world_height;                  // top
     out[14] = (world_height - y) / world_height; // bottom
   }
 }
 
 // Kernel: Apply movement from brain outputs
-__global__ void kernel_apply_movement(float* __restrict__ pos_x,
-                                      float* __restrict__ pos_y,
-                                      float* __restrict__ vel_x,
-                                      float* __restrict__ vel_y,
-                                      float* __restrict__ energy,
-                                      uint8_t* __restrict__ alive,
-                                      const float* __restrict__ brain_outputs,
-                                      int count, float dt, float world_width,
-                                      float world_height, bool has_walls,
-                                      float energy_drain,
-                                      float max_energy) {
+__global__ void
+kernel_apply_movement(float *__restrict__ pos_x, float *__restrict__ pos_y,
+                      float *__restrict__ vel_x, float *__restrict__ vel_y,
+                      float *__restrict__ energy, uint8_t *__restrict__ alive,
+                      const float *__restrict__ brain_outputs, int count,
+                      float dt, float world_width, float world_height,
+                      bool has_walls, float energy_drain, float max_energy) {
   const int idx = blockIdx.x * blockDim.x + threadIdx.x;
-  if (idx >= count) return;
+  if (idx >= count)
+    return;
 
-  if (!alive[idx]) return;
+  if (!alive[idx])
+    return;
 
   // Get brain outputs (2 outputs: x and y movement direction)
   float dx = brain_outputs[idx * 2 + 0];
@@ -116,18 +112,20 @@ __global__ void kernel_apply_movement(float* __restrict__ pos_x,
 }
 
 // Kernel: Process combat (predator attacks)
-__global__ void kernel_process_combat(const float* __restrict__ pos_x,
-                                      const float* __restrict__ pos_y,
-                                      const uint8_t* __restrict__ types,
-                                      float* __restrict__ energy,
-                                      uint8_t* __restrict__ alive,
-                                      float attack_range,
-                                      float energy_gain, int count) {
+__global__ void kernel_process_combat(const float *__restrict__ pos_x,
+                                      const float *__restrict__ pos_y,
+                                      const uint8_t *__restrict__ types,
+                                      float *__restrict__ energy,
+                                      uint8_t *__restrict__ alive,
+                                      float attack_range, float energy_gain,
+                                      int count) {
   const int idx = blockIdx.x * blockDim.x + threadIdx.x;
-  if (idx >= count) return;
+  if (idx >= count)
+    return;
 
   // Only predators can attack
-  if (types[idx] != 0 || !alive[idx]) return;  // 0 = Predator
+  if (types[idx] != 0 || !alive[idx])
+    return; // 0 = Predator
 
   float px = pos_x[idx];
   float py = pos_y[idx];
@@ -135,7 +133,8 @@ __global__ void kernel_process_combat(const float* __restrict__ pos_x,
 
   // Find nearby prey
   for (int j = 0; j < count; ++j) {
-    if (idx == j || types[j] != 1 || !alive[j]) continue;  // 1 = Prey
+    if (idx == j || types[j] != 1 || !alive[j])
+      continue; // 1 = Prey
 
     float dx = pos_x[j] - px;
     float dy = pos_y[j] - py;
@@ -146,21 +145,22 @@ __global__ void kernel_process_combat(const float* __restrict__ pos_x,
       alive[j] = 0;
       // Give energy to predator
       atomicAdd(&energy[idx], energy_gain);
-      break;  // One kill per attack
+      break; // One kill per attack
     }
   }
 }
 
-GpuBatchECS::GpuBatchECS(std::size_t max_entities)
-    : buffer_(max_entities) {
+GpuBatchECS::GpuBatchECS(std::size_t max_entities) : buffer_(max_entities) {
   init_cuda_resources();
   mapping_.resize(max_entities);
 }
 
-GpuBatchECS::~GpuBatchECS() { cleanup_cuda_resources(); }
+GpuBatchECS::~GpuBatchECS() {
+  cleanup_cuda_resources();
+}
 
 void GpuBatchECS::init_cuda_resources() {
-  CUDA_CHECK(cudaStreamCreate(reinterpret_cast<cudaStream_t*>(&stream_)));
+  CUDA_CHECK(cudaStreamCreate(reinterpret_cast<cudaStream_t *>(&stream_)));
 }
 
 void GpuBatchECS::cleanup_cuda_resources() {
@@ -178,12 +178,13 @@ void GpuBatchECS::download_async(std::size_t agent_count) {
   buffer_.download_async(agent_count, static_cast<cudaStream_t>(stream_));
 }
 
-void GpuBatchECS::launch_full_step_async(const GpuStepParams& params,
-                                          std::size_t agent_count) {
-  if (agent_count == 0) return;
+void GpuBatchECS::launch_full_step_async(const GpuStepParams &params,
+                                         std::size_t agent_count) {
+  if (agent_count == 0)
+    return;
 
-  const int blocks = (static_cast<int>(agent_count) + kThreadsPerBlock - 1) /
-                     kThreadsPerBlock;
+  const int blocks =
+      (static_cast<int>(agent_count) + kThreadsPerBlock - 1) / kThreadsPerBlock;
   cudaStream_t stream = static_cast<cudaStream_t>(stream_);
 
   // 1. Build sensor inputs
@@ -203,11 +204,11 @@ void GpuBatchECS::launch_full_step_async(const GpuStepParams& params,
   kernel_apply_movement<<<blocks, kThreadsPerBlock, 0, stream>>>(
       buffer_.device_positions_x(), buffer_.device_positions_y(),
       buffer_.device_outputs_velocities_x(),
-      buffer_.device_outputs_velocities_y(),
-      buffer_.device_outputs_energy(), buffer_.device_outputs_alive(),
-      buffer_.device_brain_outputs(), static_cast<int>(agent_count),
-      params.dt, params.world_width, params.world_height, params.has_walls,
-      params.energy_drain_per_step, params.max_energy);
+      buffer_.device_outputs_velocities_y(), buffer_.device_outputs_energy(),
+      buffer_.device_outputs_alive(), buffer_.device_brain_outputs(),
+      static_cast<int>(agent_count), params.dt, params.world_width,
+      params.world_height, params.has_walls, params.energy_drain_per_step,
+      params.max_energy);
 
   // 4. Process combat
   kernel_process_combat<<<blocks, kThreadsPerBlock, 0, stream>>>(
@@ -222,12 +223,12 @@ void GpuBatchECS::synchronize() {
 }
 
 // Free function implementations
-void launch_build_sensors_kernel(const float* d_pos_x, const float* d_pos_y,
-                                 const uint8_t* d_types,
-                                 const float* d_energy, float* d_sensor_inputs,
-                                 std::size_t count, float world_width,
-                                 float world_height, float max_energy,
-                                 bool has_walls, cudaStream_t stream) {
+void launch_build_sensors_kernel(const float *d_pos_x, const float *d_pos_y,
+                                 const uint8_t *d_types, const float *d_energy,
+                                 float *d_sensor_inputs, std::size_t count,
+                                 float world_width, float world_height,
+                                 float max_energy, bool has_walls,
+                                 cudaStream_t stream) {
   const int blocks =
       (static_cast<int>(count) + kThreadsPerBlock - 1) / kThreadsPerBlock;
   kernel_build_sensors<<<blocks, kThreadsPerBlock, 0, stream>>>(
@@ -236,15 +237,12 @@ void launch_build_sensors_kernel(const float* d_pos_x, const float* d_pos_y,
       has_walls);
 }
 
-void launch_apply_movement_kernel(float* d_pos_x, float* d_pos_y,
-                                  float* d_vel_x, float* d_vel_y,
-                                  float* d_energy, uint8_t* d_alive,
-                                  const float* d_sensor_inputs,
-                                  const float* d_brain_outputs,
-                                  std::size_t count, float dt, float world_width,
-                                  float world_height, bool has_walls,
-                                  float energy_drain, float max_energy,
-                                  cudaStream_t stream) {
+void launch_apply_movement_kernel(
+    float *d_pos_x, float *d_pos_y, float *d_vel_x, float *d_vel_y,
+    float *d_energy, uint8_t *d_alive, const float *d_sensor_inputs,
+    const float *d_brain_outputs, std::size_t count, float dt,
+    float world_width, float world_height, bool has_walls, float energy_drain,
+    float max_energy, cudaStream_t stream) {
   const int blocks =
       (static_cast<int>(count) + kThreadsPerBlock - 1) / kThreadsPerBlock;
   kernel_apply_movement<<<blocks, kThreadsPerBlock, 0, stream>>>(
@@ -253,9 +251,9 @@ void launch_apply_movement_kernel(float* d_pos_x, float* d_pos_y,
       energy_drain, max_energy);
 }
 
-void launch_process_combat_kernel(const float* d_pos_x, const float* d_pos_y,
-                                  const uint8_t* d_types, float* d_energy,
-                                  uint8_t* d_alive, float attack_range,
+void launch_process_combat_kernel(const float *d_pos_x, const float *d_pos_y,
+                                  const uint8_t *d_types, float *d_energy,
+                                  uint8_t *d_alive, float attack_range,
                                   float energy_gain, std::size_t count,
                                   cudaStream_t stream) {
   const int blocks =

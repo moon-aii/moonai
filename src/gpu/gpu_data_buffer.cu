@@ -1,5 +1,5 @@
-#include "gpu/gpu_data_buffer.hpp"
 #include "gpu/cuda_utils.cuh"
+#include "gpu/gpu_data_buffer.hpp"
 #include <cstring>
 #include <stdexcept>
 
