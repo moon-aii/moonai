@@ -241,7 +241,7 @@ nlohmann::json Profiler::finish_run(std::int64_t run_total_ns) {
 
   // Build JSON output - raw data only, no aggregation
   nlohmann::json profile;
-  profile["schema_version"] = 5; // Raw data version
+  profile["schema_version"] = 1;
   profile["generated_at_utc"] = generated_at_utc_;
   profile["run"] = {{"experiment_name", experiment_},
                     {"suite_name", suite_},
@@ -543,7 +543,7 @@ void write_suite_manifest(const moonai::profiler::SuiteConfig &suite,
                           std::vector<RunResult> runs,
                           const std::filesystem::path &output_path) {
   nlohmann::json manifest;
-  manifest["schema_version"] = 4; // Raw data version
+  manifest["schema_version"] = 1;
   manifest["suite"] = {{"name", suite.name}, {"windows", suite.windows}};
 
   nlohmann::json run_rows = nlohmann::json::array();

@@ -284,8 +284,6 @@
       Each suite runs six fixed seeds from <code>profiler.lua</code>, drops the
       fastest and slowest run by average report-window time, and reports aggregate
       timings and charts from the remaining four runs.
-      {{ skipped_count }} profile{{ 's' if skipped_count != 1 else '' }} could not be analysed and
-      {{ 'are' if skipped_count != 1 else 'is' }} listed in Excluded Profiles.
       Source directory: <code>{{ input_dir }}</code>.
     </p>
   </section>
@@ -302,7 +300,6 @@
           {% endfor %}
         </ul>
       </li>
-      <li><a href="#skipped">Excluded Profiles</a></li>
     </ul>
   </nav>
 
@@ -427,28 +424,6 @@
       </div>
     </details>
     {% endfor %}
-  </section>
-
-  <section id="skipped">
-    <h2>Excluded Profiles</h2>
-    {% if skipped_profiles %}
-    <table>
-      <caption>Profiles that could not be included in the analysis.</caption>
-      <thead>
-        <tr><th>Name</th><th>Reason</th></tr>
-      </thead>
-      <tbody>
-        {% for skipped in skipped_profiles %}
-        <tr>
-          <td>{{ skipped.name }}</td>
-          <td>{{ skipped.reason }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    {% else %}
-    <div class="empty">No profiles were skipped.</div>
-    {% endif %}
   </section>
 
 </body>
