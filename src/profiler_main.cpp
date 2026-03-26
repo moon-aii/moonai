@@ -323,7 +323,7 @@ std::string utc_timestamp_for_path() {
   return std::string(buf);
 }
 
-RunResult run_profiler_run(const std::string &experiment_name,
+RunResult run_profiler(const std::string &experiment_name,
                            const std::string &output_dir, int windows,
                            std::uint64_t seed, bool no_gpu) {
   moonai::SimulationConfig config;
@@ -463,13 +463,6 @@ void write_manifest(const std::string &experiment_name, int windows,
 
 int main(int argc, const char *argv[]) {
   const Args args = parse_args(argc, argv);
-
-  if (args.seeds.empty()) {
-    std::fprintf(stderr,
-                 "Error: No seeds specified. Use --seeds 41,42,43,...\n");
-    return 1;
-  }
-
   moonai::SimulationConfig config;
 
   std::vector<RunResult> runs;
@@ -479,7 +472,7 @@ int main(int argc, const char *argv[]) {
       (utc_timestamp_for_path() + "_" + args.experiment_name + ".json");
 
   for (std::uint64_t seed : args.seeds) {
-    runs.push_back(run_profiler_run(args.experiment_name, args.output_dir,
+    runs.push_back(run_profiler(args.experiment_name, args.output_dir,
                                     args.windows, seed, args.no_gpu));
   }
 
