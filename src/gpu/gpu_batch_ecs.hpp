@@ -24,14 +24,11 @@ struct GpuStepParams {
   float attack_range = 20.0f;
   float energy_gain_from_food = 40.0f;
   float energy_gain_from_kill = 60.0f;
-  float food_respawn_rate = 0.02f;
-  std::uint64_t seed = 0;
-  int step_index = 0;
 };
 
 class GpuBatchECS {
 public:
-  GpuBatchECS(std::size_t max_entities);
+  GpuBatchECS(std::size_t max_agents, std::size_t max_food);
   ~GpuBatchECS();
 
   GpuBatchECS(const GpuBatchECS &) = delete;
@@ -46,30 +43,30 @@ public:
     return buffer_;
   }
 
-  [[nodiscard]] GpuEntityMapping &mapping() {
-    return mapping_;
+  [[nodiscard]] GpuEntityMapping &agent_mapping() {
+    return agent_mapping_;
   }
-  [[nodiscard]] const GpuEntityMapping &mapping() const {
-    return mapping_;
+  [[nodiscard]] const GpuEntityMapping &agent_mapping() const {
+    return agent_mapping_;
   }
 
-  void launch_full_step_async(const GpuStepParams &params,
-                              std::size_t agent_count);
+  [[nodiscard]] GpuEntityMapping &food_mapping() {
+    return food_mapping_;
+  }
+  [[nodiscard]] const GpuEntityMapping &food_mapping() const {
+    return food_mapping_;
+  }
 
-  // Individual kernel launches for fine-grained control (allows neural
-  // inference delegation)
   void launch_build_sensors_async(const GpuStepParams &params,
-                                  std::size_t agent_count);
-  void launch_update_vitals_async(const GpuStepParams &params,
-                                  std::size_t agent_count);
-  void launch_apply_movement_async(const GpuStepParams &params,
-                                   std::size_t agent_count);
-  void launch_process_combat_async(const GpuStepParams &params,
-                                   std::size_t agent_count);
+                                  std::size_t agent_count,
+                                  std::size_t food_count);
+  void launch_post_inference_async(const GpuStepParams &params,
+                                   std::size_t agent_count,
+                                   std::size_t food_count);
 
-  void upload_async(std::size_t agent_count);
+  void upload_async(std::size_t agent_count, std::size_t food_count);
 
-  void download_async(std::size_t agent_count);
+  void download_async(std::size_t agent_count, std::size_t food_count);
 
   void synchronize();
 
@@ -83,7 +80,8 @@ public:
 
 private:
   GpuDataBuffer buffer_;
-  GpuEntityMapping mapping_;
+  GpuEntityMapping agent_mapping_;
+  GpuEntityMapping food_mapping_;
 
   void *stream_ = nullptr;
   bool had_error_ = false;
@@ -94,34 +92,28 @@ private:
   void check_launch_error();
 };
 
-void launch_build_sensors_kernel(const float *d_pos_x, const float *d_pos_y,
-                                 const float *d_vel_x, const float *d_vel_y,
-                                 const float *d_speed, const uint8_t *d_types,
-                                 const uint32_t *d_alive, const float *d_energy,
-                                 float *d_sensor_inputs, std::size_t count,
-                                 float world_width, float world_height,
-                                 float vision_range, float max_energy,
-                                 cudaStream_t stream);
+void launch_build_sensors_kernel(
+    const float *d_pos_x, const float *d_pos_y, const float *d_vel_x,
+    const float *d_vel_y, const float *d_speed, const uint8_t *d_agent_types,
+    const uint32_t *d_agent_alive, const float *d_energy,
+    const float *d_food_pos_x, const float *d_food_pos_y,
+    const uint32_t *d_food_active, float *d_sensor_inputs,
+    std::size_t agent_count, std::size_t food_count, float world_width,
+    float world_height, float vision_range, float max_energy,
+    cudaStream_t stream);
 
-void launch_apply_movement_kernel(
-    float *d_pos_x, float *d_pos_y, float *d_vel_x, float *d_vel_y,
-    const float *d_speed, uint32_t *d_alive, const uint8_t *d_types,
-    float *d_distance_traveled, const float *d_brain_outputs, std::size_t count,
-    float world_width, float world_height, cudaStream_t stream);
-
-void launch_update_vitals_kernel(float *d_energy, int *d_age,
-                                 int *d_reproduction_cooldown,
-                                 uint32_t *d_alive, const uint8_t *d_types,
-                                 std::size_t count, float energy_drain,
-                                 int max_age, float max_energy,
-                                 cudaStream_t stream);
-
-void launch_process_combat_kernel(const float *d_pos_x, const float *d_pos_y,
-                                  const uint8_t *d_types, float *d_energy,
-                                  uint32_t *d_alive, uint32_t *d_kill_counts,
-                                  int *d_killed_by, float attack_range,
-                                  float energy_gain, std::size_t count,
-                                  cudaStream_t stream);
+void launch_post_inference_kernel(
+    float *d_agent_pos_x, float *d_agent_pos_y, float *d_agent_vel_x,
+    float *d_agent_vel_y, const float *d_agent_speed, float *d_agent_energy,
+    int *d_agent_age, int *d_agent_reproduction_cooldown,
+    uint32_t *d_agent_alive, const uint8_t *d_agent_types,
+    float *d_agent_distance_traveled, uint32_t *d_agent_kill_counts,
+    int *d_agent_killed_by, const float *d_agent_brain_outputs,
+    float *d_food_pos_x, float *d_food_pos_y, uint32_t *d_food_active,
+    int *d_food_consumed_by, std::size_t agent_count, std::size_t food_count,
+    float world_width, float world_height, float energy_drain, int max_age,
+    float food_pickup_range, float attack_range, float energy_gain_from_food,
+    float energy_gain_from_kill, cudaStream_t stream);
 
 } // namespace gpu
 } // namespace moonai

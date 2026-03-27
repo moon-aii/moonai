@@ -1,23 +1,30 @@
 #pragma once
 #include "gpu/gpu_data_buffer.hpp"
 #include "gpu/gpu_entity_mapping.hpp"
-#include "simulation/entity.hpp"
-#include "simulation/registry.hpp"
+#include "simulation/step_state.hpp"
 
 namespace moonai {
 namespace gpu {
 
-void pack_ecs_to_gpu(const Registry &registry, const GpuEntityMapping &mapping,
-                     GpuDataBuffer &buffer);
+void pack_step_state_to_gpu(const PackedStepState &state,
+                            const GpuEntityMapping &agent_mapping,
+                            const GpuEntityMapping &food_mapping,
+                            GpuDataBuffer &buffer);
 
-void unpack_gpu_to_ecs(const GpuDataBuffer &buffer,
-                       const GpuEntityMapping &mapping, Registry &registry);
+void unpack_gpu_to_step_state(const GpuDataBuffer &buffer,
+                              const GpuEntityMapping &agent_mapping,
+                              const GpuEntityMapping &food_mapping,
+                              PackedStepState &state);
 
-uint32_t prepare_ecs_for_gpu(const Registry &registry,
-                             GpuEntityMapping &mapping, GpuDataBuffer &buffer);
+void prepare_step_state_for_gpu(const PackedStepState &state,
+                                GpuEntityMapping &agent_mapping,
+                                GpuEntityMapping &food_mapping,
+                                GpuDataBuffer &buffer);
 
 void apply_gpu_results(const GpuDataBuffer &buffer,
-                       const GpuEntityMapping &mapping, Registry &registry);
+                       const GpuEntityMapping &agent_mapping,
+                       const GpuEntityMapping &food_mapping,
+                       PackedStepState &state);
 
 } // namespace gpu
 } // namespace moonai

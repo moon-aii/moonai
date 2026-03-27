@@ -4,6 +4,7 @@
 #include "core/random.hpp"
 #include "simulation/entity.hpp"
 #include "simulation/spatial_grid_ecs.hpp"
+#include "simulation/step_state.hpp"
 #include "simulation/systems/combat.hpp"
 #include "simulation/systems/energy.hpp"
 #include "simulation/systems/food_respawn.hpp"
@@ -38,7 +39,7 @@ public:
   ~SimulationManager();
 
   void initialize();
-  void step_ecs(Registry &registry);
+  void step_ecs(Registry &registry, EvolutionManager &evolution);
   void step_gpu_ecs(Registry &registry, EvolutionManager &evolution);
   void reset();
 
@@ -89,6 +90,10 @@ public:
 private:
   void initialize(bool log_initialization);
 
+  PackedStepState pack_step_state(const Registry &registry) const;
+  void apply_step_state(Registry &registry, const PackedStepState &state);
+  void run_cpu_backend(PackedStepState &state, EvolutionManager &evolution);
+  void finalize_step(Registry &registry, const PackedStepState &state);
   void rebuild_spatial_grid_ecs(const Registry &registry);
   void process_food_ecs(Registry &registry);
   void process_step_deaths_ecs(Registry &registry);

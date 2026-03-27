@@ -293,9 +293,7 @@ void EvolutionManager::compute_actions_ecs(Registry &registry) {
   }
 
   std::vector<float> all_outputs;
-  network_cache_.activate_batch(living, all_inputs, all_outputs,
-                                SensorSoA::INPUT_COUNT,
-                                SensorSoA::OUTPUT_COUNT);
+  compute_actions_batch(living, all_inputs, all_outputs);
 
   for (size_t i = 0; i < living.size(); ++i) {
     Vec2 action{all_outputs[i * 2], all_outputs[i * 2 + 1]};
@@ -303,6 +301,14 @@ void EvolutionManager::compute_actions_ecs(Registry &registry) {
     registry.brain().decision_x[idx] = action.x;
     registry.brain().decision_y[idx] = action.y;
   }
+}
+
+void EvolutionManager::compute_actions_batch(
+    const std::vector<Entity> &entities, const std::vector<float> &all_inputs,
+    std::vector<float> &all_outputs) {
+  network_cache_.activate_batch(entities, all_inputs, all_outputs,
+                                SensorSoA::INPUT_COUNT,
+                                SensorSoA::OUTPUT_COUNT);
 }
 
 void EvolutionManager::on_entity_destroyed(Entity e) {
@@ -403,7 +409,7 @@ void EvolutionManager::launch_gpu_neural(gpu::GpuBatchECS &gpu_batch,
   network_entities_with_indices.reserve(agent_count);
 
   for (uint32_t gpu_idx = 0; gpu_idx < agent_count; ++gpu_idx) {
-    Entity e = gpu_batch.mapping().entity_at(gpu_idx);
+    Entity e = gpu_batch.agent_mapping().entity_at(gpu_idx);
     if (e != INVALID_ENTITY && network_cache_.has(e)) {
       network_entities_with_indices.emplace_back(e, static_cast<int>(gpu_idx));
     }
@@ -439,8 +445,8 @@ void EvolutionManager::launch_gpu_neural(gpu::GpuBatchECS &gpu_batch,
 
   // Launch kernel - only for entities with networks
   gpu_network_cache_->launch_inference_async(
-      gpu_batch.buffer().device_sensor_inputs(),
-      gpu_batch.buffer().device_brain_outputs(),
+      gpu_batch.buffer().device_agent_sensor_inputs(),
+      gpu_batch.buffer().device_agent_brain_outputs(),
       network_entities_with_indices.size(), gpu_batch.stream());
 }
 

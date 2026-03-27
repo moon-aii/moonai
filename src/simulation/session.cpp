@@ -90,11 +90,9 @@ void Session::step() {
   MOONAI_PROFILE_SCOPE("session_step");
 
   if (cfg_.enable_gpu && simulation_.gpu_enabled()) {
-    // GPU path: Full GPU step including neural inference
     simulation_.step_gpu_ecs(registry_, evolution_);
   } else {
-    evolution_.compute_actions_ecs(registry_);
-    simulation_.step_ecs(registry_);
+    simulation_.step_ecs(registry_, evolution_);
   }
 
   // Handle reproduction

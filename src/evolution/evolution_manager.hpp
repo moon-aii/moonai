@@ -43,6 +43,9 @@ public:
   void refresh_species_ecs(Registry &registry);
 
   void compute_actions_ecs(Registry &registry);
+  void compute_actions_batch(const std::vector<Entity> &entities,
+                             const std::vector<float> &all_inputs,
+                             std::vector<float> &all_outputs);
 
   void on_entity_destroyed(Entity e);
 
