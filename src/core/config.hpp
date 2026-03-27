@@ -69,9 +69,6 @@ struct ConfigError {
   std::string message;
 };
 
-std::map<std::string, SimulationConfig>
-load_all_configs_lua(const std::string &filepath);
-
 nlohmann::json config_to_json(const SimulationConfig &config);
 std::string fingerprint_config(const SimulationConfig &config);
 void save_config(const SimulationConfig &config, const std::string &filepath);

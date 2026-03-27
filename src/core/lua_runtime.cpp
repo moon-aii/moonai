@@ -186,6 +186,12 @@ sol::table config_to_table(sol::state &lua, const SimulationConfig &c) {
 
 } // anonymous namespace
 
+std::map<std::string, SimulationConfig>
+load_all_configs_lua(const std::string &filepath) {
+  LuaRuntime runtime;
+  return runtime.load_config(filepath);
+}
+
 // ── PIMPL ────────────────────────────────────────────────────────────────────
 
 struct LuaRuntime::Impl {

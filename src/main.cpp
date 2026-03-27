@@ -1,4 +1,5 @@
 #include "core/config.hpp"
+#include "core/lua_runtime.hpp"
 #include "data/logger.hpp"
 #include "simulation/session.hpp"
 

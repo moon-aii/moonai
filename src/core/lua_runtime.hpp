@@ -26,6 +26,9 @@ struct ReportWindowStats {
   float avg_complexity;
 };
 
+std::map<std::string, SimulationConfig>
+load_all_configs_lua(const std::string &filepath);
+
 class LuaRuntime {
 public:
   LuaRuntime();
