@@ -8,7 +8,7 @@ class MovementSystem : public System {
 public:
   MovementSystem(float world_width, float world_height, bool has_walls);
 
-  void update(Registry &registry, float dt) override;
+  void update(Registry &registry) override;
   const char *name() const override {
     return "MovementSystem";
   }

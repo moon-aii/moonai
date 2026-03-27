@@ -18,6 +18,10 @@
 namespace moonai {
 
 class Registry;
+namespace gpu {
+class GpuBatchECS;
+class GpuNetworkCache;
+} // namespace gpu
 
 class EvolutionManager {
 public:
@@ -38,7 +42,7 @@ public:
   void refresh_fitness_ecs(const Registry &registry);
   void refresh_species_ecs(Registry &registry);
 
-  void compute_actions_ecs(Registry &registry, std::vector<Vec2> &actions);
+  void compute_actions_ecs(Registry &registry);
 
   void on_entity_destroyed(Entity e);
 
@@ -66,12 +70,13 @@ public:
   void update_config(const SimulationConfig &cfg) {
     config_ = cfg;
   }
-  void enable_gpu(bool use_gpu) {
-    use_gpu_ = use_gpu;
-  }
+  void enable_gpu(bool use_gpu);
   bool gpu_enabled() const {
     return use_gpu_;
   }
+
+  // GPU neural inference (called by SimulationManager during GPU step)
+  void launch_gpu_neural(gpu::GpuBatchECS &gpu_batch, std::size_t agent_count);
 
 private:
   SimulationConfig config_;
@@ -87,6 +92,9 @@ private:
 
   // Entity -> NeuralNetwork mapping (variable topology, separate cache)
   NetworkCache network_cache_;
+
+  // GPU network cache for CSR-formatted batched inference
+  std::unique_ptr<gpu::GpuNetworkCache> gpu_network_cache_;
 };
 
 } // namespace moonai

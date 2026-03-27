@@ -10,7 +10,7 @@ EnergySystem::EnergySystem(float predator_energy_cost, float prey_energy_cost,
       prey_energy_cost_(prey_energy_cost), max_age_(max_age),
       max_energy_(max_energy) {}
 
-void EnergySystem::update(Registry &registry, float dt) {
+void EnergySystem::update(Registry &registry) {
   MOONAI_PROFILE_SCOPE("energy_update");
   auto &vitals = registry.vitals();
   auto &identity = registry.identity();
@@ -29,7 +29,7 @@ void EnergySystem::update(Registry &registry, float dt) {
                             ? predator_energy_cost_
                             : prey_energy_cost_;
 
-    vitals.energy[i] -= energy_cost * dt;
+    vitals.energy[i] -= energy_cost;
 
     bool died_of_starvation = vitals.energy[i] <= 0.0f;
     bool died_of_age = (max_age_ > 0.0f && vitals.age[i] >= max_age_);

@@ -8,14 +8,14 @@ namespace moonai {
 class System {
 public:
   virtual ~System() = default;
-  virtual void update(Registry &registry, float dt) = 0;
+  virtual void update(Registry &registry) = 0;
   virtual const char *name() const = 0;
 };
 
 class SystemScheduler {
 public:
   void add_system(std::unique_ptr<System> system);
-  void update(Registry &registry, float dt);
+  void update(Registry &registry);
 
   size_t system_count() const {
     return systems_.size();

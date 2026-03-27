@@ -55,6 +55,18 @@ public:
     return values_;
   }
 
+  // GPU cache support methods
+  std::string activation_function() const;
+  int num_input_nodes() const;
+  int num_output_nodes() const;
+
+  struct IncomingConnection {
+    int from_node;
+    float weight;
+  };
+  std::vector<IncomingConnection> get_incoming_connections(int node_idx) const;
+  std::vector<int> get_output_indices() const;
+
 private:
   struct Connection {
     std::uint32_t from;

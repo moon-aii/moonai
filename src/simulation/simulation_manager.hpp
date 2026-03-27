@@ -17,6 +17,10 @@
 namespace moonai {
 
 class Registry;
+class EvolutionManager;
+namespace gpu {
+class GpuBatchECS;
+}
 
 struct SimEvent {
   enum Type : uint8_t { Kill, Food, Birth, Death };
@@ -31,10 +35,17 @@ struct SimEvent {
 class SimulationManager {
 public:
   explicit SimulationManager(const SimulationConfig &config);
+  ~SimulationManager();
 
   void initialize();
-  void step_ecs(Registry &registry, float dt);
+  void step_ecs(Registry &registry);
+  void step_gpu_ecs(Registry &registry, EvolutionManager &evolution);
   void reset();
+
+  void enable_gpu(bool enable);
+  bool gpu_enabled() const {
+    return gpu_enabled_;
+  }
 
   int current_step() const {
     return current_step_;
@@ -96,6 +107,10 @@ private:
   MovementSystem movement_system_;
   CombatSystem combat_system_;
   FoodRespawnSystem food_respawn_system_;
+
+  // GPU support
+  bool gpu_enabled_ = false;
+  std::unique_ptr<gpu::GpuBatchECS> gpu_batch_;
 };
 
 } // namespace moonai

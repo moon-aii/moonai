@@ -76,44 +76,26 @@ Session::Session(const SessionConfig &cfg)
   }
 
   // Enable GPU if available
-  evolution_.enable_gpu(cfg_.enable_gpu);
+  if (cfg_.enable_gpu) {
+    evolution_.enable_gpu(true);
+    simulation_.enable_gpu(true);
+    spdlog::info("GPU acceleration enabled");
+  }
 
   // Register signal handlers
   register_signal_handlers();
 }
 
-void Session::step(float dt) {
-  // Compute actions
-  actions_buffer_.clear();
-  evolution_.compute_actions_ecs(registry_, actions_buffer_);
+void Session::step() {
+  MOONAI_PROFILE_SCOPE("session_step");
 
-  // Apply actions to entities
-  MOONAI_PROFILE_SCOPE("evolution_apply_actions");
-  size_t action_idx = 0;
-  for (Entity e : registry_.living_entities()) {
-    size_t idx = registry_.index_of(e);
-    if (!registry_.vitals().alive[idx]) {
-      continue;
-    }
-
-    if (action_idx < actions_buffer_.size()) {
-      float dx = actions_buffer_[action_idx].x;
-      float dy = actions_buffer_[action_idx].y;
-      float speed = registry_.motion().speed[idx];
-
-      registry_.motion().vel_x[idx] = dx * speed;
-      registry_.motion().vel_y[idx] = dy * speed;
-      registry_.positions().x[idx] += registry_.motion().vel_x[idx] * dt;
-      registry_.positions().y[idx] += registry_.motion().vel_y[idx] * dt;
-      registry_.stats().distance_traveled[idx] +=
-          std::sqrt(dx * dx + dy * dy) * speed * dt;
-
-      ++action_idx;
-    }
+  if (cfg_.enable_gpu && simulation_.gpu_enabled()) {
+    // GPU path: Full GPU step including neural inference
+    simulation_.step_gpu_ecs(registry_, evolution_);
+  } else {
+    evolution_.compute_actions_ecs(registry_);
+    simulation_.step_ecs(registry_);
   }
-
-  // Step simulation
-  simulation_.step_ecs(registry_, dt);
 
   // Handle reproduction
   auto pairs = simulation_.find_reproduction_pairs_ecs(registry_);
@@ -255,14 +237,13 @@ bool Session::run() {
     }
   }
 
-  const float dt = 1.0f / static_cast<float>(cfg_.sim_config.target_fps);
   bool completed = true;
   bool user_quit = false;
 
   if (cfg_.headless) {
     // Headless mode: run as fast as possible
     while (should_continue()) {
-      step(dt);
+      step();
 
       // Check for report interval
       if (steps_executed_ % cfg_.sim_config.report_interval_steps == 0) {
@@ -327,7 +308,7 @@ bool Session::run() {
       steps_to_run = std::max(1, steps_to_run);
 
       for (int i = 0; i < steps_to_run && should_continue(); ++i) {
-        step(dt);
+        step();
 
         // Check for report interval
         if (steps_executed_ % cfg_.sim_config.report_interval_steps == 0) {

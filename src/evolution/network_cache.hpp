@@ -43,6 +43,12 @@ public:
   void invalidate_gpu_cache() {
     gpu_cache_dirty_ = true;
   }
+  bool gpu_cache_dirty() const {
+    return gpu_cache_dirty_;
+  }
+  void clear_gpu_cache_dirty() {
+    gpu_cache_dirty_ = false;
+  }
 
   void prune_dead(const std::vector<Entity> &living);
 

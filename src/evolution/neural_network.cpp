@@ -173,4 +173,56 @@ float NeuralNetwork::apply_activation(float x, ActivationFn fn) {
   }
 }
 
+std::string NeuralNetwork::activation_function() const {
+  switch (activation_fn_) {
+    case ActivationFn::Tanh:
+      return "tanh";
+    case ActivationFn::ReLU:
+      return "relu";
+    default:
+      return "sigmoid";
+  }
+}
+
+int NeuralNetwork::num_input_nodes() const {
+  int count = 0;
+  for (const auto &node : nodes_) {
+    if (node.type == NodeType::Input) {
+      count++;
+    }
+  }
+  return count;
+}
+
+int NeuralNetwork::num_output_nodes() const {
+  int count = 0;
+  for (const auto &node : nodes_) {
+    if (node.type == NodeType::Output) {
+      count++;
+    }
+  }
+  return count;
+}
+
+std::vector<NeuralNetwork::IncomingConnection>
+NeuralNetwork::get_incoming_connections(int node_idx) const {
+  std::vector<IncomingConnection> result;
+  if (node_idx >= 0 && node_idx < static_cast<int>(incoming_.size())) {
+    for (const auto &[from_idx, weight] : incoming_[node_idx]) {
+      result.push_back({from_idx, weight});
+    }
+  }
+  return result;
+}
+
+std::vector<int> NeuralNetwork::get_output_indices() const {
+  std::vector<int> indices;
+  for (size_t i = 0; i < nodes_.size(); ++i) {
+    if (nodes_[i].type == NodeType::Output) {
+      indices.push_back(static_cast<int>(i));
+    }
+  }
+  return indices;
+}
+
 } // namespace moonai

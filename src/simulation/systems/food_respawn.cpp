@@ -10,9 +10,8 @@ FoodRespawnSystem::FoodRespawnSystem(float world_width, float world_height,
     : world_width_(world_width), world_height_(world_height),
       respawn_rate_(respawn_rate), seed_(seed) {}
 
-void FoodRespawnSystem::update(Registry &registry, float dt) {
+void FoodRespawnSystem::update(Registry &registry) {
   MOONAI_PROFILE_SCOPE("food_respawn");
-  (void)dt;
 
   auto &living = registry.living_entities();
   auto &positions = registry.positions();

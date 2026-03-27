@@ -20,7 +20,7 @@ public:
 
   CombatSystem(const SpatialGridECS &agent_grid, float attack_range);
 
-  void update(Registry &registry, float dt) override;
+  void update(Registry &registry) override;
   const char *name() const override {
     return "CombatSystem";
   }

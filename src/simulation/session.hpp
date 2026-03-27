@@ -45,7 +45,6 @@ private:
   std::unique_ptr<VisualizationManager> visualization_;
 
   int steps_executed_ = 0;
-  std::vector<Vec2> actions_buffer_;
 
   // Signal handling (static - shared across all sessions)
   static volatile std::sig_atomic_t g_running_;
@@ -53,7 +52,7 @@ private:
   static void register_signal_handlers();
 
   // Internal helpers
-  void step(float dt);
+  void step();
   StepMetrics record_and_log();
   void update_selected_visualization();
   bool should_continue() const;

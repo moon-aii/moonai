@@ -10,7 +10,7 @@ MovementSystem::MovementSystem(float world_width, float world_height,
     : world_width_(world_width), world_height_(world_height),
       has_walls_(has_walls) {}
 
-void MovementSystem::update(Registry &registry, float dt) {
+void MovementSystem::update(Registry &registry) {
   auto &positions = registry.positions();
   auto &motion = registry.motion();
   auto &vitals = registry.vitals();
@@ -43,8 +43,8 @@ void MovementSystem::update(Registry &registry, float dt) {
     float old_x = positions.x[i];
     float old_y = positions.y[i];
 
-    positions.x[i] += motion.vel_x[i] * dt;
-    positions.y[i] += motion.vel_y[i] * dt;
+    positions.x[i] += motion.vel_x[i];
+    positions.y[i] += motion.vel_y[i];
 
     apply_boundary(positions.x[i], positions.y[i]);
 

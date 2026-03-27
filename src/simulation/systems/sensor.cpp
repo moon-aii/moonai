@@ -13,13 +13,9 @@ SensorSystem::SensorSystem(const SpatialGridECS &agent_grid, float world_width,
       world_height_(world_height), max_energy_(max_energy),
       has_walls_(has_walls) {}
 
-void SensorSystem::update(Registry &registry, float dt) {
+void SensorSystem::update(Registry &registry) {
   MOONAI_PROFILE_SCOPE("sensor_update");
-  auto &positions = registry.positions();
   auto &vitals = registry.vitals();
-  auto &identity = registry.identity();
-  auto &motion = registry.motion();
-  auto &sensors = registry.sensors();
 
   const size_t count = registry.size();
 

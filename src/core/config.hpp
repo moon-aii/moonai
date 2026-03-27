@@ -17,15 +17,15 @@ struct SimulationConfig {
   int predator_count = 600;
   int prey_count = 2400;
 
-  float predator_speed = 6.0f;
-  float prey_speed = 5.4f;
+  float predator_speed = 0.06f;
+  float prey_speed = 0.054f;
   float vision_range = 120.0f;
-  float attack_range = 12.0f;
+  float attack_range = 6.0f;
   float initial_energy = 120.0f;
-  float energy_drain_per_step = 1.2f;
+  float energy_drain_per_step = 0.006f;
   float energy_gain_from_kill = 36.0f;
   float energy_gain_from_food = 48.0f;
-  float food_pickup_range = 12.0f;
+  float food_pickup_range = 6.0f;
 
   int food_count = 3000;
   float food_respawn_rate = 0.006f;
@@ -45,7 +45,7 @@ struct SimulationConfig {
   float c3_weight = 0.4f;
   int species_update_interval_steps = 60;
 
-  int target_fps = 200;
+  int target_fps = 300;
   std::uint64_t seed = 0;
 
   std::string output_dir = "output";

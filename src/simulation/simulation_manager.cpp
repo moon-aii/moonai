@@ -1,5 +1,8 @@
 #include "simulation/simulation_manager.hpp"
 #include "core/profiler_macros.hpp"
+#include "evolution/evolution_manager.hpp"
+#include "gpu/ecs_gpu_packing.hpp"
+#include "gpu/gpu_batch_ecs.hpp"
 #include "simulation/registry.hpp"
 #include "simulation/spatial_grid_ecs.hpp"
 #include "simulation/systems/combat.hpp"
@@ -58,7 +61,7 @@ void SimulationManager::initialize(bool log_initialization) {
   }
 }
 
-void SimulationManager::step_ecs(Registry &registry, float dt) {
+void SimulationManager::step_ecs(Registry &registry) {
   MOONAI_PROFILE_SCOPE("simulation_step");
   last_events_.clear();
 
@@ -67,14 +70,14 @@ void SimulationManager::step_ecs(Registry &registry, float dt) {
 
   // Update sensor inputs for all agents (must happen before
   // compute_actions_ecs)
-  sensor_system_.update(registry, dt);
+  sensor_system_.update(registry);
 
   // Process interactions using EnergySystem
-  energy_system_.update(registry, dt);
+  energy_system_.update(registry);
   process_food_ecs(registry);
 
   // Process combat using CombatSystem
-  combat_system_.update(registry, dt);
+  combat_system_.update(registry);
 
   // Convert kill events to SimEvents
   for (const auto &kill : combat_system_.kill_events()) {
@@ -96,12 +99,12 @@ void SimulationManager::step_ecs(Registry &registry, float dt) {
 
   // Respawn food using FoodRespawnSystem
   food_respawn_system_.set_step(current_step_);
-  food_respawn_system_.update(registry, dt);
+  food_respawn_system_.update(registry);
 
   // Apply movement and boundary conditions using MovementSystem
   {
     MOONAI_PROFILE_SCOPE("boundary_apply");
-    movement_system_.update(registry, dt);
+    movement_system_.update(registry);
   }
 
   process_step_deaths_ecs(registry);
@@ -334,6 +337,161 @@ void SimulationManager::count_alive_ecs(const Registry &registry) {
 void SimulationManager::refresh_state_ecs(Registry &registry) {
   rebuild_spatial_grid_ecs(registry);
   count_alive_ecs(registry);
+}
+
+SimulationManager::~SimulationManager() = default;
+
+void SimulationManager::enable_gpu(bool enable) {
+  gpu_enabled_ = enable;
+  if (enable && !gpu_batch_) {
+    // Estimate max entities (predators + prey + food) * 6 for safety margin
+    size_t max_entities = static_cast<size_t>(
+        (config_.predator_count + config_.prey_count + config_.food_count) * 6);
+    gpu_batch_ = std::make_unique<gpu::GpuBatchECS>(max_entities);
+    spdlog::info("GPU batch processing enabled with capacity {}", max_entities);
+  } else if (!enable) {
+    gpu_batch_.reset();
+    spdlog::info("GPU batch processing disabled");
+  }
+}
+
+void SimulationManager::step_gpu_ecs(Registry &registry,
+                                     EvolutionManager &evolution) {
+  MOONAI_PROFILE_SCOPE("simulation_step_gpu");
+  last_events_.clear();
+
+  if (!gpu_batch_ || !gpu_batch_->ok()) {
+    spdlog::error(
+        "GPU batch not initialized or in error state, falling back to CPU");
+    step_ecs(registry);
+    return;
+  }
+
+  // 1. Prepare GPU buffers - pack ECS data
+  size_t count = 0;
+  try {
+    count = gpu::prepare_ecs_for_gpu(registry, gpu_batch_->mapping(),
+                                     gpu_batch_->buffer());
+  } catch (const std::exception &ex) {
+    spdlog::error("GPU preparation failed: {}. Falling back to CPU step.",
+                  ex.what());
+    gpu_enabled_ = false;
+    step_ecs(registry);
+    return;
+  }
+  if (count == 0) {
+    return;
+  }
+
+  // 2. Upload to GPU
+  gpu_batch_->upload_async(count);
+
+  // 3. Build sensors + inference + vitals/combat on current positions
+  gpu::GpuStepParams params;
+  params.world_width = static_cast<float>(config_.grid_size);
+  params.world_height = static_cast<float>(config_.grid_size);
+  params.has_walls = (config_.boundary_mode == BoundaryMode::Clamp);
+  params.energy_drain_per_step = config_.energy_drain_per_step;
+  params.vision_range = config_.vision_range;
+  params.max_energy = static_cast<float>(config_.initial_energy);
+  params.max_age = config_.max_steps;
+  params.food_pickup_range = config_.food_pickup_range;
+  params.attack_range = config_.attack_range;
+  params.energy_gain_from_food =
+      static_cast<float>(config_.energy_gain_from_food);
+  params.energy_gain_from_kill =
+      static_cast<float>(config_.energy_gain_from_kill);
+  params.food_respawn_rate = config_.food_respawn_rate;
+  params.seed = rng_.seed();
+  params.step_index = current_step_;
+
+  gpu_batch_->launch_build_sensors_async(params, count);
+  evolution.launch_gpu_neural(*gpu_batch_, count);
+  gpu_batch_->launch_update_vitals_async(params, count);
+  gpu_batch_->launch_process_combat_async(params, count);
+
+  // 4. Download intermediate results from GPU
+  gpu_batch_->download_async(count);
+  gpu_batch_->synchronize();
+  if (!gpu_batch_->ok()) {
+    spdlog::error("GPU step failed, disabling GPU path and retrying on CPU");
+    gpu_enabled_ = false;
+    gpu_batch_.reset();
+    step_ecs(registry);
+    return;
+  }
+
+  // 5. Unpack results back to ECS
+  gpu::apply_gpu_results(gpu_batch_->buffer(), gpu_batch_->mapping(), registry);
+
+  auto &stats = registry.stats();
+  const auto &positions = registry.positions();
+  for (uint32_t gpu_idx = 0; gpu_idx < count; ++gpu_idx) {
+    Entity entity = gpu_batch_->mapping().entity_at(gpu_idx);
+    if (entity == INVALID_ENTITY) {
+      continue;
+    }
+
+    const size_t ecs_idx = registry.index_of(entity);
+    if (ecs_idx == std::numeric_limits<size_t>::max()) {
+      continue;
+    }
+
+    const uint32_t kills = gpu_batch_->buffer().host_kill_counts()[gpu_idx];
+    if (kills > 0) {
+      stats.kills[ecs_idx] += static_cast<int>(kills);
+    }
+
+    const int killer_gpu_idx = gpu_batch_->buffer().host_killed_by()[gpu_idx];
+    if (killer_gpu_idx >= 0) {
+      Entity killer = gpu_batch_->mapping().entity_at(
+          static_cast<uint32_t>(killer_gpu_idx));
+      Vec2 pos{positions.x[ecs_idx], positions.y[ecs_idx]};
+      last_events_.push_back(SimEvent{SimEvent::Kill, killer, entity,
+                                      INVALID_ENTITY, INVALID_ENTITY, pos});
+    }
+  }
+
+  rebuild_spatial_grid_ecs(registry);
+
+  // 6. CPU-only systems that run before movement
+  process_food_ecs(registry);
+  food_respawn_system_.set_step(current_step_);
+  food_respawn_system_.update(registry);
+
+  // 7. Re-upload updated CPU state and run movement last, matching CPU order.
+  try {
+    count = gpu::prepare_ecs_for_gpu(registry, gpu_batch_->mapping(),
+                                     gpu_batch_->buffer());
+  } catch (const std::exception &ex) {
+    spdlog::error(
+        "GPU movement preparation failed: {}. Falling back to CPU step.",
+        ex.what());
+    gpu_enabled_ = false;
+    step_ecs(registry);
+    return;
+  }
+  gpu_batch_->upload_async(count);
+  gpu_batch_->launch_apply_movement_async(params, count);
+  gpu_batch_->download_async(count);
+  gpu_batch_->synchronize();
+  if (!gpu_batch_->ok()) {
+    spdlog::error(
+        "GPU movement step failed, disabling GPU path and retrying on CPU");
+    gpu_enabled_ = false;
+    gpu_batch_.reset();
+    step_ecs(registry);
+    return;
+  }
+  gpu::apply_gpu_results(gpu_batch_->buffer(), gpu_batch_->mapping(), registry);
+
+  process_step_deaths_ecs(registry);
+
+  // Update alive counters
+  rebuild_spatial_grid_ecs(registry);
+  count_alive_ecs(registry);
+
+  ++current_step_;
 }
 
 } // namespace moonai

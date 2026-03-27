@@ -3,6 +3,7 @@ set(MOONAI_GPU_SOURCES
     gpu_entity_mapping.cpp
     ecs_gpu_packing.cu
     gpu_batch_ecs.cu
+    gpu_network_cache.cu
 )
 
 add_library(moonai_gpu STATIC ${MOONAI_GPU_SOURCES})

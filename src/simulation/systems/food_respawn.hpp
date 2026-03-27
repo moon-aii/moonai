@@ -9,7 +9,7 @@ public:
   FoodRespawnSystem(float world_width, float world_height, float respawn_rate,
                     std::uint64_t seed);
 
-  void update(Registry &registry, float dt) override;
+  void update(Registry &registry) override;
   const char *name() const override {
     return "FoodRespawnSystem";
   }

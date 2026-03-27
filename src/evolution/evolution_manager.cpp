@@ -1,9 +1,12 @@
 #include "evolution/evolution_manager.hpp"
 #include "core/profiler_macros.hpp"
 #include "evolution/crossover.hpp"
+#include "gpu/gpu_batch_ecs.hpp"
+#include "gpu/gpu_network_cache.hpp"
 #include "simulation/registry.hpp"
 
 #include <algorithm>
+#include <spdlog/spdlog.h>
 
 namespace moonai {
 
@@ -275,12 +278,8 @@ void EvolutionManager::refresh_species_ecs(Registry &registry) {
   }
 }
 
-void EvolutionManager::compute_actions_ecs(Registry &registry,
-                                           std::vector<Vec2> &actions) {
+void EvolutionManager::compute_actions_ecs(Registry &registry) {
   MOONAI_PROFILE_SCOPE("evolution_compute_actions");
-  actions.clear();
-  actions.reserve(registry.size());
-
   const auto &living = registry.living_entities();
 
   std::vector<float> all_inputs;
@@ -300,8 +299,6 @@ void EvolutionManager::compute_actions_ecs(Registry &registry,
 
   for (size_t i = 0; i < living.size(); ++i) {
     Vec2 action{all_outputs[i * 2], all_outputs[i * 2 + 1]};
-    actions.push_back(action);
-
     size_t idx = registry.index_of(living[i]);
     registry.brain().decision_x[idx] = action.x;
     registry.brain().decision_y[idx] = action.y;
@@ -377,6 +374,74 @@ void EvolutionManager::get_fitness_by_type_ecs(const Registry &registry,
   if (prey_count > 0) {
     avg_prey = prey_sum / static_cast<float>(prey_count);
   }
+}
+
+void EvolutionManager::enable_gpu(bool use_gpu) {
+  use_gpu_ = use_gpu;
+  if (use_gpu_ && !gpu_network_cache_) {
+    gpu_network_cache_ = std::make_unique<gpu::GpuNetworkCache>();
+    gpu_network_cache_->invalidate();
+    spdlog::info("GPU neural inference enabled");
+  } else if (!use_gpu_) {
+    gpu_network_cache_.reset();
+    spdlog::info("GPU neural inference disabled");
+  }
+}
+
+void EvolutionManager::launch_gpu_neural(gpu::GpuBatchECS &gpu_batch,
+                                         std::size_t agent_count) {
+  MOONAI_PROFILE_SCOPE("gpu_neural_inference");
+
+  if (!gpu_network_cache_) {
+    spdlog::error("GPU neural cache not initialized");
+    return;
+  }
+
+  // Get entities from GPU mapping (in GPU buffer order) and filter to only
+  // those with networks. Also collect their GPU buffer indices.
+  std::vector<std::pair<Entity, int>> network_entities_with_indices;
+  network_entities_with_indices.reserve(agent_count);
+
+  for (uint32_t gpu_idx = 0; gpu_idx < agent_count; ++gpu_idx) {
+    Entity e = gpu_batch.mapping().entity_at(gpu_idx);
+    if (e != INVALID_ENTITY && network_cache_.has(e)) {
+      network_entities_with_indices.emplace_back(e, static_cast<int>(gpu_idx));
+    }
+  }
+
+  if (network_entities_with_indices.empty()) {
+    spdlog::warn("No entities with neural networks found in GPU batch");
+    return;
+  }
+
+  if (network_cache_.gpu_cache_dirty()) {
+    gpu_network_cache_->invalidate();
+  }
+
+  // Rebuild GPU cache if networks changed
+  if (gpu_network_cache_->is_dirty() || network_cache_.gpu_cache_dirty() ||
+      gpu_network_cache_->entity_mapping().size() !=
+          network_entities_with_indices.size() ||
+      !std::equal(
+          gpu_network_cache_->entity_mapping().begin(),
+          gpu_network_cache_->entity_mapping().end(),
+          network_entities_with_indices.begin(),
+          network_entities_with_indices.end(),
+          [](Entity entity, const std::pair<Entity, int> &entity_with_index) {
+            return entity == entity_with_index.first;
+          })) {
+    spdlog::debug("Rebuilding GPU network cache for {} network entities",
+                  network_entities_with_indices.size());
+    gpu_network_cache_->build_from(network_cache_,
+                                   network_entities_with_indices);
+    network_cache_.clear_gpu_cache_dirty();
+  }
+
+  // Launch kernel - only for entities with networks
+  gpu_network_cache_->launch_inference_async(
+      gpu_batch.buffer().device_sensor_inputs(),
+      gpu_batch.buffer().device_brain_outputs(),
+      network_entities_with_indices.size(), gpu_batch.stream());
 }
 
 } // namespace moonai

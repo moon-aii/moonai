@@ -8,7 +8,7 @@ public:
   EnergySystem(float predator_energy_cost, float prey_energy_cost,
                float max_age, float max_energy);
 
-  void update(Registry &registry, float dt) override;
+  void update(Registry &registry) override;
   const char *name() const override {
     return "EnergySystem";
   }

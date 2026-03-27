@@ -10,7 +10,7 @@ public:
   SensorSystem(const SpatialGridECS &agent_grid, float world_width,
                float world_height, float max_energy, bool has_walls);
 
-  void update(Registry &registry, float dt) override;
+  void update(Registry &registry) override;
   const char *name() const override {
     return "SensorSystem";
   }

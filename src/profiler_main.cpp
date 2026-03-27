@@ -220,7 +220,7 @@ nlohmann::json Profiler::finish_run(std::int64_t run_total_ns) {
 namespace {
 
 struct Args {
-  int frames = 600;
+  int frames = 200;
   std::vector<std::uint64_t> seeds = {41, 42, 43, 44, 45, 46};
   std::string output_dir = "output/profiles";
   std::string experiment_name = "profile";
@@ -290,7 +290,7 @@ RunResult run_profiler(const std::string &experiment_name,
   session_cfg.sim_config =
       SimulationConfig(); // default config (output_dir = "output")
   session_cfg.sim_config.seed = seed;
-  // Run for specified number of frames (each frame is ~1 step in GUI mode)
+  // Run for specified number of frames with one simulation step per frame.
   session_cfg.sim_config.max_steps = frames;
   session_cfg.experiment_name = experiment_name;
   session_cfg.headless = false; // Profiler always uses GUI mode

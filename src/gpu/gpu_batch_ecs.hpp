@@ -14,12 +14,13 @@ namespace moonai {
 namespace gpu {
 
 struct GpuStepParams {
-  float dt = 0.0f;
   float world_width = 0.0f;
   float world_height = 0.0f;
   bool has_walls = false;
   float energy_drain_per_step = 0.0f;
+  float vision_range = 120.0f;
   float max_energy = 150.0f;
+  int max_age = 0;
   float food_pickup_range = 12.0f;
   float attack_range = 20.0f;
   float energy_gain_from_food = 40.0f;
@@ -56,6 +57,17 @@ public:
   void launch_full_step_async(const GpuStepParams &params,
                               std::size_t agent_count);
 
+  // Individual kernel launches for fine-grained control (allows neural
+  // inference delegation)
+  void launch_build_sensors_async(const GpuStepParams &params,
+                                  std::size_t agent_count);
+  void launch_update_vitals_async(const GpuStepParams &params,
+                                  std::size_t agent_count);
+  void launch_apply_movement_async(const GpuStepParams &params,
+                                   std::size_t agent_count);
+  void launch_process_combat_async(const GpuStepParams &params,
+                                   std::size_t agent_count);
+
   void upload_async(std::size_t agent_count);
 
   void download_async(std::size_t agent_count);
@@ -79,25 +91,36 @@ private:
 
   void init_cuda_resources();
   void cleanup_cuda_resources();
+  void mark_error();
+  void check_launch_error();
 };
 
 void launch_build_sensors_kernel(const float *d_pos_x, const float *d_pos_y,
-                                 const uint8_t *d_types, const float *d_energy,
+                                 const float *d_vel_x, const float *d_vel_y,
+                                 const float *d_speed, const uint8_t *d_types,
+                                 const uint32_t *d_alive, const float *d_energy,
                                  float *d_sensor_inputs, std::size_t count,
                                  float world_width, float world_height,
-                                 float max_energy, bool has_walls,
-                                 cudaStream_t stream);
+                                 float vision_range, float max_energy,
+                                 bool has_walls, cudaStream_t stream);
 
 void launch_apply_movement_kernel(
     float *d_pos_x, float *d_pos_y, float *d_vel_x, float *d_vel_y,
-    float *d_energy, uint8_t *d_alive, const float *d_sensor_inputs,
-    const float *d_brain_outputs, std::size_t count, float dt,
-    float world_width, float world_height, bool has_walls, float energy_drain,
-    float max_energy, cudaStream_t stream);
+    const float *d_speed, uint32_t *d_alive, const uint8_t *d_types,
+    float *d_distance_traveled, const float *d_brain_outputs, std::size_t count,
+    float world_width, float world_height, bool has_walls, cudaStream_t stream);
+
+void launch_update_vitals_kernel(float *d_energy, int *d_age,
+                                 int *d_reproduction_cooldown,
+                                 uint32_t *d_alive, const uint8_t *d_types,
+                                 std::size_t count, float energy_drain,
+                                 int max_age, float max_energy,
+                                 cudaStream_t stream);
 
 void launch_process_combat_kernel(const float *d_pos_x, const float *d_pos_y,
                                   const uint8_t *d_types, float *d_energy,
-                                  uint8_t *d_alive, float attack_range,
+                                  uint32_t *d_alive, uint32_t *d_kill_counts,
+                                  int *d_killed_by, float attack_range,
                                   float energy_gain, std::size_t count,
                                   cudaStream_t stream);
 
