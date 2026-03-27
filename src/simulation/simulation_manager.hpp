@@ -12,7 +12,6 @@
 
 #include <cstddef>
 #include <functional>
-#include <memory>
 #include <vector>
 
 namespace moonai {
@@ -92,11 +91,11 @@ private:
   int alive_predators_ = 0;
   int alive_prey_ = 0;
 
-  std::unique_ptr<SensorSystem> sensor_system_;
-  std::unique_ptr<EnergySystem> energy_system_;
-  std::unique_ptr<MovementSystem> movement_system_;
-  std::unique_ptr<CombatSystem> combat_system_;
-  std::unique_ptr<FoodRespawnSystem> food_respawn_system_;
+  SensorSystem sensor_system_;
+  EnergySystem energy_system_;
+  MovementSystem movement_system_;
+  CombatSystem combat_system_;
+  FoodRespawnSystem food_respawn_system_;
 };
 
 } // namespace moonai

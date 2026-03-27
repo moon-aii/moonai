@@ -25,24 +25,21 @@ SimulationManager::SimulationManager(const SimulationConfig &config)
                                                 .time_since_epoch()
                                                 .count())),
       grid_(config.grid_size, config.grid_size,
-            std::max(config.vision_range, 1.0f)) {
-  // Initialize ECS systems
-  bool has_walls = (config.boundary_mode == BoundaryMode::Clamp);
-  sensor_system_ = std::make_unique<SensorSystem>(
-      grid_, static_cast<float>(config.grid_size),
-      static_cast<float>(config.grid_size), config.initial_energy, has_walls);
-  energy_system_ = std::make_unique<EnergySystem>(
-      config.energy_drain_per_step, config.energy_drain_per_step,
-      static_cast<float>(config.max_steps), config.initial_energy);
-  movement_system_ = std::make_unique<MovementSystem>(
-      static_cast<float>(config.grid_size),
-      static_cast<float>(config.grid_size), has_walls);
-  combat_system_ = std::make_unique<CombatSystem>(grid_, config.attack_range);
-  food_respawn_system_ = std::make_unique<FoodRespawnSystem>(
-      static_cast<float>(config.grid_size),
-      static_cast<float>(config.grid_size), config.food_respawn_rate,
-      config.seed);
-}
+            std::max(config.vision_range, 1.0f)),
+      sensor_system_(grid_, static_cast<float>(config.grid_size),
+                     static_cast<float>(config.grid_size),
+                     config.initial_energy,
+                     config.boundary_mode == BoundaryMode::Clamp),
+      energy_system_(config.energy_drain_per_step, config.energy_drain_per_step,
+                     static_cast<float>(config.max_steps),
+                     config.initial_energy),
+      movement_system_(static_cast<float>(config.grid_size),
+                       static_cast<float>(config.grid_size),
+                       config.boundary_mode == BoundaryMode::Clamp),
+      combat_system_(grid_, config.attack_range),
+      food_respawn_system_(static_cast<float>(config.grid_size),
+                           static_cast<float>(config.grid_size),
+                           config.food_respawn_rate, config.seed) {}
 
 void SimulationManager::initialize() {
   initialize(true);
@@ -70,49 +67,41 @@ void SimulationManager::step_ecs(Registry &registry, float dt) {
 
   // Update sensor inputs for all agents (must happen before
   // compute_actions_ecs)
-  if (sensor_system_) {
-    sensor_system_->update(registry, dt);
-  }
+  sensor_system_.update(registry, dt);
 
   // Process interactions using EnergySystem
-  if (energy_system_) {
-    energy_system_->update(registry, dt);
-  }
+  energy_system_.update(registry, dt);
   process_food_ecs(registry);
 
   // Process combat using CombatSystem
-  if (combat_system_) {
-    combat_system_->update(registry, dt);
+  combat_system_.update(registry, dt);
 
-    // Convert kill events to SimEvents
-    for (const auto &kill : combat_system_->kill_events()) {
-      size_t victim_idx = registry.index_of(kill.victim);
-      const auto &positions = registry.positions();
-      Vec2 pos{positions.x[victim_idx], positions.y[victim_idx]};
+  // Convert kill events to SimEvents
+  for (const auto &kill : combat_system_.kill_events()) {
+    size_t victim_idx = registry.index_of(kill.victim);
+    const auto &positions = registry.positions();
+    Vec2 pos{positions.x[victim_idx], positions.y[victim_idx]};
 
-      // Reward the predator with energy
-      size_t killer_idx = registry.index_of(kill.killer);
-      auto &vitals = registry.vitals();
-      auto &stats = registry.stats();
-      vitals.energy[killer_idx] += config_.energy_gain_from_kill;
-      stats.kills[killer_idx]++;
+    // Reward the predator with energy
+    size_t killer_idx = registry.index_of(kill.killer);
+    auto &vitals = registry.vitals();
+    auto &stats = registry.stats();
+    vitals.energy[killer_idx] += config_.energy_gain_from_kill;
+    stats.kills[killer_idx]++;
 
-      last_events_.push_back(SimEvent{SimEvent::Kill, kill.killer, kill.victim,
-                                      INVALID_ENTITY, INVALID_ENTITY, pos});
-    }
-    combat_system_->clear_events();
+    last_events_.push_back(SimEvent{SimEvent::Kill, kill.killer, kill.victim,
+                                    INVALID_ENTITY, INVALID_ENTITY, pos});
   }
+  combat_system_.clear_events();
 
   // Respawn food using FoodRespawnSystem
-  if (food_respawn_system_) {
-    food_respawn_system_->set_step(current_step_);
-    food_respawn_system_->update(registry, dt);
-  }
+  food_respawn_system_.set_step(current_step_);
+  food_respawn_system_.update(registry, dt);
 
   // Apply movement and boundary conditions using MovementSystem
-  if (movement_system_) {
+  {
     MOONAI_PROFILE_SCOPE("boundary_apply");
-    movement_system_->update(registry, dt);
+    movement_system_.update(registry, dt);
   }
 
   process_step_deaths_ecs(registry);
