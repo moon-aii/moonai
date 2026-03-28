@@ -208,7 +208,7 @@ private:
   std::size_t agent_capacity_;
   std::size_t food_capacity_;
 
-  static constexpr int kSensorInputsPerEntity = 15;
+  static constexpr int kSensorInputsPerEntity = 12;
   static constexpr int kBrainOutputsPerEntity = 2;
 };
 

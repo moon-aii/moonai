@@ -54,7 +54,7 @@ public:
              const std::vector<std::pair<Entity, int>> &entities_with_indices);
 
   // Launch neural inference kernel
-  // d_sensor_inputs: [entity_count][15] floats
+  // d_sensor_inputs: [entity_count][12] floats
   // d_brain_outputs: [entity_count][2] floats
   void launch_inference_async(const float *d_sensor_inputs,
                               float *d_brain_outputs, std::size_t count,

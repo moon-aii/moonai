@@ -68,7 +68,7 @@ struct IdentitySoA {
 };
 
 struct SensorSoA {
-  static constexpr int INPUT_COUNT = 15;
+  static constexpr int INPUT_COUNT = 12;
   static constexpr int OUTPUT_COUNT = 2;
 
   std::vector<float> inputs;

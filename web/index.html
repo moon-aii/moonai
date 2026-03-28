@@ -1332,8 +1332,10 @@ just run</code></pre>
                                 <p>
                                     The simulation operates within a deterministic, time-stepped 2D world. This virtual 
                                     ecosystem imposes selective pressures on agents—predators and prey—with configurable 
-                                    attributes including speed, vision, stamina, and reproduction rates, facilitating 
-                                    systematic algorithmic evaluation.
+                                    attributes including speed, vision, stamina, and reproduction rates. Each agent is 
+                                    controlled by a neural network that reads 12 local inputs: nearest predator, prey, and 
+                                    food as wrapped normalized <code>dx, dy</code>, plus energy, velocity, and nearby predator, 
+                                    prey, and food density.
                                 </p>
                             </div>
                             <div class="detail-item">

@@ -11,8 +11,8 @@ namespace gpu {
 
 namespace {
 constexpr int kThreadsPerBlock = 256;
-constexpr float kPi = 3.14159265f;
 constexpr float kMaxDensity = 10.0f;
+constexpr float kMissingTargetSentinel = 2.0f;
 constexpr int kUnclaimed = 0x7f7f7f7f;
 
 __device__ float clampf(float value, float min_value, float max_value) {
@@ -29,10 +29,6 @@ __device__ void apply_wrap(float &dx, float &dy, float world_width,
   if (fabsf(dy) > half_height) {
     dy = dy > 0.0f ? dy - world_height : dy + world_height;
   }
-}
-
-__device__ float normalize_angle(float dx, float dy) {
-  return atan2f(dy, dx) / kPi;
 }
 
 __global__ void kernel_build_sensors(
@@ -52,22 +48,19 @@ __global__ void kernel_build_sensors(
     return;
   }
 
-  float *out = sensor_inputs + idx * 15;
-  out[0] = -1.0f;
-  out[1] = 0.0f;
-  out[2] = -1.0f;
-  out[3] = 0.0f;
-  out[4] = -1.0f;
-  out[5] = 0.0f;
-  out[6] = 1.0f;
+  float *out = sensor_inputs + idx * 12;
+  out[0] = kMissingTargetSentinel;
+  out[1] = kMissingTargetSentinel;
+  out[2] = kMissingTargetSentinel;
+  out[3] = kMissingTargetSentinel;
+  out[4] = kMissingTargetSentinel;
+  out[5] = kMissingTargetSentinel;
+  out[6] = 0.0f;
   out[7] = 0.0f;
   out[8] = 0.0f;
   out[9] = 0.0f;
   out[10] = 0.0f;
-  out[11] = 1.0f;
-  out[12] = 1.0f;
-  out[13] = 1.0f;
-  out[14] = 1.0f;
+  out[11] = 0.0f;
 
   if (agent_alive[idx] == 0) {
     return;
@@ -88,6 +81,7 @@ __global__ void kernel_build_sensors(
   float food_dy = 0.0f;
   int local_predators = 0;
   int local_prey = 0;
+  int local_food = 0;
 
   for (int other = 0; other < agent_count; ++other) {
     if (other == idx || agent_alive[other] == 0) {
@@ -98,7 +92,7 @@ __global__ void kernel_build_sensors(
     float dy = agent_pos_y[other] - self_y;
     apply_wrap(dx, dy, world_width, world_height);
     const float dist_sq = dx * dx + dy * dy;
-    if (dist_sq > vision_sq) {
+    if (dist_sq > vision_sq || dist_sq <= 0.0f) {
       continue;
     }
 
@@ -119,35 +113,38 @@ __global__ void kernel_build_sensors(
     }
   }
 
-  if (agent_types[idx] == 1) {
-    for (int food_idx = 0; food_idx < food_count; ++food_idx) {
-      if (food_active[food_idx] == 0) {
-        continue;
-      }
+  for (int food_idx = 0; food_idx < food_count; ++food_idx) {
+    if (food_active[food_idx] == 0) {
+      continue;
+    }
 
-      float dx = food_pos_x[food_idx] - self_x;
-      float dy = food_pos_y[food_idx] - self_y;
-      apply_wrap(dx, dy, world_width, world_height);
-      const float dist_sq = dx * dx + dy * dy;
-      if (dist_sq <= vision_sq && dist_sq < nearest_food_dist_sq) {
-        nearest_food_dist_sq = dist_sq;
-        food_dx = dx;
-        food_dy = dy;
-      }
+    float dx = food_pos_x[food_idx] - self_x;
+    float dy = food_pos_y[food_idx] - self_y;
+    apply_wrap(dx, dy, world_width, world_height);
+    const float dist_sq = dx * dx + dy * dy;
+    if (dist_sq > vision_sq) {
+      continue;
+    }
+
+    ++local_food;
+    if (dist_sq < nearest_food_dist_sq) {
+      nearest_food_dist_sq = dist_sq;
+      food_dx = dx;
+      food_dy = dy;
     }
   }
 
   if (nearest_pred_dist_sq < INFINITY) {
-    out[0] = sqrtf(nearest_pred_dist_sq) / vision_range;
-    out[1] = normalize_angle(pred_dx, pred_dy);
+    out[0] = clampf(pred_dx / vision_range, -1.0f, 1.0f);
+    out[1] = clampf(pred_dy / vision_range, -1.0f, 1.0f);
   }
   if (nearest_prey_dist_sq < INFINITY) {
-    out[2] = sqrtf(nearest_prey_dist_sq) / vision_range;
-    out[3] = normalize_angle(prey_dx, prey_dy);
+    out[2] = clampf(prey_dx / vision_range, -1.0f, 1.0f);
+    out[3] = clampf(prey_dy / vision_range, -1.0f, 1.0f);
   }
   if (nearest_food_dist_sq < INFINITY) {
-    out[4] = sqrtf(nearest_food_dist_sq) / vision_range;
-    out[5] = normalize_angle(food_dx, food_dy);
+    out[4] = clampf(food_dx / vision_range, -1.0f, 1.0f);
+    out[5] = clampf(food_dy / vision_range, -1.0f, 1.0f);
   }
 
   out[6] = clampf(agent_energy[idx] / (max_energy * 2.0f), 0.0f, 1.0f);
@@ -157,6 +154,7 @@ __global__ void kernel_build_sensors(
   }
   out[9] = clampf(static_cast<float>(local_predators) / kMaxDensity, 0.0f, 1.0f);
   out[10] = clampf(static_cast<float>(local_prey) / kMaxDensity, 0.0f, 1.0f);
+  out[11] = clampf(static_cast<float>(local_food) / kMaxDensity, 0.0f, 1.0f);
 }
 
 __global__ void kernel_update_vitals(float *__restrict__ agent_energy,

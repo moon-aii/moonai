@@ -16,8 +16,8 @@
 namespace moonai {
 
 namespace {
-constexpr float kPi = 3.14159265f;
 constexpr float kMaxDensity = 10.0f;
+constexpr float kMissingTargetSentinel = 2.0f;
 
 Vec2 wrap_diff(Vec2 diff, float world_width, float world_height) {
   if (std::abs(diff.x) > world_width * 0.5f) {
@@ -29,10 +29,6 @@ Vec2 wrap_diff(Vec2 diff, float world_width, float world_height) {
   return diff;
 }
 
-float normalize_angle(float dx, float dy) {
-  return std::atan2(dy, dx) / kPi;
-}
-
 void build_sensors(PackedStepState &state, const SimulationConfig &config) {
   const float world_size = static_cast<float>(config.grid_size);
   const float vision = config.vision_range;
@@ -40,21 +36,18 @@ void build_sensors(PackedStepState &state, const SimulationConfig &config) {
 
   for (std::size_t i = 0; i < state.agents.size(); ++i) {
     float *sensor_ptr = state.agents.sensor_ptr(i);
-    sensor_ptr[0] = -1.0f;
-    sensor_ptr[1] = 0.0f;
-    sensor_ptr[2] = -1.0f;
-    sensor_ptr[3] = 0.0f;
-    sensor_ptr[4] = -1.0f;
-    sensor_ptr[5] = 0.0f;
-    sensor_ptr[6] = 1.0f;
+    sensor_ptr[0] = kMissingTargetSentinel;
+    sensor_ptr[1] = kMissingTargetSentinel;
+    sensor_ptr[2] = kMissingTargetSentinel;
+    sensor_ptr[3] = kMissingTargetSentinel;
+    sensor_ptr[4] = kMissingTargetSentinel;
+    sensor_ptr[5] = kMissingTargetSentinel;
+    sensor_ptr[6] = 0.0f;
     sensor_ptr[7] = 0.0f;
     sensor_ptr[8] = 0.0f;
     sensor_ptr[9] = 0.0f;
     sensor_ptr[10] = 0.0f;
-    sensor_ptr[11] = 1.0f;
-    sensor_ptr[12] = 1.0f;
-    sensor_ptr[13] = 1.0f;
-    sensor_ptr[14] = 1.0f;
+    sensor_ptr[11] = 0.0f;
 
     if (!state.agents.alive[i]) {
       continue;
@@ -69,6 +62,7 @@ void build_sensors(PackedStepState &state, const SimulationConfig &config) {
     Vec2 nearest_food_dir{0.0f, 0.0f};
     int local_predators = 0;
     int local_prey = 0;
+    int local_food = 0;
 
     for (std::size_t other = 0; other < state.agents.size(); ++other) {
       if (other == i || !state.agents.alive[other]) {
@@ -79,7 +73,7 @@ void build_sensors(PackedStepState &state, const SimulationConfig &config) {
                              state.agents.pos_y[other] - pos.y},
                             world_size, world_size);
       const float dist_sq = diff.x * diff.x + diff.y * diff.y;
-      if (dist_sq > vision_sq) {
+      if (dist_sq > vision_sq || dist_sq <= 0.0f) {
         continue;
       }
 
@@ -98,35 +92,37 @@ void build_sensors(PackedStepState &state, const SimulationConfig &config) {
       }
     }
 
-    if (state.agents.type[i] == IdentitySoA::TYPE_PREY) {
-      for (std::size_t food_idx = 0; food_idx < state.foods.size();
-           ++food_idx) {
-        if (!state.foods.active[food_idx]) {
-          continue;
-        }
+    for (std::size_t food_idx = 0; food_idx < state.foods.size(); ++food_idx) {
+      if (!state.foods.active[food_idx]) {
+        continue;
+      }
 
-        Vec2 diff = wrap_diff({state.foods.pos_x[food_idx] - pos.x,
-                               state.foods.pos_y[food_idx] - pos.y},
-                              world_size, world_size);
-        const float dist_sq = diff.x * diff.x + diff.y * diff.y;
-        if (dist_sq <= vision_sq && dist_sq < nearest_food_dist_sq) {
-          nearest_food_dist_sq = dist_sq;
-          nearest_food_dir = diff;
-        }
+      Vec2 diff = wrap_diff({state.foods.pos_x[food_idx] - pos.x,
+                             state.foods.pos_y[food_idx] - pos.y},
+                            world_size, world_size);
+      const float dist_sq = diff.x * diff.x + diff.y * diff.y;
+      if (dist_sq > vision_sq) {
+        continue;
+      }
+
+      ++local_food;
+      if (dist_sq < nearest_food_dist_sq) {
+        nearest_food_dist_sq = dist_sq;
+        nearest_food_dir = diff;
       }
     }
 
     if (nearest_pred_dist_sq < std::numeric_limits<float>::max()) {
-      sensor_ptr[0] = std::sqrt(nearest_pred_dist_sq) / vision;
-      sensor_ptr[1] = normalize_angle(nearest_pred_dir.x, nearest_pred_dir.y);
+      sensor_ptr[0] = std::clamp(nearest_pred_dir.x / vision, -1.0f, 1.0f);
+      sensor_ptr[1] = std::clamp(nearest_pred_dir.y / vision, -1.0f, 1.0f);
     }
     if (nearest_prey_dist_sq < std::numeric_limits<float>::max()) {
-      sensor_ptr[2] = std::sqrt(nearest_prey_dist_sq) / vision;
-      sensor_ptr[3] = normalize_angle(nearest_prey_dir.x, nearest_prey_dir.y);
+      sensor_ptr[2] = std::clamp(nearest_prey_dir.x / vision, -1.0f, 1.0f);
+      sensor_ptr[3] = std::clamp(nearest_prey_dir.y / vision, -1.0f, 1.0f);
     }
     if (nearest_food_dist_sq < std::numeric_limits<float>::max()) {
-      sensor_ptr[4] = std::sqrt(nearest_food_dist_sq) / vision;
-      sensor_ptr[5] = normalize_angle(nearest_food_dir.x, nearest_food_dir.y);
+      sensor_ptr[4] = std::clamp(nearest_food_dir.x / vision, -1.0f, 1.0f);
+      sensor_ptr[5] = std::clamp(nearest_food_dir.y / vision, -1.0f, 1.0f);
     }
 
     sensor_ptr[6] =
@@ -143,6 +139,8 @@ void build_sensors(PackedStepState &state, const SimulationConfig &config) {
         static_cast<float>(local_predators) / kMaxDensity, 0.0f, 1.0f);
     sensor_ptr[10] =
         std::clamp(static_cast<float>(local_prey) / kMaxDensity, 0.0f, 1.0f);
+    sensor_ptr[11] =
+        std::clamp(static_cast<float>(local_food) / kMaxDensity, 0.0f, 1.0f);
   }
 }
 

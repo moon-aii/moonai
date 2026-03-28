@@ -67,7 +67,7 @@ __global__ void kernel_neural_inference(
   }
 
   // 2. Set sensor inputs (from GPU buffer index)
-  const float *my_inputs = sensor_inputs + gpu_idx * 15;
+  const float *my_inputs = sensor_inputs + gpu_idx * 12;
   for (int i = 0; i < desc.num_inputs; ++i) {
     my_nodes[i] = my_inputs[i];
   }
