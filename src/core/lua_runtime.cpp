@@ -136,54 +136,6 @@ void inject_defaults(sol::state &lua) {
   lua["moonai_defaults"] = t;
 }
 
-sol::table config_to_table(sol::state &lua, const SimulationConfig &c) {
-  sol::table t = lua.create_table();
-  t["grid_size"] = c.grid_size;
-  t["predator_count"] = c.predator_count;
-  t["prey_count"] = c.prey_count;
-  t["predator_speed"] = c.predator_speed;
-  t["prey_speed"] = c.prey_speed;
-  t["vision_range"] = c.vision_range;
-  t["attack_range"] = c.attack_range;
-  t["initial_energy"] = c.initial_energy;
-  t["energy_drain_per_step"] = c.energy_drain_per_step;
-  t["energy_gain_from_kill"] = c.energy_gain_from_kill;
-  t["energy_gain_from_food"] = c.energy_gain_from_food;
-  t["food_pickup_range"] = c.food_pickup_range;
-  t["food_count"] = c.food_count;
-  t["food_respawn_rate"] = c.food_respawn_rate;
-  t["mutation_rate"] = c.mutation_rate;
-  t["crossover_rate"] = c.crossover_rate;
-  t["weight_mutation_power"] = c.weight_mutation_power;
-  t["add_node_rate"] = c.add_node_rate;
-  t["add_connection_rate"] = c.add_connection_rate;
-  t["delete_connection_rate"] = c.delete_connection_rate;
-  t["max_hidden_nodes"] = c.max_hidden_nodes;
-  t["max_steps"] = c.max_steps;
-  t["compatibility_threshold"] = c.compatibility_threshold;
-  t["c1_excess"] = c.c1_excess;
-  t["c2_disjoint"] = c.c2_disjoint;
-  t["c3_weight"] = c.c3_weight;
-  t["species_update_interval_steps"] = c.species_update_interval_steps;
-  t["seed"] = static_cast<double>(c.seed);
-  t["output_dir"] = c.output_dir;
-  t["report_interval_steps"] = c.report_interval_steps;
-  t["mate_range"] = c.mate_range;
-  t["reproduction_energy_threshold"] = c.reproduction_energy_threshold;
-  t["reproduction_energy_cost"] = c.reproduction_energy_cost;
-  t["offspring_initial_energy"] = c.offspring_initial_energy;
-  t["min_reproductive_age_steps"] = c.min_reproductive_age_steps;
-  t["reproduction_cooldown_steps"] = c.reproduction_cooldown_steps;
-  t["birth_spawn_radius"] = c.birth_spawn_radius;
-  t["fitness_survival_weight"] = c.fitness_survival_weight;
-  t["fitness_kill_weight"] = c.fitness_kill_weight;
-  t["fitness_energy_weight"] = c.fitness_energy_weight;
-  t["fitness_distance_weight"] = c.fitness_distance_weight;
-  t["complexity_penalty_weight"] = c.complexity_penalty_weight;
-  t["activation_function"] = c.activation_function;
-  return t;
-}
-
 } // anonymous namespace
 
 std::map<std::string, SimulationConfig>
@@ -196,18 +148,6 @@ load_all_configs_lua(const std::string &filepath) {
 
 struct LuaRuntime::Impl {
   sol::state lua;
-
-  struct ExperimentFunctions {
-    LuaCallbacks flags;
-    sol::protected_function fitness_fn;
-    sol::protected_function on_report_window_end;
-    sol::protected_function on_experiment_start;
-    sol::protected_function on_experiment_end;
-  };
-
-  std::map<std::string, ExperimentFunctions> experiment_fns;
-  std::string selected;
-  LuaCallbacks empty_callbacks; // returned when no experiment selected
 };
 
 // ── Lifecycle ────────────────────────────────────────────────────────────────
@@ -252,35 +192,6 @@ LuaRuntime::load_config(const std::string &filepath) {
       sol::table exp_tbl = val.as<sol::table>();
 
       configs[name] = table_to_config(exp_tbl);
-
-      // Extract Lua callback functions from the experiment table
-      Impl::ExperimentFunctions ef;
-
-      auto fit = exp_tbl["fitness_fn"];
-      if (fit.valid() && fit.get_type() == sol::type::function) {
-        ef.fitness_fn = fit.get<sol::protected_function>();
-        ef.flags.has_fitness_fn = true;
-      }
-
-      auto window_end = exp_tbl["on_report_window_end"];
-      if (window_end.valid() && window_end.get_type() == sol::type::function) {
-        ef.on_report_window_end = window_end.get<sol::protected_function>();
-        ef.flags.has_on_report_window_end = true;
-      }
-
-      auto exp_start = exp_tbl["on_experiment_start"];
-      if (exp_start.valid() && exp_start.get_type() == sol::type::function) {
-        ef.on_experiment_start = exp_start.get<sol::protected_function>();
-        ef.flags.has_on_experiment_start = true;
-      }
-
-      auto exp_end = exp_tbl["on_experiment_end"];
-      if (exp_end.valid() && exp_end.get_type() == sol::type::function) {
-        ef.on_experiment_end = exp_end.get<sol::protected_function>();
-        ef.flags.has_on_experiment_end = true;
-      }
-
-      impl_->experiment_fns[name] = std::move(ef);
     }
 
     if (configs.empty()) {
@@ -296,144 +207,4 @@ LuaRuntime::load_config(const std::string &filepath) {
 
   return configs;
 }
-
-void LuaRuntime::select_experiment(const std::string &name) {
-  impl_->selected = name;
-  if (impl_->experiment_fns.count(name)) {
-    const auto &flags = impl_->experiment_fns[name].flags;
-    if (flags.has_fitness_fn)
-      spdlog::info("Lua fitness_fn active for '{}'", name);
-    if (flags.has_on_report_window_end)
-      spdlog::info("Lua on_report_window_end hook active for '{}'", name);
-    if (flags.has_on_experiment_start)
-      spdlog::info("Lua on_experiment_start hook active for '{}'", name);
-    if (flags.has_on_experiment_end)
-      spdlog::info("Lua on_experiment_end hook active for '{}'", name);
-  }
-}
-
-const LuaCallbacks &LuaRuntime::callbacks() const {
-  auto it = impl_->experiment_fns.find(impl_->selected);
-  if (it != impl_->experiment_fns.end()) {
-    return it->second.flags;
-  }
-  return impl_->empty_callbacks;
-}
-
-// ── Lua fitness function ─────────────────────────────────────────────────────
-
-float LuaRuntime::call_fitness(float age_ratio, float kills_or_food,
-                               float energy_ratio, float alive_bonus,
-                               float dist_ratio, float complexity,
-                               const SimulationConfig &config) {
-  auto it = impl_->experiment_fns.find(impl_->selected);
-  if (it == impl_->experiment_fns.end() || !it->second.flags.has_fitness_fn)
-    return -1.0f; // sentinel: caller should use default formula
-
-  auto &lua = impl_->lua;
-  sol::table stats = lua.create_table();
-  stats["age_ratio"] = age_ratio;
-  stats["kills_or_food"] = kills_or_food;
-  stats["energy_ratio"] = energy_ratio;
-  stats["alive_bonus"] = alive_bonus;
-  stats["dist_ratio"] = dist_ratio;
-  stats["complexity"] = complexity;
-
-  sol::table weights = lua.create_table();
-  weights["survival"] = config.fitness_survival_weight;
-  weights["kill"] = config.fitness_kill_weight;
-  weights["energy"] = config.fitness_energy_weight;
-  weights["distance"] = config.fitness_distance_weight;
-  weights["complexity_penalty"] = config.complexity_penalty_weight;
-
-  auto result = it->second.fitness_fn(stats, weights);
-  if (!result.valid()) {
-    sol::error err = result;
-    spdlog::error("Lua fitness_fn error: {}", err.what());
-    return 0.0f;
-  }
-  return std::max(0.0f, result.get<float>());
-}
-
-// ── Event hooks ──────────────────────────────────────────────────────────────
-
-bool LuaRuntime::call_on_report_window_end(
-    const ReportWindowStats &stats_in,
-    std::map<std::string, float> &overrides) {
-  auto it = impl_->experiment_fns.find(impl_->selected);
-  if (it == impl_->experiment_fns.end() ||
-      !it->second.flags.has_on_report_window_end)
-    return false;
-
-  auto &lua = impl_->lua;
-  sol::table stats = lua.create_table();
-  stats["step"] = stats_in.step;
-  stats["window_index"] = stats_in.window_index;
-  stats["best_fitness"] = stats_in.best_fitness;
-  stats["avg_fitness"] = stats_in.avg_fitness;
-  stats["num_species"] = stats_in.num_species;
-  stats["alive_predators"] = stats_in.alive_predators;
-  stats["alive_prey"] = stats_in.alive_prey;
-  stats["avg_complexity"] = stats_in.avg_complexity;
-
-  auto result = it->second.on_report_window_end(stats_in.step,
-                                                stats_in.window_index, stats);
-  if (!result.valid()) {
-    sol::error err = result;
-    spdlog::error("Lua on_report_window_end error: {}", err.what());
-    return false;
-  }
-
-  sol::object ret = result;
-  if (ret.get_type() != sol::type::table)
-    return false;
-
-  sol::table tbl = ret.as<sol::table>();
-  for (auto &[key, val] : tbl) {
-    if (key.get_type() == sol::type::string &&
-        val.get_type() == sol::type::number) {
-      overrides[key.as<std::string>()] = val.as<float>();
-    }
-  }
-  return !overrides.empty();
-}
-
-void LuaRuntime::call_on_experiment_start(const SimulationConfig &config) {
-  auto it = impl_->experiment_fns.find(impl_->selected);
-  if (it == impl_->experiment_fns.end() ||
-      !it->second.flags.has_on_experiment_start)
-    return;
-
-  sol::table cfg = config_to_table(impl_->lua, config);
-  auto result = it->second.on_experiment_start(cfg);
-  if (!result.valid()) {
-    sol::error err = result;
-    spdlog::error("Lua on_experiment_start error: {}", err.what());
-  }
-}
-
-void LuaRuntime::call_on_experiment_end(const ReportWindowStats &stats_in) {
-  auto it = impl_->experiment_fns.find(impl_->selected);
-  if (it == impl_->experiment_fns.end() ||
-      !it->second.flags.has_on_experiment_end)
-    return;
-
-  auto &lua = impl_->lua;
-  sol::table stats = lua.create_table();
-  stats["step"] = stats_in.step;
-  stats["window_index"] = stats_in.window_index;
-  stats["best_fitness"] = stats_in.best_fitness;
-  stats["avg_fitness"] = stats_in.avg_fitness;
-  stats["num_species"] = stats_in.num_species;
-  stats["alive_predators"] = stats_in.alive_predators;
-  stats["alive_prey"] = stats_in.alive_prey;
-  stats["avg_complexity"] = stats_in.avg_complexity;
-
-  auto result = it->second.on_experiment_end(stats);
-  if (!result.valid()) {
-    sol::error err = result;
-    spdlog::error("Lua on_experiment_end error: {}", err.what());
-  }
-}
-
 } // namespace moonai

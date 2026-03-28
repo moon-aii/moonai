@@ -251,39 +251,6 @@ return experiments
 
 A single-entry file auto-selects without `--experiment`. The `default` entry (2000 agents) serves as the everyday run config with GPU auto-enabled.
 
-### Lua Callbacks
-
-Experiments can optionally define Lua functions that the runtime calls at specific points. No callback defined means the default C++ behavior is used (zero overhead).
-
-| Callback | Signature | Purpose |
-|----------|-----------|---------|
-| `fitness_fn` | `(stats, weights) -> number` | Custom fitness formula replacing the built-in linear combination |
-| `on_generation_end` | `(gen, stats) -> table or nil` | Called after each generation; return a table of config overrides (e.g. `{ mutation_rate = 0.5 }`) or `nil` |
-| `on_experiment_start` | `(config) -> nil` | Called once before the main loop |
-| `on_experiment_end` | `(stats) -> nil` | Called once after the main loop |
-
-Example with a custom fitness function and adaptive mutation hook:
-
-```lua
-experiments["adaptive"] = extend(moonai_defaults, {
-    fitness_fn = function(stats, weights)
-        return weights.survival * stats.age_ratio
-             + weights.kill     * stats.kills_or_food
-             + weights.energy   * stats.energy_ratio
-             + stats.alive_bonus
-             + weights.distance * stats.dist_ratio
-             - weights.complexity_penalty * stats.complexity
-    end,
-
-    on_generation_end = function(gen, stats)
-        if stats.avg_fitness < 2.0 and gen > 20 then
-            return { mutation_rate = 0.5 }
-        end
-        return nil
-    end,
-})
-```
-
 ### CLI flags
 
 | Flag | Purpose |
