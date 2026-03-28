@@ -33,7 +33,7 @@ MoonAI achieves high performance through data-oriented ECS architecture:
 - **Clean GPU Abstraction** - ECS data efficiently packed into GPU buffers; kernels consume contiguous buffers (decoupled architecture)
 - **NEAT Implementation** - Evolves both topology and weights of neural networks simultaneously
 - **Real-Time Visualization** - SFML-based rendering with interactive controls and live NN activation display
-- **GPU Acceleration** - CUDA backend for GPU-resident sensing, inference, and headless step processing at large populations, with runtime CPU fallback on GPU failures
+- **GPU Acceleration** - CUDA backend for sensing, neural inference, and simulation systems on GPU at large populations; available in both visual and headless modes with runtime CPU fallback
 - **Cross-Platform** - Runs on Linux and Windows with matched features and stable runtime behavior
 - **Reproducible Experiments** - Seeded RNG with deterministic behavior within each execution backend; CPU and GPU runs are kept numerically close but are not bit-exact twins
 - **Lua Scripting** - Config, custom fitness functions, and runtime hooks — all in Lua without recompilation
@@ -189,7 +189,7 @@ Both commands accept additional arguments after `--`:
 | `just run -- --headless --no-gpu` | Headless + CPU-only (for servers without a display or GPU) |
 | `just run -- --experiment <name>` | Run specific experiment instead of default |
 
-CUDA is enabled at runtime when available. In headless runs, the fast path keeps sensing, inference, and step processing on the GPU. If GPU upload, sensing, inference, or resident step execution fails during runtime, MoonAI disables the CUDA path and continues with CPU execution.
+CUDA is enabled at runtime when available. The GPU path executes sensing, neural inference, and simulation systems (movement, combat, energy, aging) entirely on GPU. If any GPU operation fails, MoonAI automatically disables the CUDA path and falls back to CPU execution.
 
 ### Visualization Controls
 
@@ -444,7 +444,7 @@ Experiments with 5K+ agents require significant compute. Recommendations:
 - **GPU strongly recommended** for populations >= 2000 (auto-enabled when CUDA is available)
 - **Release build** (`just release`) for 2-5x faster simulation
 - **Headless mode** (`--headless`) disables rendering for maximum throughput
-- **Visual mode** can still use CUDA-assisted sensing/inference, but headless mode gives the best throughput because rendering stays on the CPU/SFML side and the full resident GPU path is only used there
+- **Visual mode** uses the same GPU acceleration as headless when CUDA is available, but headless mode achieves higher throughput because it eliminates rendering overhead (SFML runs on CPU, GPU is fully dedicated to simulation)
 - **Memory**: ~4 GB RAM for 10K agents, ~8 GB for 20K agents
 - **VRAM**: ~512 MB for 10K agents, ~1 GB for 20K agents
 - Running all 330 experiments sequentially takes significant time; use `--experiment` to run specific conditions or parallelize across machines
