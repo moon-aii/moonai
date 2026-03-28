@@ -505,6 +505,17 @@
         </div>
         {% endif %}
 
+        <!-- Flame Graph -->
+        {% if run.flame_graph %}
+        <h3>Flame Graph</h3>
+        <div class="figure-grid">
+          <figure>
+            <img src="{{ run.flame_graph.image_uri }}" alt="{{ run.flame_graph.title }} chart">
+            <figcaption>{{ run.flame_graph.title }}. {{ run.flame_graph.caption }}</figcaption>
+          </figure>
+        </div>
+        {% endif %}
+
         <!-- Events Table with Depth Coloring -->
         <h3>Events</h3>
         <table class="events-table">
@@ -529,17 +540,6 @@
             {% endfor %}
           </tbody>
         </table>
-
-        <!-- Flame Graph -->
-        {% if run.flame_graph %}
-        <h3>Flame Graph</h3>
-        <div class="figure-grid">
-          <figure>
-            <img src="{{ run.flame_graph.image_uri }}" alt="{{ run.flame_graph.title }} chart">
-            <figcaption>{{ run.flame_graph.title }}. {{ run.flame_graph.caption }}</figcaption>
-          </figure>
-        </div>
-        {% endif %}
       </div>
     </details>
     {% endfor %}
