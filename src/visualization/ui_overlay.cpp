@@ -61,12 +61,15 @@ void UIOverlay::draw(sf::RenderTarget &target, const OverlayStats &stats,
   sf::View current_view = target.getView();
   target.setView(ui_view);
 
-  // Draw left column with all the panels
+  // Draw left column (FPS/stats panel only)
   draw_left_column(target, stats);
+
+  // Draw right column (simulation stats widgets)
+  draw_right_column(target, stats);
 
   // Selected agent panel (bottom-left)
   float panel_width = 220.0f;
-  float margin = 10.0f;
+  float margin = 25.0f;
   char buf[128];
   float line_h = 18.0f;
 
@@ -155,39 +158,48 @@ void UIOverlay::push_population(int predators, int prey, int food) {
 
 void UIOverlay::draw_left_column(sf::RenderTarget &target,
                                  const OverlayStats &stats) {
-  constexpr float COL_WIDTH = 260.0f;
-  constexpr float MARGIN = 10.0f;
+  constexpr float PANEL_WIDTH = 300.0f;
+  constexpr float MARGIN = 25.0f;
 
   float x = MARGIN;
   float y = MARGIN;
 
-  // First widget: Basic info (step, FPS, speed)
-  draw_stats_panel(target, stats, x, y);
-  y += 90.0f + MARGIN;
+  // First widget: Basic info (step, FPS, speed) - stays on left
+  draw_stats_panel(target, stats, x, y, PANEL_WIDTH);
+}
+
+void UIOverlay::draw_right_column(sf::RenderTarget &target,
+                                  const OverlayStats &stats) {
+  constexpr float PANEL_WIDTH = 300.0f;
+  constexpr float MARGIN = 25.0f;
+
+  // Position at right side of screen
+  float x = target.getDefaultView().getSize().x - PANEL_WIDTH - MARGIN;
+  float y = MARGIN;
 
   // Stats widget: Population counts, species, and events
-  draw_stats_widget(target, stats, x, y, COL_WIDTH, 170.0f);
+  draw_stats_widget(target, stats, x, y, PANEL_WIDTH, 170.0f);
   y += 170.0f + MARGIN;
 
   // Population chart
-  draw_population_chart(target, x, y, COL_WIDTH, 180.0f);
+  draw_population_chart(target, x, y, PANEL_WIDTH, 180.0f);
   y += 180.0f + MARGIN;
 
-  // Fitness by type
-  draw_fitness_by_type(target, stats, x, y, COL_WIDTH, 100.0f);
-  y += 100.0f + MARGIN;
+  // Energy distribution (above fitness)
+  draw_energy_distribution(target, stats, x, y, PANEL_WIDTH, 55.0f);
+  y += 55.0f + MARGIN;
 
-  // Energy distribution
-  draw_energy_distribution(target, stats, x, y, COL_WIDTH, 55.0f);
+  // Fitness by type
+  draw_fitness_by_type(target, stats, x, y, PANEL_WIDTH, 100.0f);
 }
 
 void UIOverlay::draw_stats_panel(sf::RenderTarget &target,
-                                 const OverlayStats &stats, float x, float y) {
+                                 const OverlayStats &stats, float x, float y,
+                                 float w) {
   constexpr float PANEL_H = 90.0f;
-  constexpr float COL_WIDTH = 260.0f;
   float line_h = 18.0f;
 
-  draw_panel(target, x, y, COL_WIDTH, PANEL_H);
+  draw_panel(target, x, y, w, PANEL_H);
 
   float tx = x + 8.0f;
   float ty = y + 6.0f;

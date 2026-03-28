@@ -33,19 +33,20 @@ bool VisualizationManager::initialize() {
                sf::Vector2f(static_cast<float>(config_.grid_size),
                             static_cast<float>(config_.grid_size)));
 
-  // Adjust view to maintain aspect ratio
+  // Adjust view to maintain aspect ratio with margin around simulation
+  float margin = VisualizationManager::simulation_margin();
   float world_aspect = static_cast<float>(config_.grid_size) /
                        static_cast<float>(config_.grid_size);
   float window_aspect = static_cast<float>(window_width_) / window_height_;
 
   if (window_aspect > world_aspect) {
-    camera_view_.setSize(
-        sf::Vector2f(static_cast<float>(config_.grid_size) * window_aspect,
-                     static_cast<float>(config_.grid_size)));
+    camera_view_.setSize(sf::Vector2f(
+        static_cast<float>(config_.grid_size) * window_aspect + 2.0f * margin,
+        static_cast<float>(config_.grid_size) + 2.0f * margin));
   } else {
-    camera_view_.setSize(
-        sf::Vector2f(static_cast<float>(config_.grid_size),
-                     static_cast<float>(config_.grid_size) / window_aspect));
+    camera_view_.setSize(sf::Vector2f(
+        static_cast<float>(config_.grid_size) + 2.0f * margin,
+        static_cast<float>(config_.grid_size) / window_aspect + 2.0f * margin));
   }
 
   window_->setView(camera_view_);
@@ -325,7 +326,7 @@ void VisualizationManager::handle_events() {
       // access
       if (btn->button == sf::Mouse::Button::Left && window_) {
         // Ignore clicks in the left column UI area
-        if (btn->position.x >= static_cast<int>(left_column_width() + 10.0f)) {
+        if (btn->position.x >= static_cast<int>(ui_side_margin() + 10.0f)) {
           auto world_pos =
               window_->mapPixelToCoords(btn->position, camera_view_);
           pending_click_ = true;
@@ -386,6 +387,7 @@ void VisualizationManager::update_camera() {
   float world_aspect = world_w / world_h;
 
   float view_w, view_h;
+  float margin = VisualizationManager::simulation_margin();
   if (window_aspect > world_aspect) {
     view_h = world_h * zoom_level_;
     view_w = view_h * window_aspect;
@@ -394,12 +396,12 @@ void VisualizationManager::update_camera() {
     view_h = view_w / window_aspect;
   }
 
-  camera_view_.setSize(sf::Vector2f(view_w, view_h));
+  // Add margin around simulation area
+  camera_view_.setSize(
+      sf::Vector2f(view_w + 2.0f * margin, view_h + 2.0f * margin));
 
-  // Shift camera to the right to account for left column UI
-  sf::Vector2f current_center = camera_view_.getCenter();
-  camera_view_.setCenter(sf::Vector2f(
-      current_center.x + left_column_width() / 2.0f, current_center.y));
+  // Camera stays centered - left and right UI panels are equal width (300px
+  // each)
 }
 
 void VisualizationManager::update_fps(float dt) {

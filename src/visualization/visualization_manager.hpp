@@ -65,8 +65,11 @@ public:
     return selected_entity_;
   }
 
-  static constexpr float left_column_width() {
-    return 260.0f;
+  static constexpr float ui_side_margin() {
+    return 300.0f;
+  }
+  static constexpr float simulation_margin() {
+    return 25.0f;
   }
 
   void set_experiments(const std::vector<std::string> &names);

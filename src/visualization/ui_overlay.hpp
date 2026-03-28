@@ -91,8 +91,9 @@ private:
 
   // Left column panels
   void draw_left_column(sf::RenderTarget &target, const OverlayStats &stats);
+  void draw_right_column(sf::RenderTarget &target, const OverlayStats &stats);
   void draw_stats_panel(sf::RenderTarget &target, const OverlayStats &stats,
-                        float x, float y);
+                        float x, float y, float w);
   void draw_population_chart(sf::RenderTarget &target, float x, float y,
                              float w, float h);
   void draw_fitness_by_type(sf::RenderTarget &target, const OverlayStats &stats,
