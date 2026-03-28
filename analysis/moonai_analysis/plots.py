@@ -19,8 +19,6 @@ from .io import RunData, load_optional_csv
 
 
 STYLE = {
-    "best_fitness": "#2563EB",
-    "avg_fitness": "#D97706",
     "predator_count": "#DC2626",
     "prey_count": "#16A34A",
     "num_species": "#7C3AED",
@@ -30,8 +28,6 @@ STYLE = {
 }
 
 COMPARISON_METRICS = [
-    "best_fitness",
-    "avg_fitness",
     "num_species",
     "avg_complexity",
     "predator_count",
@@ -55,29 +51,25 @@ class EmbeddedChart:
 
 
 def build_condition_aggregate(label: str, runs: list[RunData]) -> ConditionAggregate:
-    generation_frames = []
+    step_frames = []
     for run in runs:
-        frame = run.stats[["generation", *COMPARISON_METRICS]].copy()
+        frame = run.stats[["step", *COMPARISON_METRICS]].copy()
         frame["run"] = run.name
-        generation_frames.append(frame)
+        step_frames.append(frame)
 
-    combined = pd.concat(generation_frames, ignore_index=True)
-    grouped = combined.groupby("generation")
-    summary = pd.DataFrame({"generation": sorted(combined["generation"].unique())})
+    combined = pd.concat(step_frames, ignore_index=True)
+    grouped = combined.groupby("step")
+    summary = pd.DataFrame({"step": sorted(combined["step"].unique())})
     for metric in COMPARISON_METRICS:
         summary[f"{metric}_mean"] = (
-            grouped[metric].mean().reindex(summary["generation"]).to_numpy()
+            grouped[metric].mean().reindex(summary["step"]).to_numpy()
         )
         summary[f"{metric}_std"] = (
-            grouped[metric]
-            .std(ddof=0)
-            .fillna(0.0)
-            .reindex(summary["generation"])
-            .to_numpy()
+            grouped[metric].std(ddof=0).fillna(0.0).reindex(summary["step"]).to_numpy()
         )
 
     representative_run = max(
-        runs, key=lambda run: float(run.stats["best_fitness"].iloc[-1])
+        runs, key=lambda run: float(run.stats["avg_complexity"].iloc[-1])
     )
     return ConditionAggregate(
         label=label,
@@ -89,7 +81,6 @@ def build_condition_aggregate(label: str, runs: list[RunData]) -> ConditionAggre
 
 def render_condition_charts(aggregate: ConditionAggregate) -> list[EmbeddedChart]:
     return [
-        render_fitness_chart(aggregate),
         render_population_chart(aggregate),
         render_species_chart(aggregate.representative_run, aggregate.label),
         render_complexity_chart(aggregate),
@@ -106,10 +97,10 @@ def render_comparison_charts(
             frame = aggregate.summary_frame
             mean = frame[f"{metric}_mean"]
             std = frame[f"{metric}_std"]
-            axis.plot(frame["generation"], mean, label=aggregate.label, linewidth=1.7)
-            axis.fill_between(frame["generation"], mean - std, mean + std, alpha=0.12)
+            axis.plot(frame["step"], mean, label=aggregate.label, linewidth=1.7)
+            axis.fill_between(frame["step"], mean - std, mean + std, alpha=0.12)
 
-        axis.set_xlabel("Generation")
+        axis.set_xlabel("Step")
         axis.set_ylabel(metric.replace("_", " ").title())
         axis.set_title(f"{metric.replace('_', ' ').title()} by Condition")
         axis.grid(True, alpha=0.3)
@@ -124,45 +115,12 @@ def render_comparison_charts(
     return charts
 
 
-def render_fitness_chart(aggregate: ConditionAggregate) -> EmbeddedChart:
-    frame = aggregate.summary_frame
-    figure, axes = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
-
-    _plot_mean_std(
-        axes[0], frame, "best_fitness", "Best Fitness", STYLE["best_fitness"]
-    )
-    _plot_mean_std(
-        axes[0], frame, "avg_fitness", "Average Fitness", STYLE["avg_fitness"]
-    )
-    axes[0].set_ylabel("Fitness")
-    axes[0].set_title(
-        f"{aggregate.label} - Fitness (mean +/- std across {len(aggregate.runs)} runs)"
-    )
-    axes[0].legend(loc="upper left")
-    axes[0].grid(True, alpha=0.3)
-
-    _plot_mean_std(
-        axes[1], frame, "avg_complexity", "Average Complexity", STYLE["avg_complexity"]
-    )
-    axes[1].set_xlabel("Generation")
-    axes[1].set_ylabel("Complexity")
-    axes[1].set_title("Average Genome Complexity")
-    axes[1].legend(loc="upper left")
-    axes[1].grid(True, alpha=0.3)
-
-    return EmbeddedChart(
-        title="Fitness",
-        image_uri=_figure_to_data_uri(figure),
-        caption=f"{aggregate.label} mean fitness and complexity across {len(aggregate.runs)} runs.",
-    )
-
-
 def render_population_chart(aggregate: ConditionAggregate) -> EmbeddedChart:
     frame = aggregate.summary_frame
     figure, axis = plt.subplots(figsize=(12, 6))
     _plot_mean_std(axis, frame, "predator_count", "Predators", STYLE["predator_count"])
     _plot_mean_std(axis, frame, "prey_count", "Prey", STYLE["prey_count"])
-    axis.set_xlabel("Generation")
+    axis.set_xlabel("Step")
     axis.set_ylabel("Population")
     axis.set_title(
         f"{aggregate.label} - Population (mean +/- std across {len(aggregate.runs)} runs)"
@@ -179,7 +137,7 @@ def render_population_chart(aggregate: ConditionAggregate) -> EmbeddedChart:
 def render_species_chart(run: RunData, label: str) -> EmbeddedChart:
     species_path = run.path / "species.csv"
     species_frame = load_optional_csv(
-        species_path, required_columns=["generation", "species_id", "size"]
+        species_path, required_columns=["step", "species_id", "size"]
     )
     figure, axes = plt.subplots(2, 1, figsize=(12, 10), sharex=True)
 
@@ -190,13 +148,13 @@ def render_species_chart(run: RunData, label: str) -> EmbeddedChart:
             axis.set_axis_off()
     else:
         axes[0].plot(
-            run.stats["generation"],
+            run.stats["step"],
             run.stats["num_species"],
             color=STYLE["num_species"],
             linewidth=1.7,
         )
         axes[0].fill_between(
-            run.stats["generation"],
+            run.stats["step"],
             0,
             run.stats["num_species"],
             alpha=0.15,
@@ -207,7 +165,7 @@ def render_species_chart(run: RunData, label: str) -> EmbeddedChart:
         axes[0].grid(True, alpha=0.3)
 
         pivot = species_frame.pivot_table(
-            index="generation", columns="species_id", values="size", fill_value=0
+            index="step", columns="species_id", values="size", fill_value=0
         )
         colors = [
             plt.get_cmap("tab20")(index % 20) for index in range(len(pivot.columns))
@@ -219,7 +177,7 @@ def render_species_chart(run: RunData, label: str) -> EmbeddedChart:
             colors=colors,
             alpha=0.85,
         )
-        axes[1].set_xlabel("Generation")
+        axes[1].set_xlabel("Step")
         axes[1].set_ylabel("Species Size")
         axes[1].set_title("Species Size Distribution")
         axes[1].grid(True, alpha=0.3)
@@ -255,23 +213,23 @@ def render_complexity_chart(aggregate: ConditionAggregate) -> EmbeddedChart:
         axes[1].set_axis_off()
     else:
         axes[1].plot(
-            genome_points["generation"],
+            genome_points["step"],
             genome_points["num_nodes"],
             label="Nodes",
             color=STYLE["nodes"],
             linewidth=1.7,
         )
         axes[1].plot(
-            genome_points["generation"],
+            genome_points["step"],
             genome_points["num_connections"],
             label="Connections",
             color=STYLE["connections"],
             linewidth=1.7,
         )
-        axes[1].set_xlabel("Generation")
+        axes[1].set_xlabel("Step")
         axes[1].set_ylabel("Count")
         axes[1].set_title(
-            f"Best Genome Structure ({aggregate.representative_run.name})"
+            f"Representative Genome Structure ({aggregate.representative_run.name})"
         )
         axes[1].legend(loc="upper left")
         axes[1].grid(True, alpha=0.3)
@@ -279,7 +237,7 @@ def render_complexity_chart(aggregate: ConditionAggregate) -> EmbeddedChart:
     return EmbeddedChart(
         title="Complexity",
         image_uri=_figure_to_data_uri(figure),
-        caption=f"{aggregate.label} aggregate complexity plus representative best-genome structure history.",
+        caption=f"{aggregate.label} aggregate complexity plus representative genome structure history.",
     )
 
 
@@ -288,10 +246,8 @@ def _plot_mean_std(
 ) -> None:
     mean = frame[f"{metric}_mean"]
     std = frame[f"{metric}_std"]
-    axis.plot(frame["generation"], mean, label=label, color=color, linewidth=1.7)
-    axis.fill_between(
-        frame["generation"], mean - std, mean + std, color=color, alpha=0.12
-    )
+    axis.plot(frame["step"], mean, label=label, color=color, linewidth=1.7)
+    axis.fill_between(frame["step"], mean - std, mean + std, color=color, alpha=0.12)
 
 
 def _load_genome_counts(path: Path) -> pd.DataFrame | None:
@@ -303,7 +259,7 @@ def _load_genome_counts(path: Path) -> pd.DataFrame | None:
         return None
     return pd.DataFrame(
         {
-            "generation": [entry["generation"] for entry in genomes],
+            "step": [entry["step"] for entry in genomes],
             "num_nodes": [entry["num_nodes"] for entry in genomes],
             "num_connections": [entry["num_connections"] for entry in genomes],
         }

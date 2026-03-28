@@ -1,31 +1,21 @@
 #pragma once
 
-#include <cstdint>
 #include <cmath>
+#include <cstdint>
 
 namespace moonai {
 
-using AgentId = std::uint32_t;
-
 struct Vec2 {
-    float x = 0.0f;
-    float y = 0.0f;
+  float x = 0.0f;
+  float y = 0.0f;
 
-    Vec2 operator+(const Vec2& other) const { return {x + other.x, y + other.y}; }
-    Vec2 operator-(const Vec2& other) const { return {x - other.x, y - other.y}; }
-    Vec2 operator*(float scalar) const { return {x * scalar, y * scalar}; }
+  Vec2 operator-(const Vec2 &other) const {
+    return {x - other.x, y - other.y};
+  }
 
-    float length() const { return std::sqrt(x * x + y * y); }
-
-    Vec2 normalized() const {
-        float len = length();
-        if (len < 1e-6f) return {0.0f, 0.0f};
-        return {x / len, y / len};
-    }
-
-    float distance_to(const Vec2& other) const {
-        return (*this - other).length();
-    }
+  float length() const {
+    return std::sqrt(x * x + y * y);
+  }
 };
 
 } // namespace moonai

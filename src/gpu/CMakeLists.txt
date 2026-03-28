@@ -1,8 +1,9 @@
 set(MOONAI_GPU_SOURCES
-    neural_inference.cu
+    gpu_data_buffer.cu
+    gpu_entity_mapping.cpp
+    ecs_gpu_packing.cu
     gpu_batch.cu
-    sensor_kernel.cu
-    gpu_simulation.cu
+    gpu_network_cache.cu
 )
 
 add_library(moonai_gpu STATIC ${MOONAI_GPU_SOURCES})

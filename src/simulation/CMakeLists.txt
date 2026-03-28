@@ -1,10 +1,7 @@
 set(MOONAI_SIMULATION_SOURCES
+    food_store.cpp
     simulation_manager.cpp
-    environment.cpp
-    agent.cpp
-    predator.cpp
-    prey.cpp
-    physics.cpp
+    registry.cpp
     spatial_grid.cpp
 )
 

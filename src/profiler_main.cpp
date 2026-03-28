@@ -1,624 +1,444 @@
+#include "app.hpp"
 #include "core/config.hpp"
-#include "core/lua_runtime.hpp"
-#include "core/profiler.hpp"
-#include "core/profiler_suite.hpp"
-#include "core/random.hpp"
-#include "simulation/simulation_manager.hpp"
-#include "simulation/physics.hpp"
-#include "evolution/evolution_manager.hpp"
-#include "evolution/neural_network.hpp"
-#include "data/logger.hpp"
-#include "data/metrics.hpp"
+#include "core/profiler_macros.hpp"
+
+#include <nlohmann/json.hpp>
+#include <spdlog/spdlog.h>
+
+#include <chrono>
+#include <cstdint>
+#include <filesystem>
+#include <fstream>
+#include <memory>
+#include <optional>
+#include <string>
+#include <vector>
+
+// CUDA includes for GPU profiling
+#ifdef MOONAI_ENABLE_CUDA
+#include <cuda_runtime.h>
+#endif
+
+std::string utc_timestamp() {
+  const auto now = std::chrono::system_clock::now();
+  const auto time = std::chrono::system_clock::to_time_t(now);
+  std::tm utc;
+#ifdef _WIN32
+  gmtime_s(&utc, &time);
+#else
+  gmtime_r(&time, &utc);
+#endif
+  char buf[32];
+  std::strftime(buf, sizeof(buf), "%Y-%m-%d_%H-%M-%S", &utc);
+  return std::string(buf);
+}
+
+namespace moonai {
+namespace profiler {
+
+struct ScopeNode {
+  std::string name;
+  std::chrono::steady_clock::time_point start;
+  std::int64_t inclusive_ns = 0;
+  std::int64_t exclusive_ns = 0;
+  std::vector<std::unique_ptr<ScopeNode>> children;
+  ScopeNode *parent = nullptr;
+};
 
 #ifdef MOONAI_ENABLE_CUDA
-namespace moonai::gpu {
-    bool init_cuda();
-    void print_device_info();
+// GPU event tracking structure
+struct GpuEventPair {
+  const char *name;
+  cudaEvent_t start;
+  cudaEvent_t end;
+  cudaStream_t stream;
+};
+#endif
+
+class Profiler {
+public:
+  static Profiler &instance() {
+    static Profiler profiler;
+    return profiler;
+  }
+
+  void start_run(const AppConfig &cfg);
+  void begin_scope(const char *event_name);
+  void end_scope(const char *event_name);
+
+#ifdef MOONAI_ENABLE_CUDA
+  // GPU event tracking
+  int record_gpu_event_start(const char *name, cudaStream_t stream);
+  void record_gpu_event_end(int event_index);
+  void merge_gpu_timings(); // Calculate GPU times and add as children
+#endif
+
+  nlohmann::json finish_run(std::int64_t run_total_ns);
+
+private:
+  Profiler();
+  ~Profiler();
+
+  std::optional<AppConfig> cfg_;
+  std::vector<std::unique_ptr<ScopeNode>> frame_trees_;
+  std::vector<ScopeNode *> active_stack_;
+  std::unique_ptr<ScopeNode> pending_root_;
+
+#ifdef MOONAI_ENABLE_CUDA
+  // GPU event storage
+  std::vector<GpuEventPair> pending_gpu_events_;
+  int next_gpu_event_index_;
+#endif
+
+  nlohmann::json serialize_node(const ScopeNode *node) const;
+};
+
+// Profiler constructor/destructor
+Profiler::Profiler()
+#ifdef MOONAI_ENABLE_CUDA
+    : next_gpu_event_index_(0)
+#endif
+{
+}
+
+Profiler::~Profiler() {
+#ifdef MOONAI_ENABLE_CUDA
+  // Clean up any remaining GPU events
+  for (auto &event : pending_gpu_events_) {
+    if (event.start)
+      cudaEventDestroy(event.start);
+    if (event.end)
+      cudaEventDestroy(event.end);
+  }
+#endif
+}
+
+// ScopedTimer implementation (declared in profiler_macros.hpp)
+ScopedTimer::ScopedTimer(const char *event_name, cudaStream_t stream)
+    : event_name_(event_name), stream_(stream), gpu_event_index_(-1),
+      has_cpu_scope_(stream == nullptr) // No CPU scope when stream provided
+{
+#ifdef MOONAI_ENABLE_CUDA
+  if (stream) {
+    gpu_event_index_ =
+        Profiler::instance().record_gpu_event_start(event_name, stream);
+  }
+#endif
+  if (has_cpu_scope_) {
+    Profiler::instance().begin_scope(event_name);
+  }
+}
+
+ScopedTimer::~ScopedTimer() {
+  // Check if this is gpu_synchronize - merge GPU timings before ending scope
+  if (std::strcmp(event_name_, "gpu_synchronize") == 0) {
+#ifdef MOONAI_ENABLE_CUDA
+    Profiler::instance().merge_gpu_timings();
+#endif
+  }
+
+#ifdef MOONAI_ENABLE_CUDA
+  if (gpu_event_index_ >= 0) {
+    Profiler::instance().record_gpu_event_end(gpu_event_index_);
+  }
+#endif
+
+  if (has_cpu_scope_) {
+    Profiler::instance().end_scope(event_name_);
+  }
+}
+
+void Profiler::start_run(const AppConfig &cfg) {
+  cfg_ = cfg;
+  frame_trees_.clear();
+  active_stack_.clear();
+  pending_root_.reset();
+#ifdef MOONAI_ENABLE_CUDA
+  pending_gpu_events_.clear();
+  next_gpu_event_index_ = 0;
+#endif
+}
+
+void Profiler::begin_scope(const char *event_name) {
+  auto node = std::make_unique<ScopeNode>();
+  node->name = event_name;
+  node->start = std::chrono::steady_clock::now();
+
+  if (active_stack_.empty()) {
+    // This is a root scope
+    node->parent = nullptr;
+    pending_root_ = std::move(node);
+    active_stack_.push_back(pending_root_.get());
+  } else {
+    // This is a child scope
+    node->parent = active_stack_.back();
+    ScopeNode *node_ptr = node.get();
+    active_stack_.back()->children.push_back(std::move(node));
+    active_stack_.push_back(node_ptr);
+  }
+}
+
+void Profiler::end_scope(const char *event_name) {
+  assert(!active_stack_.empty() &&
+         "Scope stack underflow: no active scope to end");
+  assert(active_stack_.back()->name == event_name &&
+         "Scope mismatch: expected scope to match the ending scope name");
+
+  ScopeNode *node = active_stack_.back();
+  active_stack_.pop_back();
+
+  const auto end = std::chrono::steady_clock::now();
+  node->inclusive_ns =
+      std::chrono::duration_cast<std::chrono::nanoseconds>(end - node->start)
+          .count();
+
+  // Calculate exclusive time: inclusive - sum(children inclusive)
+  std::int64_t children_sum = 0;
+  for (const auto &child : node->children) {
+    children_sum += child->inclusive_ns;
+  }
+  node->exclusive_ns = node->inclusive_ns - children_sum;
+
+  // If this is frame_total (root), commit the frame
+  if (std::strcmp(event_name, "frame_total") == 0) {
+    assert(active_stack_.empty() &&
+           "frame_total ended but scope stack not empty - scopes not properly "
+           "nested");
+    assert(pending_root_ != nullptr && "Root node should exist");
+
+    // Move the root node to frame_trees
+    frame_trees_.push_back(std::move(pending_root_));
+    pending_root_.reset();
+  }
+}
+
+#ifdef MOONAI_ENABLE_CUDA
+int Profiler::record_gpu_event_start(const char *name, cudaStream_t stream) {
+  int index = next_gpu_event_index_++;
+
+  if (index >= static_cast<int>(pending_gpu_events_.size())) {
+    pending_gpu_events_.resize(index + 1);
+  }
+
+  GpuEventPair &pair = pending_gpu_events_[index];
+  pair.name = name;
+  pair.stream = stream;
+
+  cudaEventCreate(&pair.start);
+  cudaEventRecord(pair.start, stream);
+  pair.end = nullptr; // Will be created on end
+
+  return index;
+}
+
+void Profiler::record_gpu_event_end(int event_index) {
+  assert(event_index >= 0 &&
+         event_index < static_cast<int>(pending_gpu_events_.size()));
+
+  GpuEventPair &pair = pending_gpu_events_[event_index];
+  cudaEventCreate(&pair.end);
+  cudaEventRecord(pair.end, pair.stream);
+}
+
+void Profiler::merge_gpu_timings() {
+  if (pending_gpu_events_.empty()) {
+    return;
+  }
+
+  // All GPU events should be completed by now (synchronize was called)
+  for (const auto &pair : pending_gpu_events_) {
+    if (!pair.start || !pair.end) {
+      continue; // Incomplete event
+    }
+
+    float elapsed_ms = 0.0f;
+    cudaError_t err = cudaEventElapsedTime(&elapsed_ms, pair.start, pair.end);
+
+    if (err == cudaSuccess && elapsed_ms > 0.0f) {
+      // Create a child node for this GPU timing
+      auto gpu_node = std::make_unique<ScopeNode>();
+      gpu_node->name = std::string(pair.name) + "_gpu";
+      gpu_node->inclusive_ns =
+          static_cast<std::int64_t>(elapsed_ms * 1'000'000.0f);
+      gpu_node->exclusive_ns = gpu_node->inclusive_ns; // No children yet
+      gpu_node->parent = active_stack_.back();
+
+      // Add as child to current scope
+      active_stack_.back()->children.push_back(std::move(gpu_node));
+    }
+
+    // Clean up CUDA events
+    cudaEventDestroy(pair.start);
+    cudaEventDestroy(pair.end);
+  }
+
+  // Clear for next frame
+  pending_gpu_events_.clear();
+  next_gpu_event_index_ = 0;
 }
 #endif
 
-#include <spdlog/spdlog.h>
-#include <nlohmann/json.hpp>
+nlohmann::json Profiler::serialize_node(const ScopeNode *node) const {
+  nlohmann::json j;
+  j["name"] = node->name;
+  j["inclusive_ms"] = static_cast<double>(node->inclusive_ns) / 1'000'000.0;
+  j["exclusive_ms"] = static_cast<double>(node->exclusive_ns) / 1'000'000.0;
 
-#include <algorithm>
-#include <chrono>
-#include <cmath>
-#include <csignal>
-#include <cstdio>
-#include <filesystem>
-#include <fstream>
-#include <iomanip>
-#include <numeric>
-#include <sstream>
-#include <string>
-#include <vector>
-#include <map>
+  nlohmann::json children = nlohmann::json::array();
+  for (const auto &child : node->children) {
+    children.push_back(serialize_node(child.get()));
+  }
+  j["children"] = std::move(children);
+
+  return j;
+}
+
+nlohmann::json Profiler::finish_run(std::int64_t run_total_ns) {
+  nlohmann::json profile;
+  profile["run_total_ms"] = static_cast<double>(run_total_ns) / 1'000'000.0;
+
+  nlohmann::json frames = nlohmann::json::array();
+  for (const auto &tree : frame_trees_) {
+    frames.push_back(serialize_node(tree.get()));
+  }
+  profile["frames"] = std::move(frames);
+
+  return profile;
+}
+
+} // namespace profiler
+} // namespace moonai
 
 namespace {
 
-volatile std::sig_atomic_t g_running = 1;
-
-void signal_handler(int) {
-    g_running = 0;
-}
-
-struct ProfilerCliArgs {
-    std::string config_path = "profiler.lua";
-    std::string suite_name;
-    std::string output_dir;
-    bool list_suites = false;
-    bool validate_only = false;
-    bool verbose = false;
-    bool no_gpu = false;
+struct Args {
+  int frames = 1000;
+  std::vector<std::uint64_t> seeds = {61, 62, 63, 64, 65, 66};
+  std::string output_dir = "output/profiles";
+  std::string experiment_name = "profile";
+  bool no_gpu = false;
 };
 
-struct RawRunSummary {
-    std::uint64_t seed = 0;
-    std::string run_dir;
-    std::string profile_path;
-    std::string config_fingerprint;
-    std::string experiment_name;
-    std::string base_experiment_name;
-    double run_total_ms = 0.0;
-    double avg_generation_ms = 0.0;
-    int generation_count = 0;
-    int cpu_generation_count = 0;
-    int gpu_generation_count = 0;
-    nlohmann::json summary_events;
-    nlohmann::json summary_counters;
+Args parse_args(int argc, const char *argv[]) {
+  Args args;
+  for (int i = 1; i < argc; ++i) {
+    const std::string arg = argv[i];
+    if (arg == "--frames" && i + 1 < argc) {
+      args.frames = std::stoi(argv[++i]);
+    } else if (arg == "--output-dir" && i + 1 < argc) {
+      args.output_dir = argv[++i];
+    } else if (arg == "--name" && i + 1 < argc) {
+      args.experiment_name = argv[++i];
+    } else if (arg == "--no-gpu") {
+      args.no_gpu = true;
+    }
+  }
+  return args;
+}
+
+struct RunResult {
+  std::uint64_t seed = 0;
+  nlohmann::json profile;
+  bool completed = false;
 };
 
-ProfilerCliArgs parse_args(int argc, char* argv[]) {
-    ProfilerCliArgs args;
-    for (int i = 1; i < argc; ++i) {
-        std::string arg = argv[i];
-        if (arg == "-h" || arg == "--help") {
-            std::printf(
-                "MoonAI Profiler\n\n"
-                "Usage: %s [OPTIONS] [profiler.lua]\n\n"
-                "Options:\n"
-                "  --suite <name>         Select profiler suite\n"
-                "  --list                 List profiler suites and exit\n"
-                "  --validate             Validate profiler suite and exit\n"
-                "  --output <dir>         Override profiler output root\n"
-                "  --no-gpu               Disable CUDA GPU acceleration\n"
-                "  -v, --verbose          Enable debug logging\n"
-                "  -h, --help             Show this help message\n",
-                argv[0]);
-            std::exit(0);
-        } else if (arg == "--suite" && i + 1 < argc) {
-            args.suite_name = argv[++i];
-        } else if (arg == "--list") {
-            args.list_suites = true;
-        } else if (arg == "--validate") {
-            args.validate_only = true;
-        } else if (arg == "--output" && i + 1 < argc) {
-            args.output_dir = argv[++i];
-        } else if (arg == "--no-gpu") {
-            args.no_gpu = true;
-        } else if (arg == "-v" || arg == "--verbose") {
-            args.verbose = true;
-        } else if (!arg.empty() && arg[0] != '-') {
-            args.config_path = arg;
-        } else {
-            spdlog::warn("Unknown argument: {}", arg);
-        }
-    }
-    return args;
-}
+RunResult run_profiler(const moonai::AppConfig &cfg) {
+  using namespace moonai;
 
-std::string sanitize_path_component(const std::string& value) {
-    std::string sanitized;
-    sanitized.reserve(value.size());
-    for (char ch : value) {
-        const bool valid = (ch >= 'a' && ch <= 'z')
-            || (ch >= 'A' && ch <= 'Z')
-            || (ch >= '0' && ch <= '9')
-            || ch == '-'
-            || ch == '_';
-        sanitized.push_back(valid ? ch : '_');
-    }
-    return sanitized.empty() ? std::string{"profile_suite"} : sanitized;
-}
+  auto &profiler = profiler::Profiler::instance();
 
-std::string utc_timestamp_for_path(std::chrono::system_clock::time_point now) {
-    const auto time = std::chrono::system_clock::to_time_t(now);
-    std::tm tm{};
-#ifdef _WIN32
-    gmtime_s(&tm, &time);
-#else
-    gmtime_r(&time, &tm);
-#endif
-    std::ostringstream oss;
-    oss << std::put_time(&tm, "%Y%m%d_%H%M%S");
-    return oss.str();
-}
+  profiler.start_run(cfg);
 
-std::string utc_timestamp_iso(std::chrono::system_clock::time_point now) {
-    const auto time = std::chrono::system_clock::to_time_t(now);
-    std::tm tm{};
-#ifdef _WIN32
-    gmtime_s(&tm, &time);
-#else
-    gmtime_r(&time, &tm);
-#endif
-    std::ostringstream oss;
-    oss << std::put_time(&tm, "%Y-%m-%dT%H:%M:%SZ");
-    return oss.str();
-}
+  const auto run_start = std::chrono::steady_clock::now();
 
-std::filesystem::path create_suite_output_dir(const std::string& root, const std::string& suite_name) {
-    const auto now = std::chrono::system_clock::now();
-    const std::string base_name = utc_timestamp_for_path(now) + "_" + sanitize_path_component(suite_name);
-    std::filesystem::path candidate = std::filesystem::path(root) / base_name;
-    for (int suffix = 2; std::filesystem::exists(candidate); ++suffix) {
-        candidate = std::filesystem::path(root) / (base_name + "_" + std::to_string(suffix));
-    }
-    std::filesystem::create_directories(candidate / "raw");
-    return candidate;
-}
+  App app(cfg);
+  bool completed = app.run();
 
-RawRunSummary load_raw_run_summary(const std::filesystem::path& profile_path) {
-    std::ifstream handle(profile_path);
-    if (!handle.is_open()) {
-        throw std::runtime_error("failed to open raw profile output: " + profile_path.string());
-    }
+  RunResult result;
+  result.seed = cfg.sim_config.seed;
 
-    const nlohmann::json payload = nlohmann::json::parse(handle);
-    if (payload.value("schema_version", 0) < 2) {
-        throw std::runtime_error("unsupported raw profile schema in " + profile_path.string());
-    }
-
-    RawRunSummary summary;
-    const auto& run = payload.at("run");
-    const auto& suite_summary = payload.at("summary");
-    summary.seed = run.at("seed").get<std::uint64_t>();
-    summary.run_dir = run.at("output_dir").get<std::string>();
-    summary.profile_path = profile_path.string();
-    summary.config_fingerprint = run.value("config_fingerprint", std::string{});
-    summary.experiment_name = run.value("experiment_name", std::string{});
-    summary.base_experiment_name = run.value("base_experiment_name", std::string{});
-    summary.run_total_ms = suite_summary.value("run_total_ms", 0.0);
-    summary.generation_count = suite_summary.value("generation_count", 0);
-    summary.cpu_generation_count = suite_summary.value("cpu_generation_count", 0);
-    summary.gpu_generation_count = suite_summary.value("gpu_generation_count", 0);
-    summary.summary_events = suite_summary.at("events");
-    summary.summary_counters = suite_summary.at("counters");
-    summary.avg_generation_ms = summary.summary_events.at("generation_total").at("avg_ms_per_generation").get<double>();
-    return summary;
-}
-
-double compute_stddev(const std::vector<double>& values, double mean) {
-    if (values.empty()) {
-        return 0.0;
-    }
-    double accum = 0.0;
-    for (double value : values) {
-        const double diff = value - mean;
-        accum += diff * diff;
-    }
-    return std::sqrt(accum / static_cast<double>(values.size()));
-}
-
-RawRunSummary run_profiled_experiment(const moonai::ProfilerSuiteConfig& suite,
-                                      const moonai::SimulationConfig& base_config,
-                                      moonai::LuaRuntime& lua_runtime,
-                                      std::uint64_t seed,
-                                      const std::filesystem::path& suite_dir,
-                                      bool no_gpu,
-                                      const std::string& config_fingerprint) {
-    moonai::SimulationConfig config = base_config;
-    config.seed = seed;
-    config.max_generations = suite.generations;
-
-    auto errors = moonai::validate_config(config);
-    if (!errors.empty()) {
-        std::ostringstream oss;
-        oss << "invalid config for suite seed " << seed;
-        for (const auto& error : errors) {
-            oss << " [" << error.field << ": " << error.message << "]";
-        }
-        throw std::runtime_error(oss.str());
-    }
-
-    constexpr int kInputs = moonai::SensorInput::SIZE;
-    constexpr int kOutputs = 2;
-
-    moonai::Random rng(config.seed);
-    moonai::SimulationManager simulation(config);
-    moonai::EvolutionManager evolution(config, rng);
-    simulation.initialize();
-    evolution.initialize(kInputs, kOutputs);
-    lua_runtime.select_experiment(suite.experiment_name);
-    evolution.set_lua_runtime(&lua_runtime);
-    lua_runtime.call_on_experiment_start(config);
-
-#ifdef MOONAI_ENABLE_CUDA
-    if (!no_gpu && moonai::gpu::init_cuda()) {
-        evolution.enable_gpu(true);
-    }
-#else
-    (void)no_gpu;
-#endif
-
-    const std::string run_name = suite.name + "_seed" + std::to_string(seed);
-    moonai::Logger logger(config.output_dir, config.seed, run_name);
-    logger.initialize(config);
-    moonai::MetricsCollector metrics;
-    int current_generation = 0;
-
-    if (config.tick_log_enabled) {
-        evolution.set_tick_callback([&](int tick, const moonai::SimulationManager& sim) {
-            if (tick % config.tick_log_interval == 0) {
-                logger.log_tick(current_generation, tick, sim.agents());
-            }
-            logger.log_events(current_generation, tick, sim.last_events());
-        });
-    }
-
-    moonai::Profiler::instance().set_enabled(true);
-#ifdef MOONAI_ENABLE_CUDA
-    constexpr bool kCudaCompiled = true;
-#else
-    constexpr bool kCudaCompiled = false;
-#endif
-#ifdef MOONAI_OPENMP_ENABLED
-    constexpr bool kOpenmpCompiled = true;
-#else
-    constexpr bool kOpenmpCompiled = false;
-#endif
-    moonai::ProfileRunSpec run_spec;
-    run_spec.experiment_name = run_name;
-    run_spec.output_root_dir = (suite_dir / "raw").string();
-    run_spec.seed = config.seed;
-    run_spec.predator_count = config.predator_count;
-    run_spec.prey_count = config.prey_count;
-    run_spec.food_count = config.food_count;
-    run_spec.generation_ticks = config.generation_ticks;
-    run_spec.gpu_allowed = !no_gpu;
-    run_spec.cuda_compiled = kCudaCompiled;
-    run_spec.openmp_compiled = kOpenmpCompiled;
-    run_spec.suite_name = suite.name;
-    run_spec.base_experiment_name = suite.experiment_name;
-    run_spec.config_fingerprint = config_fingerprint;
-    run_spec.profiler_entry_point = "moonai_profiler";
-    moonai::Profiler::instance().start_run(run_spec);
-
-    const auto experiment_start = std::chrono::steady_clock::now();
-    for (int generation = 0; g_running && generation < config.max_generations; ++generation) {
-        current_generation = generation;
-        moonai::Profiler::instance().start_generation(generation);
-        simulation.reset();
-        evolution.assign_species_ids(simulation);
-        evolution.evaluate_generation(simulation);
-
-        auto metrics_row = metrics.collect(
-            generation,
-            evolution.population(),
-            simulation.alive_predators(),
-            simulation.alive_prey());
-        metrics_row.num_species = static_cast<int>(evolution.species().size());
-
-        if (generation % config.log_interval == 0) {
-            MOONAI_PROFILE_SCOPE(moonai::ProfileEvent::Logging);
-            logger.log_generation(
-                metrics_row.generation,
-                metrics_row.predator_count,
-                metrics_row.prey_count,
-                metrics_row.best_fitness,
-                metrics_row.avg_fitness,
-                metrics_row.num_species,
-                metrics_row.avg_genome_complexity);
-            const auto& population = evolution.population();
-            if (!population.empty()) {
-                auto best = std::max_element(
-                    population.begin(),
-                    population.end(),
-                    [](const moonai::Genome& lhs, const moonai::Genome& rhs) {
-                        return lhs.fitness() < rhs.fitness();
-                    });
-                logger.log_best_genome(generation, *best);
-            }
-            logger.log_species(generation, evolution.species());
-            logger.flush();
-        }
-
-        if (lua_runtime.callbacks().has_on_generation_end) {
-            moonai::GenerationStats stats{
-                generation,
-                metrics_row.best_fitness,
-                metrics_row.avg_fitness,
-                metrics_row.num_species,
-                simulation.alive_predators(),
-                simulation.alive_prey(),
-                metrics_row.avg_genome_complexity,
-            };
-            std::map<std::string, float> overrides;
-            if (lua_runtime.call_on_generation_end(stats, overrides)) {
-                moonai::apply_overrides_float(config, overrides);
-                evolution.update_config(config);
-            }
-        }
-
-        evolution.evolve();
-        moonai::Profiler::instance().finish_generation({
-            generation,
-            simulation.alive_predators(),
-            simulation.alive_prey(),
-            evolution.species_count(),
-            metrics_row.best_fitness,
-            metrics_row.avg_fitness,
-            metrics_row.avg_genome_complexity,
-        });
-    }
-
-    moonai::GenerationStats end_stats{config.max_generations, 0.0f, 0.0f, 0, 0, 0, 0.0f};
-    lua_runtime.call_on_experiment_end(end_stats);
-
-    const auto experiment_end = std::chrono::steady_clock::now();
-    moonai::Profiler::instance().finish_run(
-        std::chrono::duration_cast<std::chrono::nanoseconds>(experiment_end - experiment_start).count());
-
-    const std::filesystem::path profile_path =
-        std::filesystem::path(moonai::Profiler::instance().output_dir()) / "profile.json";
-    return load_raw_run_summary(profile_path);
-}
-
-nlohmann::json aggregate_named_stats(const std::vector<nlohmann::json>& named_stats,
-                                    const char* total_key,
-                                    const char* avg_key,
-                                    const char* nonzero_key,
-                                    const char* active_avg_key) {
-    nlohmann::json result = nlohmann::json::object();
-    if (named_stats.empty()) {
-        return result;
-    }
-
-    const auto& first = named_stats.front();
-    for (auto it = first.begin(); it != first.end(); ++it) {
-        const std::string name = it.key();
-        std::vector<double> totals;
-        std::vector<double> avgs;
-        std::vector<double> active_avgs;
-        double nonzero_sum = 0.0;
-        totals.reserve(named_stats.size());
-        avgs.reserve(named_stats.size());
-        active_avgs.reserve(named_stats.size());
-
-        for (const auto& stats : named_stats) {
-            const auto& row = stats.at(name);
-            totals.push_back(row.at(total_key).get<double>());
-            avgs.push_back(row.at(avg_key).get<double>());
-            active_avgs.push_back(row.at(active_avg_key).get<double>());
-            nonzero_sum += row.at(nonzero_key).get<double>();
-        }
-
-        const double total_mean = std::accumulate(totals.begin(), totals.end(), 0.0) / totals.size();
-        const double avg_mean = std::accumulate(avgs.begin(), avgs.end(), 0.0) / avgs.size();
-        const double active_avg_mean = std::accumulate(active_avgs.begin(), active_avgs.end(), 0.0) / active_avgs.size();
-        result[name] = {
-            {total_key, total_mean},
-            {avg_key, avg_mean},
-            {nonzero_key, nonzero_sum / static_cast<double>(named_stats.size())},
-            {active_avg_key, active_avg_mean},
-            {std::string(avg_key) + "_stddev", compute_stddev(avgs, avg_mean)},
-        };
-    }
+  if (!completed) {
+    spdlog::info("Run stopped early, skipping profile generation");
+    result.completed = false;
     return result;
+  }
+
+  const auto run_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                          std::chrono::steady_clock::now() - run_start)
+                          .count();
+  result.profile = profiler.finish_run(run_ns);
+  result.completed = true;
+
+  return result;
 }
 
-void write_suite_manifest(const std::filesystem::path& suite_dir,
-                          const moonai::ProfilerSuiteConfig& suite,
-                          const moonai::SimulationConfig& base_config,
-                          const std::string& config_fingerprint,
-                          const std::vector<RawRunSummary>& runs,
-                          const std::vector<RawRunSummary>& kept_runs) {
-    if (runs.size() != 6 || kept_runs.size() != 4) {
-        throw std::runtime_error("suite manifest requires exactly 6 runs with 4 kept runs");
-    }
+void write_manifest(std::vector<RunResult> runs,
+                    const std::filesystem::path &output_path,
+                    const moonai::AppConfig &cfg) {
+  nlohmann::json manifest;
+  manifest["schema_version"] = 1;
 
-    std::vector<RawRunSummary> ordered_runs = runs;
-    std::sort(ordered_runs.begin(), ordered_runs.end(), [](const RawRunSummary& lhs, const RawRunSummary& rhs) {
-        return lhs.avg_generation_ms < rhs.avg_generation_ms;
-    });
+  nlohmann::json metadata;
+  metadata["suite_name"] = cfg.experiment_name;
+  metadata["frame_count"] = cfg.sim_config.max_steps;
+  metadata["report_interval_steps"] = cfg.sim_config.report_interval_steps;
+  metadata["gpu_allowed"] = cfg.enable_gpu;
+  metadata["platform"] = moonai::AppConfig::platform;
+  metadata["cuda_compiled"] = moonai::AppConfig::cuda_compiled;
+  metadata["openmp_compiled"] = moonai::AppConfig::openmp_compiled;
+  metadata["generated_at_utc"] = utc_timestamp();
 
-    std::vector<nlohmann::json> kept_events;
-    std::vector<nlohmann::json> kept_counters;
-    std::vector<double> kept_generation_ms;
-    std::vector<double> kept_run_total_ms;
-    int cpu_generation_count_sum = 0;
-    int gpu_generation_count_sum = 0;
-    for (const auto& run : kept_runs) {
-        kept_events.push_back(run.summary_events);
-        kept_counters.push_back(run.summary_counters);
-        kept_generation_ms.push_back(run.avg_generation_ms);
-        kept_run_total_ms.push_back(run.run_total_ms);
-        cpu_generation_count_sum += run.cpu_generation_count;
-        gpu_generation_count_sum += run.gpu_generation_count;
-    }
+  manifest["metadata"] = metadata;
 
-    const double avg_generation_ms = std::accumulate(
-        kept_generation_ms.begin(), kept_generation_ms.end(), 0.0) / kept_generation_ms.size();
-    const double avg_run_total_ms = std::accumulate(
-        kept_run_total_ms.begin(), kept_run_total_ms.end(), 0.0) / kept_run_total_ms.size();
+  nlohmann::json run_rows = nlohmann::json::array();
+  for (const auto &run : runs) {
+    if (run.completed) {
+      nlohmann::json run_obj;
+      run_obj["seed"] = run.seed;
+      run_obj["run_total_ms"] = run.profile["run_total_ms"];
+      run_obj["frames"] = run.profile["frames"];
+      run_rows.push_back(run_obj);
+    }
+  }
+  manifest["runs"] = std::move(run_rows);
 
-    nlohmann::json manifest;
-    manifest["schema_version"] = 1;
-    manifest["generated_at_utc"] = utc_timestamp_iso(std::chrono::system_clock::now());
-    manifest["suite"] = {
-        {"name", suite.name},
-        {"config_path", suite.config_path},
-        {"experiment_name", suite.experiment_name},
-        {"output_dir", suite.output_dir},
-        {"generations", suite.generations},
-        {"config_fingerprint", config_fingerprint},
-        {"seed_count", suite.seeds.size()},
-        {"trim_policy", {
-            {"drop_fastest", 1},
-            {"drop_slowest", 1},
-            {"keep_count", 4},
-            {"sort_key", "generation_total.avg_ms_per_generation"},
-        }},
-        {"base_config", moonai::config_to_json(base_config)},
-    };
-    manifest["runs"] = nlohmann::json::array();
-    for (std::size_t index = 0; index < ordered_runs.size(); ++index) {
-        const auto& run = ordered_runs[index];
-        const std::filesystem::path run_dir = std::filesystem::path(run.run_dir);
-        const std::filesystem::path profile_path = std::filesystem::path(run.profile_path);
-        std::string disposition = "kept";
-        if (index == 0) {
-            disposition = "dropped_fastest";
-        } else if (index + 1 == ordered_runs.size()) {
-            disposition = "dropped_slowest";
-        }
-        manifest["runs"].push_back({
-            {"seed", run.seed},
-            {"run_dir", std::filesystem::relative(run_dir, suite_dir).generic_string()},
-            {"profile_path", std::filesystem::relative(profile_path, suite_dir).generic_string()},
-            {"avg_generation_ms", run.avg_generation_ms},
-            {"run_total_ms", run.run_total_ms},
-            {"generation_count", run.generation_count},
-            {"disposition", disposition},
-        });
-    }
-    manifest["aggregate"] = {
-        {"kept_run_count", kept_runs.size()},
-        {"avg_generation_ms", avg_generation_ms},
-        {"avg_generation_ms_stddev", compute_stddev(kept_generation_ms, avg_generation_ms)},
-        {"avg_run_total_ms", avg_run_total_ms},
-        {"cpu_generation_count_avg", static_cast<double>(cpu_generation_count_sum) / kept_runs.size()},
-        {"gpu_generation_count_avg", static_cast<double>(gpu_generation_count_sum) / kept_runs.size()},
-        {"events", aggregate_named_stats(
-            kept_events,
-            "total_ms",
-            "avg_ms_per_generation",
-            "nonzero_generation_count",
-            "avg_ms_per_nonzero_generation")},
-        {"counters", aggregate_named_stats(
-            kept_counters,
-            "total",
-            "avg_per_generation",
-            "nonzero_generation_count",
-            "avg_per_nonzero_generation")},
-    };
-    const std::filesystem::path output_path = suite_dir / "profile_suite.json";
-    std::ofstream handle(output_path);
-    if (!handle.is_open()) {
-        throw std::runtime_error("failed to open suite manifest for writing: " + output_path.string());
-    }
-    handle << manifest.dump(2) << "\n";
+  std::filesystem::create_directories(output_path.parent_path());
+  std::ofstream file(output_path);
+  if (!file.is_open()) {
+    spdlog::error("Failed to open profiler output '{}'", output_path.string());
+    return;
+  }
+  file << manifest.dump(2) << '\n';
+  if (!file)
+    spdlog::error("Failed to write profiler output '{}'", output_path.string());
+  else
+    spdlog::info("Profiler output written to: {}", output_path.string());
 }
 
 } // namespace
 
-int main(int argc, char* argv[]) {
-    const ProfilerCliArgs args = parse_args(argc, argv);
-    spdlog::set_level(args.verbose ? spdlog::level::debug : spdlog::level::info);
+int main(int argc, const char *argv[]) {
+  const Args args = parse_args(argc, argv);
 
-    std::signal(SIGINT, signal_handler);
-    std::signal(SIGTERM, signal_handler);
+  moonai::AppConfig base_cfg;
+  base_cfg.sim_config = moonai::SimulationConfig();
+  base_cfg.sim_config.max_steps = args.frames;
+  base_cfg.experiment_name = args.experiment_name;
+  base_cfg.headless = false;
+  base_cfg.enable_gpu = !args.no_gpu;
+  base_cfg.interactive = false;
+  base_cfg.speed_multiplier = 1;
+  const auto output_path =
+      std::filesystem::path(args.output_dir) /
+      (utc_timestamp() + "_" + args.experiment_name + ".json");
 
-    const auto suites = moonai::load_profiler_suites_lua(args.config_path);
-    if (suites.empty()) {
-        spdlog::error("No profiler suites loaded from '{}'", args.config_path);
-        return 1;
-    }
+  std::vector<RunResult> runs;
+  runs.reserve(args.seeds.size());
+  for (std::uint64_t seed : args.seeds) {
+    base_cfg.sim_config.seed = seed;
+    runs.push_back(run_profiler(base_cfg));
+  }
 
-    if (args.list_suites) {
-        std::printf("Profiler suites in '%s':\n", args.config_path.c_str());
-        for (const auto& [name, _] : suites) {
-            std::printf("  %s\n", name.c_str());
-        }
-        return 0;
-    }
-
-    moonai::ProfilerSuiteConfig suite;
-    if (!args.suite_name.empty()) {
-        auto it = suites.find(args.suite_name);
-        if (it == suites.end()) {
-            spdlog::error("Profiler suite '{}' not found.", args.suite_name);
-            return 1;
-        }
-        suite = it->second;
-    } else if (suites.size() == 1) {
-        suite = suites.begin()->second;
-    } else {
-        spdlog::error("Multiple profiler suites found. Use --suite.");
-        return 1;
-    }
-
-    moonai::LuaRuntime lua_runtime;
-    auto all_configs = lua_runtime.load_config(suite.config_path);
-    auto it = all_configs.find(suite.experiment_name);
-    if (it == all_configs.end()) {
-        spdlog::error("Base experiment '{}' not found in '{}'.", suite.experiment_name, suite.config_path);
-        return 1;
-    }
-
-    moonai::SimulationConfig base_config = it->second;
-    base_config.max_generations = suite.generations;
-    const std::string config_fingerprint = moonai::fingerprint_config(base_config);
-
-    if (suite.seeds.size() != 6) {
-        spdlog::error("Profiler suite '{}' must define exactly 6 seeds.", suite.name);
-        return 1;
-    }
-
-    if (args.validate_only) {
-        auto errors = moonai::validate_config(base_config);
-        if (!errors.empty()) {
-            for (const auto& error : errors) {
-                spdlog::error("Config error [{}]: {}", error.field, error.message);
-            }
-            return 1;
-        }
-        std::printf("OK\n");
-        return 0;
-    }
-
-    const std::string output_root = args.output_dir.empty() ? suite.output_dir : args.output_dir;
-    const std::filesystem::path suite_dir = create_suite_output_dir(output_root, suite.name);
-
-    std::vector<RawRunSummary> runs;
-    runs.reserve(suite.seeds.size());
-    for (std::size_t index = 0; index < suite.seeds.size(); ++index) {
-        const std::uint64_t seed = suite.seeds[index];
-        spdlog::info("=== Profiler run {}/{} (seed={}) ===", index + 1, suite.seeds.size(), seed);
-        try {
-            runs.push_back(run_profiled_experiment(
-                suite,
-                base_config,
-                lua_runtime,
-                seed,
-                suite_dir,
-                args.no_gpu,
-                config_fingerprint));
-        } catch (const std::exception& e) {
-            spdlog::error("Profiler run failed for seed {}: {}", seed, e.what());
-            return 1;
-        }
-    }
-
-    for (const auto& run : runs) {
-        if (run.config_fingerprint != config_fingerprint) {
-            spdlog::error("Run seed {} has mismatched config fingerprint.", run.seed);
-            return 1;
-        }
-    }
-
-    std::sort(runs.begin(), runs.end(), [](const RawRunSummary& lhs, const RawRunSummary& rhs) {
-        return lhs.avg_generation_ms < rhs.avg_generation_ms;
-    });
-    std::vector<RawRunSummary> kept_runs(runs.begin() + 1, runs.end() - 1);
-
-    try {
-        write_suite_manifest(suite_dir, suite, base_config, config_fingerprint, runs, kept_runs);
-    } catch (const std::exception& e) {
-        spdlog::error("Failed to write suite manifest: {}", e.what());
-        return 1;
-    }
-
-    spdlog::info("Profiler suite output: {}", suite_dir.string());
-    return 0;
+  write_manifest(std::move(runs), output_path, base_cfg);
+  return 0;
 }

@@ -25,8 +25,8 @@ class RunData:
     name: str
     config: dict
     stats: pd.DataFrame
-    final_generation: int
-    expected_generations: int | None
+    final_step: int
+    expected_steps: int | None
     seed: int | None
     config_signature: str
 
@@ -66,8 +66,8 @@ def config_signature(config: dict) -> str:
     return json.dumps(normalized, sort_keys=True, separators=(",", ":"))
 
 
-def expected_generations(config: dict) -> int | None:
-    value = int(config.get("max_generations", 0) or 0)
+def expected_steps(config: dict) -> int | None:
+    value = int(config.get("max_steps", 0) or 0)
     return value if value > 0 else None
 
 
@@ -96,9 +96,7 @@ def discover_runs(output_dir: Path) -> tuple[list[RunData], list[SkippedRun]]:
             stats = load_csv(
                 path / "stats.csv",
                 required_columns=[
-                    "generation",
-                    "best_fitness",
-                    "avg_fitness",
+                    "step",
                     "num_species",
                     "avg_complexity",
                     "predator_count",
@@ -109,13 +107,13 @@ def discover_runs(output_dir: Path) -> tuple[list[RunData], list[SkippedRun]]:
             skipped.append(SkippedRun(path, str(exc)))
             continue
 
-        final_generation = int(stats["generation"].iloc[-1])
-        expected = expected_generations(config)
-        if expected is not None and final_generation + 1 < expected:
+        final_step = int(stats["step"].iloc[-1])
+        expected = expected_steps(config)
+        if expected is not None and final_step < expected:
             skipped.append(
                 SkippedRun(
                     path,
-                    f"incomplete run: expected {expected} generations, found {final_generation + 1}",
+                    f"incomplete run: expected {expected} steps, found {final_step}",
                 )
             )
             continue
@@ -127,8 +125,8 @@ def discover_runs(output_dir: Path) -> tuple[list[RunData], list[SkippedRun]]:
                 name=path.name,
                 config=config,
                 stats=stats,
-                final_generation=final_generation,
-                expected_generations=expected,
+                final_step=final_step,
+                expected_steps=expected,
                 seed=int(seed) if isinstance(seed, int | float) else None,
                 config_signature=config_signature(config),
             )

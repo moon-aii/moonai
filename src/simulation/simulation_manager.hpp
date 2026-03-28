@@ -2,95 +2,112 @@
 
 #include "core/config.hpp"
 #include "core/random.hpp"
-#include "simulation/environment.hpp"
-#include "simulation/agent.hpp"
+#include "simulation/entity.hpp"
+#include "simulation/food_store.hpp"
 #include "simulation/spatial_grid.hpp"
-#include "simulation/physics.hpp"
+#include "simulation/step_state.hpp"
 
-#include <vector>
-#include <memory>
-#include <functional>
 #include <cstddef>
+#include <memory>
+#include <vector>
 
 namespace moonai {
 
-// Discrete interaction event recorded each tick
+class Registry;
+class EvolutionManager;
+namespace gpu {
+class GpuBatch;
+}
+
 struct SimEvent {
-    enum Type : uint8_t { Kill, Food };
-    Type type;
-    AgentId agent_id;    // predator (kill) or prey (food)
-    AgentId target_id;   // prey (kill) or food index (food)
-    Vec2 position;       // where the event occurred
+  enum Type : uint8_t { Kill, Food, Birth, Death };
+  Type type;
+  Entity agent_id;  // predator (kill) or prey (food)
+  Entity target_id; // prey (kill), food (food), or self (death)
+  Vec2 position;    // where the event occurred
 };
 
 class SimulationManager {
 public:
-    explicit SimulationManager(const SimulationConfig& config);
+  struct ReproductionPair {
+    Entity parent_a = INVALID_ENTITY;
+    Entity parent_b = INVALID_ENTITY;
+    Vec2 spawn_position;
+  };
 
-    void initialize();
-    void tick(float dt);
-    void reset();
+  struct SimulationStepResult {
+    std::vector<SimEvent> events;
+    std::vector<ReproductionPair> reproduction_pairs;
+  };
 
-    int current_tick() const { return current_tick_; }
-    std::vector<std::unique_ptr<Agent>>& agents() { return agents_; }
-    const std::vector<std::unique_ptr<Agent>>& agents() const { return agents_; }
-    Environment& environment() { return environment_; }
-    const Environment& environment() const { return environment_; }
-    const SpatialGrid& spatial_grid() const { return grid_; }
-    const SpatialGrid& food_grid() const { return food_grid_; }
+  explicit SimulationManager(const SimulationConfig &config);
+  ~SimulationManager();
 
-    int alive_predators() const { return alive_predators_; }
-    int alive_prey() const { return alive_prey_; }
-    const std::vector<std::size_t>& alive_agent_indices() const { return alive_indices_; }
-    const std::vector<std::size_t>& alive_predator_indices() const { return alive_predator_indices_; }
-    const std::vector<std::size_t>& alive_prey_indices() const { return alive_prey_indices_; }
+  void initialize();
+  SimulationStepResult step(Registry &registry, EvolutionManager &evolution);
+  SimulationStepResult step_gpu(Registry &registry,
+                                EvolutionManager &evolution);
+  void reset();
 
-    // Interaction events that occurred during the last tick() call
-    const std::vector<SimEvent>& last_events() const { return last_events_; }
+  void enable_gpu(bool enable);
+  bool gpu_enabled() const {
+    return gpu_enabled_;
+  }
 
-    // Get sensor inputs for all agents (indexed by position in agents_ vector)
-    SensorInput get_sensors(size_t agent_index) const;
-    void write_sensors_flat(float* dst, size_t agent_count) const;
+  int current_step() const {
+    return current_step_;
+  }
+  void increment_step() {
+    ++current_step_;
+  }
 
-    // Apply neural network output to an agent
-    void apply_action(size_t agent_index, Vec2 direction, float dt);
-    void set_neighbor_cache_enabled(bool enabled) { neighbor_cache_enabled_ = enabled; }
-    void refresh_state();
+  SpatialGrid &spatial_grid() {
+    return grid_;
+  }
+  const SpatialGrid &spatial_grid() const {
+    return grid_;
+  }
+
+  const FoodStore &food_store() const {
+    return food_store_;
+  }
+
+  int alive_predators() const {
+    return alive_predators_;
+  }
+  int alive_prey() const {
+    return alive_prey_;
+  }
+
+  void refresh_state(Registry &registry);
 
 private:
-    void initialize(bool log_initialization);
+  void initialize(bool log_initialization);
 
-    struct QueryCache {
-        std::vector<std::vector<AgentId>> nearby_agents;
-        std::vector<std::vector<AgentId>> nearby_food;
-        bool valid = false;
-    };
+  PackedStepState pack_step_state(const Registry &registry) const;
+  void apply_step_state(Registry &registry, const PackedStepState &state);
+  void run_cpu_backend(PackedStepState &state, EvolutionManager &evolution);
+  void collect_step_events(Registry &registry, const PackedStepState &state,
+                           std::vector<SimEvent> &events);
+  std::vector<ReproductionPair>
+  find_reproduction_pairs(const Registry &registry) const;
+  void refresh_world_state_after_step(Registry &registry);
+  void rebuild_food_grid();
+  void rebuild_spatial_grid(const Registry &registry);
+  void count_alive(const Registry &registry);
 
-    void rebuild_alive_indices();
-    void invalidate_neighbor_cache();
-    void rebuild_neighbor_cache(float radius);
-    void rebuild_spatial_grid();
-    void rebuild_food_grid();
-    void process_energy(float dt);
-    void process_food();
-    void process_attacks();
-    void count_alive();
+  SimulationConfig config_;
+  Random rng_;
+  SpatialGrid grid_;
+  SpatialGrid food_grid_;
+  FoodStore food_store_;
+  int current_step_ = 0;
+  int alive_predators_ = 0;
+  int alive_prey_ = 0;
 
-    SimulationConfig config_;
-    Random rng_;
-    Environment environment_;
-    SpatialGrid grid_;
-    SpatialGrid food_grid_;
-    std::vector<std::unique_ptr<Agent>> agents_;
-    std::vector<SimEvent> last_events_;
-    std::vector<std::size_t> alive_indices_;
-    std::vector<std::size_t> alive_predator_indices_;
-    std::vector<std::size_t> alive_prey_indices_;
-    QueryCache neighbor_cache_;
-    bool neighbor_cache_enabled_ = true;
-    int current_tick_ = 0;
-    int alive_predators_ = 0;
-    int alive_prey_ = 0;
+  // GPU support
+  bool gpu_enabled_ = false;
+  std::unique_ptr<gpu::GpuBatch> gpu_batch_;
 };
 
 } // namespace moonai

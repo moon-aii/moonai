@@ -1,58 +1,50 @@
 #pragma once
-
 #include "core/types.hpp"
-
+#include "simulation/entity.hpp"
+#include <unordered_map>
 #include <vector>
-#include <cstdint>
 
 namespace moonai {
 
 class SpatialGrid {
 public:
-    struct FlatEntry {
-        AgentId id;
-        float x;
-        float y;
-    };
+  SpatialGrid(float world_width, float world_height, float cell_size);
 
-    SpatialGrid(int world_width, int world_height, float cell_size);
+  void clear();
+  void insert(Entity e, Vec2 pos);
 
-    void clear();
-    void insert(AgentId id, Vec2 position);
-    void update(AgentId id, Vec2 position);
-    void remove(AgentId id);
-    bool contains(AgentId id) const;
+  // Query entities within radius of position
+  std::vector<Entity> query_radius(Vec2 center, float radius) const;
 
-    // Returns all agent IDs in the cell containing `position` and its neighbors
-    std::vector<AgentId> query(Vec2 position) const;
+  // Get all entities in grid
+  const std::vector<Entity> &all_entities() const {
+    return entities_;
+  }
 
-    // Returns all agent IDs within `radius` of `position`
-    std::vector<AgentId> query_radius(Vec2 position, float radius) const;
-    void query_radius_into(Vec2 position, float radius, std::vector<AgentId>& result) const;
-    void flatten(std::vector<int>& cell_offsets, std::vector<FlatEntry>& entries) const;
-
-    float cell_size() const { return cell_size_; }
-    int cols() const { return cols_; }
-    int rows() const { return rows_; }
-    int world_width() const { return world_width_; }
-    int world_height() const { return world_height_; }
+  float cell_size() const {
+    return cell_size_;
+  }
 
 private:
-    int cell_index(float x, float y) const;
-    int cell_x(float x) const;
-    int cell_y(float y) const;
+  using CellKey = uint64_t;
 
-    struct Entry { AgentId id; Vec2 pos; };
+  float cell_size_;
+  float world_width_;
+  float world_height_;
+  int cols_;
+  int rows_;
 
-    float cell_size_;
-    int cols_;
-    int rows_;
-    int world_width_;
-    int world_height_;
-    std::vector<std::vector<Entry>> cells_;
-    std::vector<int> id_to_cell_;
-    std::vector<int> id_to_index_;
-    std::vector<uint8_t> id_active_;
+  std::unordered_map<CellKey, std::vector<Entity>> cells_;
+  std::vector<Entity> entities_;
+
+  CellKey cell_key(int x, int y) const {
+    return (static_cast<uint64_t>(static_cast<uint32_t>(x)) << 32) |
+           static_cast<uint32_t>(y);
+  }
+
+  CellKey cell_key(Vec2 pos) const;
+  int cell_x(float x) const;
+  int cell_y(float y) const;
 };
 
 } // namespace moonai

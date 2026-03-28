@@ -22,5 +22,3 @@
 *.docx binary
 *.png binary
 *.jpg binary
-
-web/** linguist-documentation

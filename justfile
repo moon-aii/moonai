@@ -2,9 +2,6 @@
 # Usage: just <recipe>
 # Run `just --list` to see all available recipes.
 
-# Default recipe: build debug
-default: build
-
 # ─── Configuration ──────────────────────────────────────────────────────────
 
 # Detect OS
@@ -18,52 +15,15 @@ build-type := "debug"
 
 preset := os + "-" + build-type
 build-dir := "build" / preset
+release-dir := "build" / (os + "-release")
 
-# ─── Setup ──────────────────────────────────────────────────────────────────
-
-# Install vcpkg and bootstrap it
-[group('setup')]
-setup-vcpkg:
-    #!/usr/bin/env bash
-    if [ -z "$VCPKG_ROOT" ]; then
-        echo "VCPKG_ROOT is not set. Installing vcpkg to ~/.vcpkg..."
-        git clone https://github.com/microsoft/vcpkg.git ~/.vcpkg
-        ~/.vcpkg/bootstrap-vcpkg.sh
-        echo "Add to your shell profile:"
-        echo '  export VCPKG_ROOT="$HOME/.vcpkg"'
-        echo '  export PATH="$VCPKG_ROOT:$PATH"'
-    else
-        echo "vcpkg found at $VCPKG_ROOT"
-        echo "Bootstrapping..."
-        "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
-    fi
-
-# Install system dependencies (Arch Linux)
-[group('setup')]
-setup-arch:
-    sudo pacman -S --needed cmake ninja gcc sfml cuda python-pandas python-matplotlib
-
-# Install system dependencies (Ubuntu/Debian)
-[group('setup')]
-setup-ubuntu:
-    sudo apt-get update && sudo apt-get install -y \
-        cmake ninja-build g++ \
-        libsfml-dev \
-        nvidia-cuda-toolkit \
-        python3-pandas python3-matplotlib
+# ─── Build ──────────────────────────────────────────────────────────────────
 
 # Set up Python environments for simulation and profiler analysis
-[group('setup')]
+[group('build')]
 setup-python:
     cd analysis && uv sync
     cd profiler && uv sync
-
-# Full first-time setup
-[group('setup')]
-setup: setup-vcpkg
-    @echo "Setup complete. Run 'just configure' next."
-
-# ─── Build ──────────────────────────────────────────────────────────────────
 
 # Configure CMake (run after setup or when CMakeLists change)
 [group('build')]
@@ -83,57 +43,21 @@ release:
 
 # ─── Run ────────────────────────────────────────────────────────────────────
 
-# Run the simulation with default config (auto-selects the 'default' experiment)
+# Run the simulation with default config (pass additional args after --)
 [group('run')]
-run: build
-    {{build-dir}}/moonai config.lua --experiment default
+run *args: build
+    {{build-dir}}/moonai config.lua --experiment default {{args}}
 
-# Run with a custom config file
+# Run the release build with default config (pass additional args after --)
+[default]
 [group('run')]
-run-config config_path: build
-    {{build-dir}}/moonai {{config_path}}
-
-# Run in headless mode (no window, max speed)
-[group('run')]
-run-headless: build
-    {{build-dir}}/moonai config.lua --experiment default --headless
-
-# Run with CPU-only inference (disable GPU even if compiled in)
-[group('run')]
-run-no-gpu: build
-    {{build-dir}}/moonai config.lua --experiment default --no-gpu
-
-# Run headless and CPU-only (useful on servers without a GPU or display)
-[group('run')]
-run-server: build
-    {{build-dir}}/moonai config.lua --experiment default --headless --no-gpu
+run-release *args: release
+    {{release-dir}}/moonai config.lua --experiment default {{args}}
 
 # Validate a config file
 [group('run')]
 validate config_path="config.lua": build
     {{build-dir}}/moonai --validate {{config_path}}
-
-# ─── Test ───────────────────────────────────────────────────────────────────
-
-# Run all tests
-[group('test')]
-test: build
-    ctest --test-dir {{build-dir}} --output-on-failure
-
-# Run tests with verbose output
-[group('test')]
-test-verbose: build
-    ctest --test-dir {{build-dir}} --output-on-failure --verbose
-
-# Run only CUDA/GPU tests
-[group('test')]
-test-gpu: build
-    ctest --test-dir {{build-dir}} --output-on-failure -R GpuTest
-
-# Run a specific test by name pattern
-[group('test')]
-test-filter pattern: build
-    ctest --test-dir {{build-dir}} --output-on-failure -R {{pattern}}
 
 # ─── Experiments ─────────────────────────────────────────────────────────────
 
@@ -144,81 +68,50 @@ list-experiments: build
 
 # Run the full experiment matrix (all conditions × seeds, headless)
 [group('experiment')]
-experiments: release
-    ./build/linux-release/moonai config.lua --all --headless
-
-# Run one named experiment (headless)
-[group('experiment')]
-run-experiment name: release
-    ./build/linux-release/moonai config.lua --experiment {{name}} --headless
-
-# ─── Analysis ───────────────────────────────────────────────────────────────
+experiment-run: release
+    {{release-dir}}/moonai config.lua --all --headless
 
 # Generate the self-contained HTML analysis report from output/
-[group('analysis')]
-analyse:
+[group('experiment')]
+experiment-analyse:
     cd analysis && uv run moonai-analysis
-
-# Generate the self-contained HTML profiler report from output/profiles/
-[group('analysis')]
-analyse-profile:
-    cd profiler && uv run moonai-profiler
 
 # Full experiment pipeline: run all experiments → generate report
 [group('experiment')]
-experiment-pipeline: experiments analyse
+experiment: experiment-run experiment-analyse
 
-# Validate GPU/CPU output parity: same stats.csv results with and without GPU
-[group('gpu')]
-gpu-validate:
-    #!/usr/bin/env bash
-    set -e
-    just build-type=release configure
-    just build-type=release build
-    echo "Running with GPU..."
-    ./build/linux-release/moonai config.lua --experiment default --headless -g 5 --seed 42 > /tmp/gpu_run.txt 2>&1
-    echo "Running with CPU (--no-gpu)..."
-    ./build/linux-release/moonai config.lua --experiment default --headless --no-gpu -g 5 --seed 42 > /tmp/cpu_run.txt 2>&1
-    echo "Results match check (stats.csv comparison):"
-    diff <(ls -t output/ | head -2 | tail -1 | xargs -I{} cat "output/{}/stats.csv") \
-         <(ls -t output/ | head -1 | xargs -I{} cat "output/{}/stats.csv") \
-      && echo "MATCH" || echo "DIFFER (float rounding expected between GPU/CPU paths)"
+# ─── Profile ────────────────────────────────────────────────────────────────
 
-# Benchmark GPU vs CPU wall-clock time on the large-population condition
-[group('gpu')]
-gpu-bench:
-    #!/usr/bin/env bash
-    just build-type=release configure
-    just build-type=release build
-    echo "=== GPU path (pop_large) ==="
-    time ./build/linux-release/moonai config.lua \
-        --experiment pop_large_seed42 --headless -g 20
-    echo "=== CPU path (pop_large) ==="
-    time ./build/linux-release/moonai config.lua \
-        --experiment pop_large_seed42 --headless --no-gpu -g 20
+# Full profiler pipeline: run profiler -> generate profiler report
+[group('profile')]
+profile: profile-run profile-analyse
 
-# ─── Clean ──────────────────────────────────────────────────────────────────
+# Run the built-in profiler with optional arguments
+[group('profile')]
+profile-run *args: release
+    {{release-dir}}/moonai_profiler {{args}}
 
-
-# Remove build directory
-[group('clean')]
-clean:
-    rm -rf build/
-
-# Remove build, output, and all generated report artifacts
-[group('clean')]
-clean-all: clean
-    rm -rf output/
-    rm -rf analysis/output/
-    rm -rf profiler/output/
+# Generate the self-contained HTML profiler report from output/profiles/
+[group('profile')]
+profile-analyse:
+    cd profiler && uv run moonai-profiler
 
 # ─── Development ────────────────────────────────────────────────────────────
 
-# Format all C++ source files (requires clang-format)
+# Run tests (optional args: --verbose, -R pattern, etc.)
 [group('dev')]
-format:
-    find src tests -name '*.cpp' -o -name '*.hpp' -o -name '*.cu' -o -name '*.cuh' | \
-        xargs clang-format -i --style=file
+test *args: build
+    ctest --test-dir {{build-dir}} --output-on-failure {{args}}
+
+# Run code quality checks: auto-format all C++ files and run static analysis
+[group('dev')]
+lint: configure
+    find src \( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.cu" -o -name "*.cuh" \) | xargs clang-format --style=file -i
+    cppcheck --enable=warning,style,performance \
+        --std=c++17 \
+        --suppress=missingIncludeSystem \
+        --suppress=*:*/vcpkg_installed/* \
+        --project={{build-dir}}/compile_commands.json
 
 # Generate compile_commands.json for IDE/LSP integration
 [group('dev')]
@@ -226,44 +119,8 @@ compdb:
     cmake --preset {{preset}} -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
     ln -sf {{build-dir}}/compile_commands.json compile_commands.json
 
-# Check for common issues (requires cppcheck)
-[group('dev')]
-lint:
-    cppcheck --enable=warning,style,performance --std=c++17 \
-        --suppress=missingInclude --quiet src/
-
-# Benchmark NN forward pass: 1 generation of pop_large, verbose timing
-[group('dev')]
-bench-nn: release
-    ./build/linux-release/moonai config.lua \
-        --experiment pop_large_seed42 --headless -g 1 -v 2>&1 | grep -E "CPU eval|GPU eval|CUDA"
-
-# Run the built-in profiler on the baseline experiment
-[group('dev')]
-profile: release
-    ./build/linux-release/moonai_profiler profiler.lua \
-        --suite baseline
-
-# Full profiler pipeline: run profiler -> generate profiler report
-[group('dev')]
-profile-pipeline: profile analyse-profile
-
-# Run visual mode briefly and capture FPS from stdout (requires display)
-[group('dev')]
-bench-fps: build
-    timeout 10 ./build/linux-debug/moonai config.lua --experiment default 2>&1 | grep -i fps || true
-
-# Build with AddressSanitizer and run headless for 5 generations
-[group('dev')]
-check-memory:
-    cmake --preset linux-debug -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined" -B build/linux-asan
-    cmake --build build/linux-asan --parallel
-    ./build/linux-asan/moonai config.lua --experiment default --headless -g 5 --seed 42
-
-# ─── Info ───────────────────────────────────────────────────────────────────
-
 # Show project info and detected configuration
-[group('info')]
+[group('dev')]
 info:
     @echo "MoonAI Project"
     @echo "─────────────────────────────"
@@ -272,3 +129,56 @@ info:
     @echo "Preset:     {{preset}}"
     @echo "Build dir:  {{build-dir}}"
     @echo "VCPKG_ROOT: ${VCPKG_ROOT:-NOT SET}"
+
+# ─── GPU ────────────────────────────────────────────────────────────────────
+
+# Run Nsight Compute on the hottest GPU kernel with CLI output only (requires sudo for GPU perf counters)
+[group('gpu')]
+ncu: release
+    sudo ncu \
+        --target-processes all \
+        --kernel-name "regex:.*sensor_build_kernel.*" \
+        --launch-skip 0 \
+        --launch-count 1 \
+        --set basic \
+        {{release-dir}}/moonai config.lua --experiment baseline_seed42 --headless --steps 60 --name nsight-baseline
+    @echo "Note: Output files may be owned by root. Run: sudo chown -R $(whoami):$(whoami) output/nsight-baseline*"
+
+# Run a deeper Nsight Compute pass on the hottest GPU kernel (requires sudo for GPU perf counters)
+[group('gpu')]
+ncu-full: release
+    sudo ncu \
+        --target-processes all \
+        --kernel-name "regex:.*sensor_build_kernel.*" \
+        --launch-skip 0 \
+        --launch-count 1 \
+        --set full \
+        {{release-dir}}/moonai config.lua --experiment baseline_seed42 --headless --steps 60 --name nsight-baseline
+    @echo "Note: Output files may be owned by root. Run: sudo chown -R $(whoami):$(whoami) output/nsight-baseline*"
+
+# Run Nsight Systems for one profiler suite and print CLI stats (requires sudo for GPU perf counters)
+[group('gpu')]
+nsys: release
+    mkdir -p output/nsight
+    sudo nsys profile \
+        --trace=cuda,nvtx,osrt \
+        --sample=none \
+        --stats=true \
+        --force-overwrite=true \
+        --output=output/nsight/nsys-baseline \
+        {{release-dir}}/moonai config.lua --experiment baseline_seed42 --headless --steps 60 --name nsight-baseline
+    @echo "Note: Output files may be owned by root. Run: sudo chown -R $(whoami):$(whoami) output/nsight*"
+
+# ─── Clean ──────────────────────────────────────────────────────────────────
+
+# Remove build directory
+[group('clean')]
+clean:
+    rm -rf build/
+
+# Remove all output and generated report artifacts
+[group('clean')]
+clean-outputs:
+    rm -rf output/
+    rm -rf analysis/output/
+    rm -rf profiler/output/

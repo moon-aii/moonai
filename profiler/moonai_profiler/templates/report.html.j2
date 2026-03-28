@@ -15,6 +15,18 @@
       --accent: #1d4ed8;
       --caption: #444444;
       --zebra: #f7f7f7;
+      /* Depth colors for tree table */
+      --depth-0: #e3f2fd;
+      --depth-1: #f3e5f5;
+      --depth-2: #e8f5e9;
+      --depth-3: #fff3e0;
+      --depth-4: #fce4ec;
+      --depth-5: #e0f2f1;
+    }
+
+    /* Depth-based indentation for event names (4 spaces ≈ 32px per level) */
+    .events-table td:first-child {
+      padding-left: calc(10px + var(--depth, 0) * 32px);
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -161,6 +173,24 @@
       background: var(--zebra);
     }
 
+    /* Tree table depth colors */
+    .depth-0 { background-color: var(--depth-0); font-weight: 600; }
+    .depth-1 { background-color: var(--depth-1); }
+    .depth-2 { background-color: var(--depth-2); }
+    .depth-3 { background-color: var(--depth-3); }
+    .depth-4 { background-color: var(--depth-4); }
+    .depth-5 { background-color: var(--depth-5); }
+    .depth-6 { background-color: #f5f5f5; }
+    .depth-7 { background-color: #eeeeee; }
+    
+    /* Add left border to show hierarchy */
+    .depth-0 td:first-child { border-left: 4px solid #1976d2; }
+    .depth-1 td:first-child { border-left: 4px solid #7b1fa2; }
+    .depth-2 td:first-child { border-left: 4px solid #388e3c; }
+    .depth-3 td:first-child { border-left: 4px solid #f57c00; }
+    .depth-4 td:first-child { border-left: 4px solid #c2185b; }
+    .depth-5 td:first-child { border-left: 4px solid #00796b; }
+
     /* Figures */
     .figure-grid {
       display: grid;
@@ -185,6 +215,61 @@
       font-size: 0.85rem;
       color: var(--caption);
       text-align: center;
+    }
+
+    /* Side-by-side layout for members */
+    .members-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2em;
+      margin: 1em 0;
+      align-items: start;
+    }
+    .members-table {
+      overflow-x: auto;
+    }
+    .members-chart {
+      min-width: 0;
+    }
+    .members-chart figure {
+      margin: 0;
+    }
+
+    /* Metadata section */
+    .metadata-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1em;
+      margin: 1em 0;
+      padding: 1em;
+      background: #fafafa;
+      border: 1px solid var(--rule-light);
+      border-radius: 4px;
+    }
+    .metadata-item {
+      display: flex;
+      flex-direction: column;
+    }
+    .metadata-label {
+      font-size: 0.8rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .metadata-value {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--ink);
+    }
+
+    /* Change percentage styling */
+    .change-positive {
+      color: #d32f2f;
+      font-weight: 600;
+    }
+    .change-negative {
+      color: #388e3c;
+      font-weight: 600;
     }
 
     /* Details / collapsibles */
@@ -260,10 +345,13 @@
       details > summary { display: none; }
       details > .details-body { display: block !important; }
       a { color: var(--ink); text-decoration: none; }
+      .members-row { grid-template-columns: 1fr; }
     }
 
     @media (max-width: 700px) {
       body { padding: 1em; }
+      .members-row { grid-template-columns: 1fr; }
+      .metadata-grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -281,11 +369,6 @@
     <p>
       This report presents profiling data from {{ run_count }} profiler
       suite{{ 's' if run_count != 1 else '' }}.
-      Each suite runs six fixed seeds from <code>profiler.lua</code>, drops the
-      fastest and slowest run by average generation time, and reports aggregate
-      timings, charts, and counters from the remaining four runs.
-      {{ skipped_count }} profile{{ 's' if skipped_count != 1 else '' }} could not be analysed and
-      {{ 'are' if skipped_count != 1 else 'is' }} listed in Excluded Profiles.
       Source directory: <code>{{ input_dir }}</code>.
     </p>
   </section>
@@ -298,37 +381,33 @@
       <li><a href="#runs">Profile Details</a>
         <ul>
           {% for run in run_sections %}
-          <li><a href="#run-{{ loop.index }}">{{ run.label }}</a></li>
+          <li><a href="#run-{{ loop.index }}">{{ run.name }}</a></li>
           {% endfor %}
         </ul>
       </li>
-      <li><a href="#skipped">Excluded Profiles</a></li>
     </ul>
   </nav>
 
   <section id="summary">
     <h2>Run Summary</h2>
     <table>
-      <caption>Per-suite overview of trimmed generation timing and dominant hotspots.</caption>
       <thead>
         <tr>
           <th>Run</th>
-          <th>Gens / Run</th>
+          <th>Frames / Run</th>
           <th>Kept Runs</th>
-          <th>Avg Gen (ms)</th>
-          <th>Top Event</th>
-          <th>Top Event Avg (ms/gen)</th>
+          <th>Avg Frame (ms)</th>
+          <th>Change %</th>
         </tr>
       </thead>
       <tbody>
         {% for row in summary_rows %}
         <tr>
-          <td>{{ row.label }}</td>
-          <td>{{ row.total_generations }}</td>
-          <td>{{ row.trimmed_generations }}</td>
-          <td>{{ row.avg_generation_ms }}</td>
-          <td>{{ row.top_event }} ({{ row.top_event_nonzero_generation_count }} active avg)</td>
-          <td>{{ row.top_event_avg_ms }}</td>
+          <td>{{ row.name }}</td>
+          <td>{{ row.total_frames }}</td>
+          <td>{{ row.kept_runs }}</td>
+          <td>{{ row.avg_frame_ms }}</td>
+          <td class="change-{{ row.change_class }}">{{ row.change_pct }}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -351,134 +430,112 @@
     <h2>Profile Details</h2>
     {% for run in run_sections %}
     <details id="run-{{ loop.index }}" {% if loop.first %}open{% endif %}>
-      <summary>{{ run.label }}</summary>
+      <summary>{{ run.name }}</summary>
       <div class="details-body">
-        <p class="run-meta">
-          <em>Suite dir:</em> {{ run.name }} &ensp;|&ensp;
-          <em>Mode:</em> {{ run.mode }} &ensp;|&ensp;
-          <em>{{ run.trim_note }}</em> &ensp;|&ensp;
-          <em>Avg generation:</em> {{ run.avg_generation_ms }} ms
-        </p>
-        <p class="run-meta">
-          <em>Top event:</em> {{ run.top_event_name }} ({{ run.top_event_avg_ms }} ms/gen,
-          {{ run.top_event_nonzero_generation_count }} active avg,
-          {{ run.top_event_total_ms }} ms total)
-        </p>
-
-        {% if run.summary_meta.path_count_note %}
-        <div class="note">{{ run.summary_meta.path_count_note }}</div>
-        {% endif %}
-
-        {% if run.run_notes %}
-        <h3>Profiler Notes</h3>
-        <table>
-          <tbody>
-            {% for note in run.run_notes %}
-            <tr><td>{{ note }}</td></tr>
-            {% endfor %}
-          </tbody>
-        </table>
-        {% endif %}
-
-        {% if run.members %}
-        <h3>Suite Members</h3>
-        <table>
-          <caption>All six raw suite members and their trim disposition.</caption>
-          <thead>
-            <tr>
-              <th>Seed</th>
-              <th>Avg Gen (ms)</th>
-              <th>Run Total (ms)</th>
-              <th>Generation Count</th>
-              <th>Disposition</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for member in run.members %}
-            <tr>
-              <td>{{ member.seed }}</td>
-              <td>{{ member.avg_generation_ms }}</td>
-              <td>{{ member.run_total_ms }}</td>
-              <td>{{ member.generation_count }}</td>
-              <td>{{ member.disposition }}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-        {% endif %}
-
-        <div class="figure-grid">
-          {% for chart in run.charts %}
-          <figure>
-            <img src="{{ chart.image_uri }}" alt="{{ chart.title }} chart">
-            <figcaption>{{ chart.title }}. {{ chart.caption }}</figcaption>
-          </figure>
-          {% endfor %}
+        
+        <!-- Metadata Section -->
+        <h3>Metadata</h3>
+        <div class="metadata-grid">
+          <div class="metadata-item">
+            <span class="metadata-label">Suite Name</span>
+            <span class="metadata-value">{{ run.metadata.suite_name }}</span>
+          </div>
+          <div class="metadata-item">
+            <span class="metadata-label">Frame Count</span>
+            <span class="metadata-value">{{ run.metadata.frame_count }}</span>
+          </div>
+          <div class="metadata-item">
+            <span class="metadata-label">Report Interval</span>
+            <span class="metadata-value">{{ run.metadata.report_interval_steps }} steps</span>
+          </div>
+          <div class="metadata-item">
+            <span class="metadata-label">Platform</span>
+            <span class="metadata-value">{{ run.metadata.platform }}</span>
+          </div>
+          <div class="metadata-item">
+            <span class="metadata-label">GPU Allowed</span>
+            <span class="metadata-value">{{ 'Yes' if run.metadata.gpu_allowed else 'No' }}</span>
+          </div>
+          <div class="metadata-item">
+            <span class="metadata-label">CUDA</span>
+            <span class="metadata-value">{{ 'Yes' if run.metadata.cuda_compiled else 'No' }}</span>
+          </div>
+          <div class="metadata-item">
+            <span class="metadata-label">OpenMP</span>
+            <span class="metadata-value">{{ 'Yes' if run.metadata.openmp_compiled else 'No' }}</span>
+          </div>
+          <div class="metadata-item">
+            <span class="metadata-label">Generated</span>
+            <span class="metadata-value">{{ run.metadata.generated_at_utc }}</span>
+          </div>
         </div>
 
-        <h3>Run Metadata</h3>
-        <table>
-          <tbody>
-            {% for key, value in run.run_meta.items() %}
-            <tr>
-              <th>{{ key }}</th>
-              <td>{{ value }}</td>
-            </tr>
-            {% endfor %}
-            <tr>
-              <th>profile_path</th>
-              <td><code>{{ run.path }}</code></td>
-            </tr>
-          </tbody>
-        </table>
+        <!-- Suite Members - Side by Side -->
+        {% if run.members %}
+        <h3>Suite Members</h3>
+        <div class="members-row">
+          <div class="members-table">
+            <table>
+              <thead>
+                <tr>
+                  <th>Seed</th>
+                  <th>Avg Frame (ms)</th>
+                  <th>Run Total (ms)</th>
+                  <th>Disposition</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for member in run.members %}
+                <tr>
+                  <td>{{ member.seed }}</td>
+                  <td>{{ member.avg_frame_ms }}</td>
+                  <td>{{ member.run_total_ms }}</td>
+                  <td>{{ member.disposition }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          <div class="members-chart">
+            <figure>
+              <img src="{{ run.member_chart.image_uri }}" alt="{{ run.member_chart.title }} chart">
+              <figcaption>{{ run.member_chart.title }}. {{ run.member_chart.caption }}</figcaption>
+            </figure>
+          </div>
+        </div>
+        {% endif %}
 
-        <h3>Summary Events</h3>
-        <table>
-          <caption>Aggregate event summary computed from the four kept suite runs.</caption>
+        <!-- Flame Graph -->
+        {% if run.flame_graph %}
+        <h3>Flame Graph</h3>
+        <div class="figure-grid">
+          <figure>
+            <img src="{{ run.flame_graph.image_uri }}" alt="{{ run.flame_graph.title }} chart">
+            <figcaption>{{ run.flame_graph.title }}. {{ run.flame_graph.caption }}</figcaption>
+          </figure>
+        </div>
+        {% endif %}
+
+        <!-- Events Table with Depth Coloring -->
+        <h3>Events</h3>
+        <table class="events-table">
           <thead>
             <tr>
               <th>Event</th>
               <th>%</th>
-              <th>Avg / Generation</th>
-              <th>Nonzero Generations</th>
-              <th>Avg / Nonzero Generation</th>
+              <th>Avg (ms)</th>
+              <th>Count</th>
               <th>Total (ms)</th>
             </tr>
           </thead>
           <tbody>
-            {% for row in run.summary_events %}
-            <tr>
-              <td>{{ row.name }}</td>
+            {% for row in run.events %}
+            <tr class="depth-{{ row.depth }}">
+              <td style="--depth: {{ row.depth }}">{{ row.name }}</td>
               <td>{{ row.percentage }}</td>
-              <td>{{ row.avg_ms_per_generation }}</td>
-              <td>{{ row.nonzero_generation_count }}</td>
-              <td>{{ row.avg_ms_per_nonzero_generation }}</td>
+              <td>{{ row.avg_ms }}</td>
+              <td>{{ row.count }}</td>
               <td>{{ row.total_ms }}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-
-        <h3>Summary Counters</h3>
-        <table>
-          <caption>Aggregate counter summary computed from the four kept suite runs.</caption>
-          <thead>
-            <tr>
-              <th>Counter</th>
-              <th>Total</th>
-              <th>Avg / Generation</th>
-              <th>Nonzero Generations</th>
-              <th>Avg / Nonzero Generation</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for row in run.summary_counters %}
-            <tr>
-              <td>{{ row.name }}</td>
-              <td>{{ row.total }}</td>
-              <td>{{ row.avg_per_generation }}</td>
-              <td>{{ row.nonzero_generation_count }}</td>
-              <td>{{ row.avg_per_nonzero_generation }}</td>
             </tr>
             {% endfor %}
           </tbody>
@@ -486,28 +543,6 @@
       </div>
     </details>
     {% endfor %}
-  </section>
-
-  <section id="skipped">
-    <h2>Excluded Profiles</h2>
-    {% if skipped_profiles %}
-    <table>
-      <caption>Profiles that could not be included in the analysis.</caption>
-      <thead>
-        <tr><th>Name</th><th>Reason</th></tr>
-      </thead>
-      <tbody>
-        {% for skipped in skipped_profiles %}
-        <tr>
-          <td>{{ skipped.name }}</td>
-          <td>{{ skipped.reason }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    {% else %}
-    <div class="empty">No profiles were skipped.</div>
-    {% endif %}
   </section>
 
 </body>

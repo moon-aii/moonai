@@ -17,7 +17,7 @@ class SummaryRow:
 
 @dataclass(frozen=True)
 class SummaryData:
-    generation: int
+    step: int
     headers: list[str]
     rows: list[SummaryRow]
     skipped_runs: list[SkippedRun]
@@ -26,15 +26,11 @@ class SummaryData:
 def build_summary(
     aggregates: list[ConditionAggregate], skipped_runs: list[SkippedRun]
 ) -> SummaryData:
-    generation = min(
-        int(aggregate.summary_frame["generation"].max()) for aggregate in aggregates
-    )
+    step = min(int(aggregate.summary_frame["step"].max()) for aggregate in aggregates)
     rows: list[SummaryRow] = []
 
     for aggregate in aggregates:
-        row = aggregate.summary_frame[
-            aggregate.summary_frame["generation"] == generation
-        ].iloc[-1]
+        row = aggregate.summary_frame[aggregate.summary_frame["step"] == step].iloc[-1]
         metrics = {
             metric: f"{row[f'{metric}_mean']:.3f} +/- {row[f'{metric}_std']:.3f}"
             for metric in COMPARISON_METRICS
@@ -48,7 +44,7 @@ def build_summary(
         )
 
     return SummaryData(
-        generation=generation,
+        step=step,
         headers=["condition", "runs", *COMPARISON_METRICS],
         rows=rows,
         skipped_runs=skipped_runs,

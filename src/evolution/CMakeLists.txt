@@ -5,6 +5,7 @@ set(MOONAI_EVOLUTION_SOURCES
     species.cpp
     mutation.cpp
     crossover.cpp
+    network_cache.cpp
 )
 
 add_library(moonai_evolution STATIC ${MOONAI_EVOLUTION_SOURCES})
