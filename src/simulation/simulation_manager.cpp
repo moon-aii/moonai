@@ -707,11 +707,28 @@ SimulationManager::step_gpu_ecs(Registry &registry,
   params.energy_gain_from_kill =
       static_cast<float>(config_.energy_gain_from_kill);
 
-  gpu_batch_->upload_async(agent_count, food_count);
-  gpu_batch_->launch_build_sensors_async(params, agent_count, food_count);
+  {
+    MOONAI_PROFILE_SCOPE("gpu_upload");
+    gpu_batch_->upload_async(agent_count, food_count);
+  }
+
+  {
+    MOONAI_PROFILE_SCOPE("gpu_sensing_kernel");
+    gpu_batch_->launch_build_sensors_async(params, agent_count, food_count);
+  }
+
   evolution.launch_gpu_neural(*gpu_batch_, agent_count);
-  gpu_batch_->launch_post_inference_async(params, agent_count, food_count);
-  gpu_batch_->download_async(agent_count, food_count);
+
+  {
+    MOONAI_PROFILE_SCOPE("gpu_step_kernel");
+    gpu_batch_->launch_post_inference_async(params, agent_count, food_count);
+  }
+
+  {
+    MOONAI_PROFILE_SCOPE("gpu_download");
+    gpu_batch_->download_async(agent_count, food_count);
+  }
+
   gpu_batch_->synchronize();
 
   if (!gpu_batch_->ok()) {

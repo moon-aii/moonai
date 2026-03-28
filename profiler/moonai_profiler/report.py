@@ -100,7 +100,6 @@ def _build_section(suite: ProfileSuite) -> dict:
     """Build a report section for a single suite."""
     # Generate charts
     member_chart = _chart_member_means(suite)
-    top_events_chart = _chart_top_events(suite)
     flame_graph = _chart_flame_graph(suite) if suite.tree else None
 
     return {
@@ -120,7 +119,6 @@ def _build_section(suite: ProfileSuite) -> dict:
         ],
         "member_chart": member_chart.__dict__,
         "events": _format_tree_events(suite.tree) if suite.tree else [],
-        "top_events_chart": top_events_chart.__dict__,
         "flame_graph": flame_graph.__dict__ if flame_graph else None,
         "metadata": {
             "suite_name": suite.metadata.get("suite_name", "N/A"),
@@ -141,23 +139,18 @@ def _format_tree_events(tree: AveragedScopeNode | None) -> list[dict]:
         return []
 
     rows = []
-    # Calculate frame total for percentages
-    frame_total_ms = tree.total_inclusive_ms
 
-    def traverse_node(node: AveragedScopeNode, depth: int) -> None:
-        # Calculate percentages
-        inclusive_pct = (
-            (node.total_inclusive_ms / frame_total_ms * 100)
-            if frame_total_ms > 0
-            else 0.0
-        )
-        exclusive_pct = (
-            (node.total_exclusive_ms / frame_total_ms * 100)
-            if frame_total_ms > 0
+    def traverse_node(
+        node: AveragedScopeNode, depth: int, parent_total_ms: float
+    ) -> None:
+        # Calculate percentage based on parent time (root shows 100%)
+        pct = (
+            (node.total_inclusive_ms / parent_total_ms * 100)
+            if parent_total_ms > 0
             else 0.0
         )
 
-        # Create indented name with depth info for styling
+        # Create indented name with 4 spaces per depth level for styling
         indent = "&nbsp;&nbsp;&nbsp;&nbsp;" * depth
         display_name = f"{indent}{node.name}"
 
@@ -166,24 +159,22 @@ def _format_tree_events(tree: AveragedScopeNode | None) -> list[dict]:
                 "name": display_name,
                 "raw_name": node.name,
                 "depth": depth,
-                "inclusive_percentage": f"{inclusive_pct:.1f}",
-                "exclusive_percentage": f"{exclusive_pct:.1f}",
-                "avg_inclusive_ms": f"{node.avg_inclusive_ms:.3f}",
-                "avg_exclusive_ms": f"{node.avg_exclusive_ms:.3f}",
+                "percentage": f"{pct:.1f}",
+                "avg_ms": f"{node.avg_inclusive_ms:.3f}",
                 "count": str(node.count),
-                "total_inclusive_ms": f"{node.total_inclusive_ms:.3f}",
-                "total_exclusive_ms": f"{node.total_exclusive_ms:.3f}",
+                "total_ms": f"{node.total_inclusive_ms:.3f}",
             }
         )
 
-        # Recursively process children (sorted by exclusive time descending)
+        # Recursively process children (sorted by inclusive time descending)
         sorted_children = sorted(
-            node.children, key=lambda c: c.total_exclusive_ms, reverse=True
+            node.children, key=lambda c: c.total_inclusive_ms, reverse=True
         )
         for child in sorted_children:
-            traverse_node(child, depth + 1)
+            traverse_node(child, depth + 1, node.total_inclusive_ms)
 
-    traverse_node(tree, 0)
+    # Root node uses its own total as the baseline (shows 100%)
+    traverse_node(tree, 0, tree.total_inclusive_ms)
     return rows
 
 
@@ -303,30 +294,6 @@ def _chart_member_means(suite: ProfileSuite) -> Chart:
     )
 
 
-def _chart_top_events(suite: ProfileSuite) -> Chart:
-    fig, ax = plt.subplots(figsize=(10, 4.8))
-    pairs = [
-        (name, stats["avg_exclusive_ms"])
-        for name, stats in suite.events.items()
-        if name != "frame_total" and stats.get("avg_exclusive_ms", 0.0) > 0.0
-    ]
-    pairs.sort(key=lambda x: x[1], reverse=True)
-    pairs = pairs[:8]
-    labels = [p[0] for p in pairs]
-    values = [p[1] for p in pairs]
-    ax.barh(labels, values, color="#6d597a")
-    ax.invert_yaxis()
-    ax.set_xlabel("Average exclusive time per frame (ms)")
-    ax.set_title(f"Top Exclusive Events")
-    ax.grid(axis="x", alpha=0.25)
-    fig.tight_layout()
-    return Chart(
-        title="Top Exclusive Events",
-        image_uri=_to_data_uri(fig),
-        caption="Exclusive event ranking (time minus children) from kept runs.",
-    )
-
-
 def _chart_flame_graph(suite: ProfileSuite) -> Chart | None:
     """Generate a flame graph visualization of the call tree."""
     if not suite.tree:
@@ -356,11 +323,10 @@ def _chart_flame_graph(suite: ProfileSuite) -> Chart | None:
 
         # Draw this node
         color = get_color(node.name)
-        rect = mpatches.FancyBboxPatch(
+        rect = mpatches.Rectangle(
             (x, y),
             width,
             height,
-            boxstyle="round,pad=0.01,rounding_size=0.02",
             facecolor=color,
             edgecolor="white",
             linewidth=0.5,
@@ -374,7 +340,7 @@ def _chart_flame_graph(suite: ProfileSuite) -> Chart | None:
             ax.text(
                 x + width / 2,
                 y + height / 2,
-                f"{node.name}\n{node.avg_exclusive_ms:.2f}ms",
+                f"{node.name}\n{node.avg_inclusive_ms:.2f}ms",
                 ha="center",
                 va="center",
                 fontsize=min(10, max(6, int(width * 100))),
@@ -383,22 +349,21 @@ def _chart_flame_graph(suite: ProfileSuite) -> Chart | None:
             )
 
         # Draw children
-        if node.children and y > 0:
-            # Sort children by exclusive time (descending)
+        if node.children:
+            # Sort children by inclusive time (descending)
             sorted_children = sorted(
-                node.children, key=lambda c: c.total_exclusive_ms, reverse=True
+                node.children, key=lambda c: c.total_inclusive_ms, reverse=True
             )
 
             child_x = x
-            total_exclusive = sum(c.total_exclusive_ms for c in sorted_children)
 
             for child in sorted_children:
                 child_width = (
-                    width * (child.total_exclusive_ms / node.total_inclusive_ms)
+                    width * (child.total_inclusive_ms / node.total_inclusive_ms)
                     if node.total_inclusive_ms > 0
                     else 0
                 )
-                draw_flame_node(child, child_x, y - height, child_width, height)
+                draw_flame_node(child, child_x, y + height, child_width, height)
                 child_x += child_width
 
     # Calculate dimensions
@@ -406,18 +371,18 @@ def _chart_flame_graph(suite: ProfileSuite) -> Chart | None:
     height_per_level = 0.15
     max_depth = _get_max_depth(suite.tree)
 
-    # Draw the flame graph
-    draw_flame_node(suite.tree, 0, max_depth * height_per_level, 1.0, height_per_level)
+    # Draw the flame graph (root at bottom, children stack upward)
+    draw_flame_node(suite.tree, 0, 0, 1.0, height_per_level)
 
     ax.set_xlim(0, 1)
     ax.set_ylim(0, (max_depth + 1) * height_per_level)
-    ax.set_xlabel("Relative time (width = exclusive time proportion)")
+    ax.set_xlabel("Relative time (width = inclusive time proportion)")
     ax.set_ylabel("Call depth")
     ax.set_title(f"Flame Graph - {suite.name}")
     ax.set_yticks(
         [i * height_per_level + height_per_level / 2 for i in range(max_depth + 1)]
     )
-    ax.set_yticklabels([f"L{i}" for i in range(max_depth, -1, -1)])
+    ax.set_yticklabels([f"L{i}" for i in range(0, max_depth + 1)])
     ax.grid(axis="y", alpha=0.2, linestyle="--")
 
     # Remove top and right spines
@@ -428,7 +393,7 @@ def _chart_flame_graph(suite: ProfileSuite) -> Chart | None:
     return Chart(
         title="Flame Graph",
         image_uri=_to_data_uri(fig),
-        caption="Call hierarchy visualization. Width = exclusive time, height = call depth. Hover over blocks for details.",
+        caption="Call hierarchy visualization. Width = inclusive time proportion, height = call depth. Hover over blocks for details.",
     )
 
 

@@ -506,26 +506,20 @@
           <thead>
             <tr>
               <th>Event</th>
-              <th>Incl %</th>
-              <th>Excl %</th>
-              <th>Avg Incl (ms)</th>
-              <th>Avg Excl (ms)</th>
+              <th>%</th>
+              <th>Avg (ms)</th>
               <th>Count</th>
-              <th>Total Incl (ms)</th>
-              <th>Total Excl (ms)</th>
+              <th>Total (ms)</th>
             </tr>
           </thead>
           <tbody>
             {% for row in run.events %}
             <tr class="depth-{{ row.depth }}">
               <td>{{ row.name }}</td>
-              <td>{{ row.inclusive_percentage }}</td>
-              <td>{{ row.exclusive_percentage }}</td>
-              <td>{{ row.avg_inclusive_ms }}</td>
-              <td>{{ row.avg_exclusive_ms }}</td>
+              <td>{{ row.percentage }}</td>
+              <td>{{ row.avg_ms }}</td>
               <td>{{ row.count }}</td>
-              <td>{{ row.total_inclusive_ms }}</td>
-              <td>{{ row.total_exclusive_ms }}</td>
+              <td>{{ row.total_ms }}</td>
             </tr>
             {% endfor %}
           </tbody>
