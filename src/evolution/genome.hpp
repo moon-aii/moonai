@@ -43,13 +43,6 @@ public:
     return connections_;
   }
 
-  float fitness() const {
-    return fitness_;
-  }
-  void set_fitness(float f) {
-    fitness_ = f;
-  }
-
   int num_inputs() const {
     return num_inputs_;
   }
@@ -72,7 +65,6 @@ private:
   std::vector<ConnectionGene> connections_;
   int num_inputs_ = 0;
   int num_outputs_ = 0;
-  float fitness_ = 0.0f;
 };
 
 } // namespace moonai

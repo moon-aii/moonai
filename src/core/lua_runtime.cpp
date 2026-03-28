@@ -77,11 +77,6 @@ SimulationConfig table_to_config(const sol::table &tbl) {
   lua_get(tbl, "reproduction_cooldown_steps",
           config.reproduction_cooldown_steps);
   lua_get(tbl, "birth_spawn_radius", config.birth_spawn_radius);
-  lua_get(tbl, "fitness_survival_weight", config.fitness_survival_weight);
-  lua_get(tbl, "fitness_kill_weight", config.fitness_kill_weight);
-  lua_get(tbl, "fitness_energy_weight", config.fitness_energy_weight);
-  lua_get(tbl, "fitness_distance_weight", config.fitness_distance_weight);
-  lua_get(tbl, "complexity_penalty_weight", config.complexity_penalty_weight);
   lua_get(tbl, "activation_function", config.activation_function);
 
   return config;
@@ -127,11 +122,6 @@ void inject_defaults(sol::state &lua) {
   t["min_reproductive_age_steps"] = d.min_reproductive_age_steps;
   t["reproduction_cooldown_steps"] = d.reproduction_cooldown_steps;
   t["birth_spawn_radius"] = d.birth_spawn_radius;
-  t["fitness_survival_weight"] = d.fitness_survival_weight;
-  t["fitness_kill_weight"] = d.fitness_kill_weight;
-  t["fitness_energy_weight"] = d.fitness_energy_weight;
-  t["fitness_distance_weight"] = d.fitness_distance_weight;
-  t["complexity_penalty_weight"] = d.complexity_penalty_weight;
   t["activation_function"] = d.activation_function;
   lua["moonai_defaults"] = t;
 }

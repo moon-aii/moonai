@@ -1,7 +1,6 @@
 #include "evolution/species.hpp"
 #include "simulation/entity.hpp"
 
-#include <algorithm>
 #include <numeric>
 
 namespace moonai {
@@ -22,42 +21,30 @@ bool Species::is_compatible(const Genome &genome, float threshold, float c1,
 }
 
 void Species::add_member(Entity entity, const Genome &genome) {
-  members_.push_back(
-      {entity, genome.fitness(), static_cast<int>(genome.complexity())});
+  Member member;
+  member.entity = entity;
+  member.complexity = genome.complexity();
+  members_.push_back(member);
 }
 
 void Species::clear_members() {
   members_.clear();
-  average_fitness_ = 0.0f;
   average_complexity_ = 0.0f;
 }
 
 void Species::refresh_summary() {
   if (members_.empty()) {
-    average_fitness_ = 0.0f;
     average_complexity_ = 0.0f;
     return;
   }
 
   const float size = static_cast<float>(members_.size());
-  const float total_fitness = std::accumulate(
-      members_.begin(), members_.end(), 0.0f,
-      [](float sum, const Member &member) { return sum + member.fitness; });
   const float total_complexity =
       std::accumulate(members_.begin(), members_.end(), 0.0f,
                       [](float sum, const Member &member) {
                         return sum + static_cast<float>(member.complexity);
                       });
-  average_fitness_ = total_fitness / size;
   average_complexity_ = total_complexity / size;
-
-  const auto best = std::max_element(members_.begin(), members_.end(),
-                                     [](const Member &lhs, const Member &rhs) {
-                                       return lhs.fitness < rhs.fitness;
-                                     });
-  if (best != members_.end()) {
-    best_fitness_ever_ = std::max(best_fitness_ever_, best->fitness);
-  }
 }
 
 } // namespace moonai

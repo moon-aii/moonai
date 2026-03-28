@@ -65,7 +65,6 @@ StepMetrics MetricsCollector::collect(int step, const Registry &registry,
         prey_energy_sum / static_cast<float>(prey_energy_count);
   }
 
-  std::vector<float> fitnesses;
   float complexity_sum = 0.0f;
   int genome_count = 0;
 
@@ -77,20 +76,12 @@ StepMetrics MetricsCollector::collect(int step, const Registry &registry,
 
     const Genome *genome = evolution.genome_for(entity);
     if (genome) {
-      fitnesses.push_back(genome->fitness());
       complexity_sum += static_cast<float>(genome->complexity());
       ++genome_count;
     }
   }
 
-  if (!fitnesses.empty()) {
-    metrics.best_fitness =
-        *std::max_element(fitnesses.begin(), fitnesses.end());
-
-    const float fitness_sum =
-        std::accumulate(fitnesses.begin(), fitnesses.end(), 0.0f);
-    metrics.avg_fitness = fitness_sum / static_cast<float>(fitnesses.size());
-
+  if (genome_count > 0) {
     metrics.avg_genome_complexity =
         complexity_sum / static_cast<float>(genome_count);
   }

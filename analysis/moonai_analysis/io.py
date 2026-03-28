@@ -97,8 +97,6 @@ def discover_runs(output_dir: Path) -> tuple[list[RunData], list[SkippedRun]]:
                 path / "stats.csv",
                 required_columns=[
                     "step",
-                    "best_fitness",
-                    "avg_fitness",
                     "num_species",
                     "avg_complexity",
                     "predator_count",

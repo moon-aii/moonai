@@ -69,14 +69,14 @@ bool Logger::initialize(const SimulationConfig &config) {
     return false;
   }
   stats_file_ << "# master_seed=" << seed_ << "\n";
-  stats_file_ << "step,predator_count,prey_count,births,deaths,best_fitness,"
-                 "avg_fitness,num_species,avg_complexity,avg_predator_energy,"
+  stats_file_ << "step,predator_count,prey_count,births,deaths,num_species,"
+                 "avg_complexity,avg_predator_energy,"
                  "avg_prey_energy\n";
 
   species_file_.open(run_dir_ + "/species.csv");
   if (species_file_.is_open()) {
     species_file_ << "# master_seed=" << seed_ << "\n";
-    species_file_ << "step,species_id,size,avg_fitness,best_fitness\n";
+    species_file_ << "step,species_id,size,avg_complexity\n";
   }
 
   genomes_file_.open(run_dir_ + "/genomes.json");
@@ -94,8 +94,7 @@ void Logger::log_report(const StepMetrics &metrics) {
   }
   stats_file_ << metrics.step << ',' << metrics.predator_count << ','
               << metrics.prey_count << ',' << metrics.births << ','
-              << metrics.deaths << ',' << metrics.best_fitness << ','
-              << metrics.avg_fitness << ',' << metrics.num_species << ','
+              << metrics.deaths << ',' << metrics.num_species << ','
               << metrics.avg_genome_complexity << ','
               << metrics.avg_predator_energy << ',' << metrics.avg_prey_energy
               << '\n';
@@ -108,7 +107,6 @@ void Logger::log_best_genome(int step, const Genome &genome) {
 
   nlohmann::json j;
   j["step"] = step;
-  j["fitness"] = genome.fitness();
   j["num_nodes"] = genome.nodes().size();
   j["num_connections"] = genome.connections().size();
   j["genome"] = nlohmann::json::parse(genome.to_json());
@@ -126,8 +124,7 @@ void Logger::log_species(int step, const std::vector<Species> &species) {
   }
   for (const auto &entry : species) {
     species_file_ << step << ',' << entry.id() << ',' << entry.members().size()
-                  << ',' << entry.average_fitness() << ','
-                  << entry.best_fitness_ever() << '\n';
+                  << ',' << entry.average_complexity() << '\n';
   }
 }
 

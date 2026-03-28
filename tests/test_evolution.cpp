@@ -123,11 +123,9 @@ TEST(CrossoverTest, ChildHasCorrectStructure) {
   Genome a(2, 1);
   a.add_connection({0, 3, 1.0f, true, 0});
   a.add_connection({1, 3, 0.5f, true, 1});
-  a.set_fitness(10.0f);
 
   Genome b(2, 1);
   b.add_connection({0, 3, -1.0f, true, 0});
-  b.set_fitness(5.0f);
 
   Random rng(42);
   Genome child = Crossover::crossover(a, b, rng);
@@ -140,11 +138,9 @@ TEST(CrossoverTest, ChildHasCorrectStructure) {
 TEST(CrossoverTest, DisabledGeneHandling) {
   Genome a(2, 1);
   a.add_connection({0, 3, 1.0f, false, 0});
-  a.set_fitness(10.0f);
 
   Genome b(2, 1);
   b.add_connection({0, 3, -1.0f, true, 0});
-  b.set_fitness(10.0f);
 
   Random rng(42);
   int disabled_count = 0;
@@ -181,13 +177,61 @@ TEST(CrossoverTest, ChildProducesValidNetwork) {
     }
   }
 
-  a.set_fitness(5.0f);
-  b.set_fitness(3.0f);
-
   Genome child = Crossover::crossover(a, b, rng);
   NeuralNetwork nn(child);
   auto outputs = nn.activate({1.0f, 0.5f, -1.0f});
   EXPECT_EQ(outputs.size(), 2u);
+}
+
+TEST(CrossoverTest, MatchingGenesCanComeFromEitherParent) {
+  Genome a(2, 1);
+  a.add_connection({0, 3, 1.0f, true, 0});
+
+  Genome b(2, 1);
+  b.add_connection({0, 3, -1.0f, true, 0});
+
+  bool saw_a_weight = false;
+  bool saw_b_weight = false;
+  for (int seed = 1; seed <= 32; ++seed) {
+    Random rng(seed);
+    Genome child = Crossover::crossover(a, b, rng);
+    ASSERT_EQ(child.connections().size(), 1u);
+    if (child.connections()[0].weight == 1.0f) {
+      saw_a_weight = true;
+    }
+    if (child.connections()[0].weight == -1.0f) {
+      saw_b_weight = true;
+    }
+  }
+
+  EXPECT_TRUE(saw_a_weight);
+  EXPECT_TRUE(saw_b_weight);
+}
+
+TEST(CrossoverTest, UnmatchedGenesAreInheritedSymmetrically) {
+  Genome a(2, 1);
+  a.add_connection({0, 3, 1.0f, true, 0});
+
+  Genome b(2, 1);
+  b.add_connection({1, 3, -1.0f, true, 1});
+
+  bool saw_gene_a = false;
+  bool saw_gene_b = false;
+  for (int seed = 1; seed <= 64; ++seed) {
+    Random rng(seed);
+    Genome child = Crossover::crossover(a, b, rng);
+    for (const auto &conn : child.connections()) {
+      if (conn.innovation == 0) {
+        saw_gene_a = true;
+      }
+      if (conn.innovation == 1) {
+        saw_gene_b = true;
+      }
+    }
+  }
+
+  EXPECT_TRUE(saw_gene_a);
+  EXPECT_TRUE(saw_gene_b);
 }
 
 // ── Species Tests ───────────────────────────────────────────────────────
@@ -215,21 +259,21 @@ TEST(SpeciesTest, IncompatibleGenomesDontMatch) {
   EXPECT_FALSE(s.is_compatible(different, 0.1f, 1.0f, 1.0f, 0.4f));
 }
 
-TEST(SpeciesTest, AverageFitnessUsesMembers) {
+TEST(SpeciesTest, AverageComplexityUsesMembers) {
   Genome rep(2, 1);
   Species s(rep);
 
   Genome g1(2, 1);
-  g1.set_fitness(10.0f);
+  g1.add_node({10, NodeType::Hidden});
   Genome g2(2, 1);
-  g2.set_fitness(6.0f);
+  g2.add_node({11, NodeType::Hidden});
+  g2.add_connection({0, 11, 0.5f, true, 0});
 
   s.add_member(Entity{1, 1}, g1);
   s.add_member(Entity{2, 1}, g2);
   s.refresh_summary();
 
-  EXPECT_GT(s.average_fitness(), 0.0f);
-  EXPECT_GT(s.best_fitness_ever(), 0.0f);
+  EXPECT_GT(s.average_complexity(), 0.0f);
 }
 
 // ── Regression Tests for Bug Fixes ─────────────────────────────────────
@@ -418,7 +462,6 @@ TEST(GenomeTest, JsonRoundTrip) {
   g.add_connection({0, 4, 0.5f, true, 0});
   g.add_connection({1, 5, -0.3f, false, 1});
   g.add_node({10, NodeType::Hidden});
-  g.set_fitness(42.0f);
 
   std::string json = g.to_json();
   Genome restored = Genome::from_json(json);
@@ -427,7 +470,6 @@ TEST(GenomeTest, JsonRoundTrip) {
   EXPECT_EQ(restored.num_outputs(), 2);
   EXPECT_EQ(restored.nodes().size(), g.nodes().size());
   EXPECT_EQ(restored.connections().size(), 2u);
-  EXPECT_FLOAT_EQ(restored.fitness(), 42.0f);
   EXPECT_FLOAT_EQ(restored.connections()[0].weight, 0.5f);
   EXPECT_FALSE(restored.connections()[1].enabled);
 }

@@ -36,7 +36,7 @@ MoonAI achieves high performance through data-oriented ECS architecture:
 - **GPU Acceleration** - CUDA backend for sensing, neural inference, and simulation systems on GPU at large populations; available in both visual and headless modes with runtime CPU fallback
 - **Cross-Platform** - Runs on Linux and Windows with matched features and stable runtime behavior
 - **Reproducible Experiments** - Seeded RNG with deterministic behavior within each execution backend; CPU and GPU runs are kept numerically close but are not bit-exact twins
-- **Lua Scripting** - Config, custom fitness functions, and runtime hooks — all in Lua without recompilation
+- **Lua Configuration** - Define named experiments and parameter sweeps in `config.lua` without recompilation
 - **Data Export** - CSV/JSON output (including optional per-step trajectories) compatible with Python analysis tools
 
 ## Architecture
@@ -91,7 +91,7 @@ ECS solves these with:
 
 | Subsystem | Pattern | Library | Description |
 |-----------|---------|---------|-------------|
-| `src/core/` | OOP | `moonai_core` | Shared types (`Vec2`, `Entity`), Lua config loader (sol2), Lua runtime (fitness/hooks), seeded RNG |
+| `src/core/` | OOP | `moonai_core` | Shared types (`Vec2`, `Entity`), Lua config loader (sol2), seeded RNG |
 | `src/simulation/` | **ECS** | `moonai_simulation` | Sparse-set registry, SoA components, systems (movement, sensors, combat, energy), spatial grid |
 | `src/evolution/` | OOP | `moonai_evolution` | NEAT genome, neural network, NetworkCache, speciation, mutation, crossover |
 | `src/visualization/` | OOP | `moonai_visualization` | SFML window, renderer, UI overlay (queries ECS registry directly) |
@@ -327,7 +327,7 @@ The analysis step is non-interactive and always writes a timestamped report to `
 
 The generated HTML is fully self-contained: it embeds all plots and report data directly into a single file, including:
 
-- per-condition plots for fitness, population, species, complexity, and best-genome topology
+- per-condition plots for population, species, complexity, and representative-genome topology
 - cross-condition comparison plots using seed-aggregated statistics
 - the grouped summary table at the final sampled generation
 - skipped-run information for incomplete or invalid runs
@@ -339,7 +339,7 @@ The analysis code is structured as a small package under `analysis/moonai_analys
 - `io.py` discovers runs and loads CSV/JSON data
 - `labels.py` groups runs into experiment conditions
 - `plots.py` generates embedded per-condition and comparison figures
-- `genome.py` renders embedded best-genome topology diagrams
+- `genome.py` renders embedded representative-genome topology diagrams
 - `summary.py` prepares structured summary data for the report
 - `html_report.py` renders the final self-contained HTML document
 - `templates/report.html.j2` defines the HTML report layout
@@ -484,9 +484,9 @@ Each run writes to `output/{experiment_name}/` (named experiments) or `output/YY
 | File | Contents |
 |------|----------|
 | `config.json` | Full config snapshot for this run |
-| `stats.csv` | One row per report window: `step, predator_count, prey_count, births, deaths, best_fitness, avg_fitness, num_species, avg_complexity, avg_predator_energy, avg_prey_energy` |
+| `stats.csv` | One row per report window: `step, predator_count, prey_count, births, deaths, num_species, avg_complexity, avg_predator_energy, avg_prey_energy` |
 | `species.csv` | One row per species per generation |
-| `genomes.json` | Best genome snapshots (nodes + connections JSON) |
+| `genomes.json` | Representative genome snapshots (nodes + connections JSON) |
 
 ## C++ Code Style
 

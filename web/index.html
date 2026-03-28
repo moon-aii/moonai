@@ -1341,7 +1341,7 @@ just run</code></pre>
                                 <p>
                                     To achieve high-performance execution, MoonAI employs a hybrid compute model. The CPU 
                                     manages high-level control logic and physics updates, while massive parallelization via 
-                                    NVIDIA CUDA accelerates neural network inference and fitness evaluations for large 
+                                    NVIDIA CUDA accelerates neural network inference and simulation updates for large 
                                     agent populations.
                                 </p>
                             </div>
@@ -1381,7 +1381,7 @@ just run</code></pre>
                                 <summary>What output data does the simulation generate?</summary>
                                 <p>
                                     The simulation exports comprehensive metrics including per-generation statistics 
-                                    (population counts, fitness scores, species diversity), genome structures, and optional 
+                                    (population counts, species diversity, genome complexity), genome structures, and optional 
                                     per-tick agent trajectories. All data is saved in CSV and JSON formats for analysis 
                                     with the provided Python scripts.
                                 </p>
@@ -1389,9 +1389,9 @@ just run</code></pre>
                             <details class="faq-item">
                                 <summary>How can I configure experiment parameters?</summary>
                                 <p>
-                                    All parameters are defined in JSON configuration files. The default configuration 
-                                    includes 40+ adjustable fields covering population sizes, mutation rates, NEAT 
-                                    parameters, and visualization settings. Custom configs can be specified at runtime 
+                                    All parameters are defined in the Lua-based `config.lua` experiment file. The default configuration 
+                                    includes adjustable fields covering population sizes, mutation rates, NEAT 
+                                    parameters, and visualization settings. Custom experiment sets can be specified at runtime 
                                     without recompilation.
                                 </p>
                             </details>

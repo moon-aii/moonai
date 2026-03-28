@@ -19,8 +19,6 @@ from .io import RunData, load_optional_csv
 
 
 STYLE = {
-    "best_fitness": "#2563EB",
-    "avg_fitness": "#D97706",
     "predator_count": "#DC2626",
     "prey_count": "#16A34A",
     "num_species": "#7C3AED",
@@ -30,8 +28,6 @@ STYLE = {
 }
 
 COMPARISON_METRICS = [
-    "best_fitness",
-    "avg_fitness",
     "num_species",
     "avg_complexity",
     "predator_count",
@@ -73,7 +69,7 @@ def build_condition_aggregate(label: str, runs: list[RunData]) -> ConditionAggre
         )
 
     representative_run = max(
-        runs, key=lambda run: float(run.stats["best_fitness"].iloc[-1])
+        runs, key=lambda run: float(run.stats["avg_complexity"].iloc[-1])
     )
     return ConditionAggregate(
         label=label,
@@ -85,7 +81,6 @@ def build_condition_aggregate(label: str, runs: list[RunData]) -> ConditionAggre
 
 def render_condition_charts(aggregate: ConditionAggregate) -> list[EmbeddedChart]:
     return [
-        render_fitness_chart(aggregate),
         render_population_chart(aggregate),
         render_species_chart(aggregate.representative_run, aggregate.label),
         render_complexity_chart(aggregate),
@@ -118,39 +113,6 @@ def render_comparison_charts(
             )
         )
     return charts
-
-
-def render_fitness_chart(aggregate: ConditionAggregate) -> EmbeddedChart:
-    frame = aggregate.summary_frame
-    figure, axes = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
-
-    _plot_mean_std(
-        axes[0], frame, "best_fitness", "Best Fitness", STYLE["best_fitness"]
-    )
-    _plot_mean_std(
-        axes[0], frame, "avg_fitness", "Average Fitness", STYLE["avg_fitness"]
-    )
-    axes[0].set_ylabel("Fitness")
-    axes[0].set_title(
-        f"{aggregate.label} - Fitness (mean +/- std across {len(aggregate.runs)} runs)"
-    )
-    axes[0].legend(loc="upper left")
-    axes[0].grid(True, alpha=0.3)
-
-    _plot_mean_std(
-        axes[1], frame, "avg_complexity", "Average Complexity", STYLE["avg_complexity"]
-    )
-    axes[1].set_xlabel("Step")
-    axes[1].set_ylabel("Complexity")
-    axes[1].set_title("Average Genome Complexity")
-    axes[1].legend(loc="upper left")
-    axes[1].grid(True, alpha=0.3)
-
-    return EmbeddedChart(
-        title="Fitness",
-        image_uri=_figure_to_data_uri(figure),
-        caption=f"{aggregate.label} mean fitness and complexity across {len(aggregate.runs)} runs.",
-    )
 
 
 def render_population_chart(aggregate: ConditionAggregate) -> EmbeddedChart:
@@ -267,7 +229,7 @@ def render_complexity_chart(aggregate: ConditionAggregate) -> EmbeddedChart:
         axes[1].set_xlabel("Step")
         axes[1].set_ylabel("Count")
         axes[1].set_title(
-            f"Best Genome Structure ({aggregate.representative_run.name})"
+            f"Representative Genome Structure ({aggregate.representative_run.name})"
         )
         axes[1].legend(loc="upper left")
         axes[1].grid(True, alpha=0.3)
@@ -275,7 +237,7 @@ def render_complexity_chart(aggregate: ConditionAggregate) -> EmbeddedChart:
     return EmbeddedChart(
         title="Complexity",
         image_uri=_figure_to_data_uri(figure),
-        caption=f"{aggregate.label} aggregate complexity plus representative best-genome structure history.",
+        caption=f"{aggregate.label} aggregate complexity plus representative genome structure history.",
     )
 
 

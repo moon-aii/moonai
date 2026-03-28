@@ -205,33 +205,6 @@ Entity EvolutionManager::create_offspring(Registry &registry, Entity parent_a,
   return child;
 }
 
-void EvolutionManager::refresh_fitness(const Registry &registry) {
-  MOONAI_PROFILE_SCOPE("evolution_refresh_fitness");
-  for (Entity e : registry.living_entities()) {
-    auto it = entity_genomes_.find(e);
-    if (it != entity_genomes_.end()) {
-      // Calculate fitness based on ECS stats
-      size_t idx = registry.index_of(e);
-
-      float survival =
-          registry.vitals().age[idx] * config_.fitness_survival_weight;
-      float kills = registry.stats().kills[idx] * config_.fitness_kill_weight;
-      float food = registry.stats().food_eaten[idx] *
-                   config_.fitness_kill_weight; // Reuse kill_weight for food
-      float energy =
-          registry.vitals().energy[idx] * config_.fitness_energy_weight;
-      float distance = registry.stats().distance_traveled[idx] *
-                       config_.fitness_distance_weight;
-      float complexity =
-          it->second.complexity() * config_.complexity_penalty_weight;
-
-      float fitness = survival + kills + food + energy + distance - complexity;
-
-      it->second.set_fitness(fitness);
-    }
-  }
-}
-
 void EvolutionManager::refresh_species(Registry &registry) {
   for (auto &species : species_) {
     species.clear_members();
@@ -265,6 +238,10 @@ void EvolutionManager::refresh_species(Registry &registry) {
     size_t idx = registry.index_of(e);
     registry.identity().species_id[idx] =
         assigned ? species_.back().id() : species_.size() - 1;
+  }
+
+  for (auto &species : species_) {
+    species.refresh_summary();
   }
 }
 
@@ -320,56 +297,6 @@ const Genome *EvolutionManager::genome_for(Entity e) const {
     return &it->second;
   }
   return nullptr;
-}
-
-void EvolutionManager::get_fitness_by_type(const Registry &registry,
-                                           float &best_predator,
-                                           float &avg_predator,
-                                           float &best_prey,
-                                           float &avg_prey) const {
-  best_predator = 0.0f;
-  avg_predator = 0.0f;
-  best_prey = 0.0f;
-  avg_prey = 0.0f;
-
-  float predator_sum = 0.0f;
-  float prey_sum = 0.0f;
-  int predator_count = 0;
-  int prey_count = 0;
-
-  const auto &living = registry.living_entities();
-  const auto &identity = registry.identity();
-  const auto &vitals = registry.vitals();
-
-  for (Entity entity : living) {
-    size_t idx = registry.index_of(entity);
-    if (!vitals.alive[idx]) {
-      continue;
-    }
-
-    auto it = entity_genomes_.find(entity);
-    if (it == entity_genomes_.end()) {
-      continue;
-    }
-
-    const float fitness = it->second.fitness();
-    if (identity.type[idx] == IdentitySoA::TYPE_PREDATOR) {
-      best_predator = std::max(best_predator, fitness);
-      predator_sum += fitness;
-      ++predator_count;
-    } else {
-      best_prey = std::max(best_prey, fitness);
-      prey_sum += fitness;
-      ++prey_count;
-    }
-  }
-
-  if (predator_count > 0) {
-    avg_predator = predator_sum / static_cast<float>(predator_count);
-  }
-  if (prey_count > 0) {
-    avg_prey = prey_sum / static_cast<float>(prey_count);
-  }
 }
 
 void EvolutionManager::enable_gpu(bool use_gpu) {

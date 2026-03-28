@@ -9,7 +9,6 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdlib>
-#include <limits>
 #include <spdlog/spdlog.h>
 
 namespace moonai {
@@ -118,8 +117,6 @@ void App::step() {
 
   accumulate_events(last_step_events_);
 
-  evolution_.refresh_fitness(registry_);
-
   if (cfg_.sim_config.species_update_interval_steps > 0 &&
       (steps_executed_ % cfg_.sim_config.species_update_interval_steps) == 0) {
     evolution_.refresh_species(registry_);
@@ -138,11 +135,11 @@ StepMetrics App::record_and_log() {
   logger_.log_report(snapshot);
 
   const Genome *best_genome = nullptr;
-  float best_fitness = -std::numeric_limits<float>::infinity();
+  int best_complexity = -1;
   for (Entity e : registry_.living_entities()) {
     const auto *genome = evolution_.genome_for(e);
-    if (genome && genome->fitness() > best_fitness) {
-      best_fitness = genome->fitness();
+    if (genome && genome->complexity() > best_complexity) {
+      best_complexity = genome->complexity();
       best_genome = genome;
     }
   }
@@ -256,13 +253,6 @@ FrameSnapshot App::build_frame_snapshot() const {
     }
   }
 
-  float best_pred = 0.0f;
-  float avg_pred = 0.0f;
-  float best_prey = 0.0f;
-  float avg_prey = 0.0f;
-  evolution_.get_fitness_by_type(registry_, best_pred, avg_pred, best_prey,
-                                 avg_prey);
-
   frame.overlay_stats.step = steps_executed_;
   frame.overlay_stats.max_steps = cfg_.sim_config.max_steps;
   frame.overlay_stats.alive_predators = alive_predators;
@@ -274,10 +264,6 @@ FrameSnapshot App::build_frame_snapshot() const {
                        : cfg_.speed_multiplier;
   frame.overlay_stats.paused = visualization_->is_paused();
   frame.overlay_stats.experiment_name = cfg_.experiment_name;
-  frame.overlay_stats.best_predator_fitness = best_pred;
-  frame.overlay_stats.avg_predator_fitness = avg_pred;
-  frame.overlay_stats.best_prey_fitness = best_prey;
-  frame.overlay_stats.avg_prey_fitness = avg_prey;
   frame.overlay_stats.total_kills = event_totals_.kills;
   frame.overlay_stats.total_food_eaten = event_totals_.food_eaten;
   frame.overlay_stats.total_births = event_totals_.births;
@@ -297,7 +283,6 @@ FrameSnapshot App::build_frame_snapshot() const {
       frame.overlay_stats.selected_age = vitals.age[idx];
       frame.overlay_stats.selected_kills = stats.kills[idx];
       frame.overlay_stats.selected_food_eaten = stats.food_eaten[idx];
-      frame.overlay_stats.selected_fitness = genome->fitness();
       frame.overlay_stats.selected_genome_complexity = genome->complexity();
       frame.selected_genome = genome;
       frame.selected_entity = selected;

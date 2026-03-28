@@ -39,7 +39,6 @@ public:
   Entity create_offspring(Registry &registry, Entity parent_a, Entity parent_b,
                           Vec2 spawn_position);
 
-  void refresh_fitness(const Registry &registry);
   void refresh_species(Registry &registry);
 
   void compute_actions(Registry &registry);
@@ -65,10 +64,6 @@ public:
   int species_count() const {
     return static_cast<int>(species_.size());
   }
-
-  void get_fitness_by_type(const Registry &registry, float &best_predator,
-                           float &avg_predator, float &best_prey,
-                           float &avg_prey) const;
 
   void update_config(const SimulationConfig &cfg) {
     config_ = cfg;

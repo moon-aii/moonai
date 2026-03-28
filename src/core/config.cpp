@@ -61,11 +61,6 @@ nlohmann::json config_to_json(const SimulationConfig &config) {
   j["min_reproductive_age_steps"] = config.min_reproductive_age_steps;
   j["reproduction_cooldown_steps"] = config.reproduction_cooldown_steps;
   j["birth_spawn_radius"] = config.birth_spawn_radius;
-  j["fitness_survival_weight"] = config.fitness_survival_weight;
-  j["fitness_kill_weight"] = config.fitness_kill_weight;
-  j["fitness_energy_weight"] = config.fitness_energy_weight;
-  j["fitness_distance_weight"] = config.fitness_distance_weight;
-  j["complexity_penalty_weight"] = config.complexity_penalty_weight;
   j["activation_function"] = config.activation_function;
 
   return j;
@@ -240,16 +235,6 @@ std::vector<ConfigError> apply_overrides(
         config.c2_disjoint = std::stof(val);
       else if (key == "c3_weight")
         config.c3_weight = std::stof(val);
-      else if (key == "fitness_survival_weight")
-        config.fitness_survival_weight = std::stof(val);
-      else if (key == "fitness_kill_weight")
-        config.fitness_kill_weight = std::stof(val);
-      else if (key == "fitness_energy_weight")
-        config.fitness_energy_weight = std::stof(val);
-      else if (key == "fitness_distance_weight")
-        config.fitness_distance_weight = std::stof(val);
-      else if (key == "complexity_penalty_weight")
-        config.complexity_penalty_weight = std::stof(val);
       else if (key == "mate_range")
         config.mate_range = std::stof(val);
       else if (key == "reproduction_energy_threshold")
@@ -277,90 +262,6 @@ std::vector<ConfigError> apply_overrides(
 
   return errors;
 }
-
-// ── Float overrides (from Lua hooks) ─────────────────────────────────────
-
-void apply_overrides_float(SimulationConfig &config,
-                           const std::map<std::string, float> &overrides) {
-  for (const auto &[key, val] : overrides) {
-    // Float fields
-    if (key == "mutation_rate")
-      config.mutation_rate = val;
-    else if (key == "crossover_rate")
-      config.crossover_rate = val;
-    else if (key == "weight_mutation_power")
-      config.weight_mutation_power = val;
-    else if (key == "add_node_rate")
-      config.add_node_rate = val;
-    else if (key == "add_connection_rate")
-      config.add_connection_rate = val;
-    else if (key == "delete_connection_rate")
-      config.delete_connection_rate = val;
-    else if (key == "compatibility_threshold")
-      config.compatibility_threshold = val;
-    else if (key == "c1_excess")
-      config.c1_excess = val;
-    else if (key == "c2_disjoint")
-      config.c2_disjoint = val;
-    else if (key == "c3_weight")
-      config.c3_weight = val;
-    else if (key == "predator_speed")
-      config.predator_speed = val;
-    else if (key == "prey_speed")
-      config.prey_speed = val;
-    else if (key == "vision_range")
-      config.vision_range = val;
-    else if (key == "attack_range")
-      config.attack_range = val;
-    else if (key == "initial_energy")
-      config.initial_energy = val;
-    else if (key == "energy_drain_per_step")
-      config.energy_drain_per_step = val;
-    else if (key == "energy_gain_from_kill")
-      config.energy_gain_from_kill = val;
-    else if (key == "energy_gain_from_food")
-      config.energy_gain_from_food = val;
-    else if (key == "food_respawn_rate")
-      config.food_respawn_rate = val;
-    else if (key == "fitness_survival_weight")
-      config.fitness_survival_weight = val;
-    else if (key == "fitness_kill_weight")
-      config.fitness_kill_weight = val;
-    else if (key == "fitness_energy_weight")
-      config.fitness_energy_weight = val;
-    else if (key == "fitness_distance_weight")
-      config.fitness_distance_weight = val;
-    else if (key == "complexity_penalty_weight")
-      config.complexity_penalty_weight = val;
-    else if (key == "mate_range")
-      config.mate_range = val;
-    else if (key == "reproduction_energy_threshold")
-      config.reproduction_energy_threshold = val;
-    else if (key == "reproduction_energy_cost")
-      config.reproduction_energy_cost = val;
-    else if (key == "offspring_initial_energy")
-      config.offspring_initial_energy = val;
-    else if (key == "birth_spawn_radius")
-      config.birth_spawn_radius = val;
-    // Integer fields (truncated from float)
-    else if (key == "max_steps")
-      config.max_steps = static_cast<int>(val);
-    else if (key == "species_update_interval_steps")
-      config.species_update_interval_steps = static_cast<int>(val);
-    else if (key == "max_hidden_nodes")
-      config.max_hidden_nodes = static_cast<int>(val);
-    else if (key == "report_interval_steps")
-      config.report_interval_steps = static_cast<int>(val);
-    else if (key == "min_reproductive_age_steps")
-      config.min_reproductive_age_steps = static_cast<int>(val);
-    else if (key == "reproduction_cooldown_steps")
-      config.reproduction_cooldown_steps = static_cast<int>(val);
-    else {
-      spdlog::warn("Lua hook returned unknown override key: {}", key);
-    }
-  }
-}
-
 // ── CLI parsing ─────────────────────────────────────────────────────────
 
 CLIArgs parse_args(int argc, const char *argv[]) {

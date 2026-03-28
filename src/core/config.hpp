@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cstdint>
-#include <map>
 #include <nlohmann/json.hpp>
 #include <string>
 #include <vector>
@@ -55,12 +54,6 @@ struct SimulationConfig {
   int reproduction_cooldown_steps = 300;
   float birth_spawn_radius = 8.0f;
 
-  float fitness_survival_weight = 1.0f;
-  float fitness_kill_weight = 5.0f;
-  float fitness_energy_weight = 0.5f;
-  float fitness_distance_weight = 0.1f;
-  float complexity_penalty_weight = 0.01f;
-
   std::string activation_function = "sigmoid";
 };
 
@@ -78,9 +71,6 @@ std::vector<ConfigError> validate_config(const SimulationConfig &config);
 std::vector<ConfigError> apply_overrides(
     SimulationConfig &config,
     const std::vector<std::pair<std::string, std::string>> &overrides);
-
-void apply_overrides_float(SimulationConfig &config,
-                           const std::map<std::string, float> &overrides);
 
 struct CLIArgs {
   std::string config_path = "config.lua";

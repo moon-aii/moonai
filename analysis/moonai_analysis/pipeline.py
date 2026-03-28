@@ -41,15 +41,14 @@ def run_analysis(input_dir: Path, output_dir: Path) -> None:
         genome = load_latest_genome(aggregate.representative_run.path)
         genome_chart = None
         if genome is not None:
-            fitness = float(genome.get("fitness", 0.0))
             title = (
-                f"{aggregate.label} - Best Genome ({aggregate.representative_run.name}, "
-                f"Step {genome.get('step', '?')}, Fitness {fitness:.3f})"
+                f"{aggregate.label} - Representative Genome "
+                f"({aggregate.representative_run.name}, Step {genome.get('step', '?')})"
             )
             genome_chart = {
                 "title": "Genome",
                 "image_uri": render_genome_plot(genome, title),
-                "caption": f"Representative best-genome topology for `{aggregate.representative_run.name}`.",
+                "caption": f"Representative topology snapshot for `{aggregate.representative_run.name}`.",
             }
         condition_sections.append(
             {

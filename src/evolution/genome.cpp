@@ -143,7 +143,6 @@ std::string Genome::to_json() const {
   nlohmann::json j;
   j["num_inputs"] = num_inputs_;
   j["num_outputs"] = num_outputs_;
-  j["fitness"] = fitness_;
 
   j["nodes"] = nlohmann::json::array();
   for (const auto &n : nodes_) {
@@ -168,7 +167,6 @@ Genome Genome::from_json(const std::string &json_str) {
   Genome g;
   g.num_inputs_ = j["num_inputs"];
   g.num_outputs_ = j["num_outputs"];
-  g.fitness_ = j.value("fitness", 0.0f);
 
   for (const auto &n : j["nodes"]) {
     g.nodes_.push_back({n["id"], static_cast<NodeType>(n["type"].get<int>())});

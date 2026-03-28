@@ -4,7 +4,6 @@
 #include "evolution/genome.hpp"
 #include "simulation/entity.hpp"
 
-#include <deque>
 #include <vector>
 
 namespace moonai {
@@ -15,7 +14,6 @@ public:
 
   struct Member {
     Entity entity = INVALID_ENTITY;
-    float fitness = 0.0f;
     int complexity = 0;
   };
 
@@ -32,12 +30,6 @@ public:
   const std::vector<Member> &members() const {
     return members_;
   }
-  float average_fitness() const {
-    return average_fitness_;
-  }
-  float best_fitness_ever() const {
-    return best_fitness_ever_;
-  }
   float average_complexity() const {
     return average_complexity_;
   }
@@ -51,8 +43,6 @@ private:
   int id_;
   Genome representative_;
   std::vector<Member> members_;
-  float average_fitness_ = 0.0f;
-  float best_fitness_ever_ = 0.0f;
   float average_complexity_ = 0.0f;
 
   static int species_id_counter_;

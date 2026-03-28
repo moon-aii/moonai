@@ -95,23 +95,13 @@ void UIOverlay::draw(sf::RenderTarget &target, const OverlayStats &stats,
     draw_text(target, buf, sx, sy, 13);
     sy += line_h;
 
-    std::snprintf(buf, sizeof(buf), "Fitness: %.2f", stats.selected_fitness);
-    draw_text(target, buf, sx, sy, 13,
-              sf::Color(ui::FITNESS_R, ui::FITNESS_G, ui::FITNESS_B));
-    sy += line_h;
-
     std::snprintf(buf, sizeof(buf), "Complexity: %d",
                   stats.selected_genome_complexity);
     draw_text(target, buf, sx, sy, 13,
               sf::Color(ui::MUTED_R, ui::MUTED_G, ui::MUTED_B));
   }
 
-  // Real-time fitness chart (bottom-right)
-  if (best_history_.size() >= 2) {
-    draw_fitness_chart(target);
-  }
-
-  // NN topology panel (above fitness chart, anchored to right edge)
+  // NN topology panel (bottom-right, anchored to right edge)
   if (selected_genome) {
     draw_nn_panel(target, *selected_genome);
   }
@@ -140,15 +130,6 @@ void UIOverlay::draw_text(sf::RenderTarget &target, const std::string &str,
   text.setPosition({x, y});
   text.setFillColor(color);
   target.draw(text);
-}
-
-void UIOverlay::push_fitness(float best, float avg) {
-  best_history_.push_back(best);
-  avg_history_.push_back(avg);
-  if (static_cast<int>(best_history_.size()) > charts::CHART_MAX_POINTS) {
-    best_history_.pop_front();
-    avg_history_.pop_front();
-  }
 }
 
 void UIOverlay::push_population(int predators, int prey, int food) {
@@ -185,12 +166,8 @@ void UIOverlay::draw_right_column(sf::RenderTarget &target,
   draw_population_chart(target, x, y, PANEL_WIDTH, 180.0f);
   y += 180.0f + MARGIN;
 
-  // Energy distribution (above fitness)
+  // Energy distribution
   draw_energy_distribution(target, stats, x, y, PANEL_WIDTH, 55.0f);
-  y += 55.0f + MARGIN;
-
-  // Fitness by type
-  draw_fitness_by_type(target, stats, x, y, PANEL_WIDTH, 100.0f);
 }
 
 void UIOverlay::draw_stats_panel(sf::RenderTarget &target,
@@ -364,62 +341,6 @@ void UIOverlay::draw_population_chart(sf::RenderTarget &target, float x,
                       chart_colors::FOOD_B));
 }
 
-void UIOverlay::draw_fitness_by_type(sf::RenderTarget &target,
-                                     const OverlayStats &stats, float x,
-                                     float y, float w, float h) {
-  if (!font_loaded_)
-    return;
-
-  draw_panel(target, x, y, w, h);
-  draw_text(target, "Fitness by Type", x + 4.0f, y + 2.0f, 11,
-            sf::Color(ui::TITLE_R, ui::TITLE_G, ui::TITLE_B));
-
-  float tx = x + 8.0f;
-  float ty = y + 22.0f;
-  char buf[64];
-
-  // Predator fitness
-  std::snprintf(buf, sizeof(buf), "Pred: Best %.1f  Avg %.1f",
-                stats.best_predator_fitness, stats.avg_predator_fitness);
-  draw_text(target, buf, tx, ty, 12,
-            sf::Color(chart_colors::PREDATOR_R, chart_colors::PREDATOR_G,
-                      chart_colors::PREDATOR_B));
-  ty += 18.0f;
-
-  // Prey fitness
-  std::snprintf(buf, sizeof(buf), "Prey: Best %.1f  Avg %.1f",
-                stats.best_prey_fitness, stats.avg_prey_fitness);
-  draw_text(target, buf, tx, ty, 12,
-            sf::Color(chart_colors::PREY_R, chart_colors::PREY_G,
-                      chart_colors::PREY_B));
-  ty += 18.0f;
-
-  // Mini bar chart
-  float bar_y = ty + 4.0f;
-  float bar_h = 12.0f;
-  float bar_w = w - 16.0f;
-  float max_fitness =
-      std::max({1.0f, stats.best_predator_fitness, stats.best_prey_fitness});
-
-  // Predator bar (orange)
-  float pred_w = (stats.avg_predator_fitness / max_fitness) * bar_w;
-  sf::RectangleShape pred_bar({pred_w, bar_h});
-  pred_bar.setPosition({tx, bar_y});
-  pred_bar.setFillColor(sf::Color(chart_colors::PREDATOR_R,
-                                  chart_colors::PREDATOR_G,
-                                  chart_colors::PREDATOR_B, ui::BAR_ALPHA));
-  target.draw(pred_bar);
-
-  // Prey bar (cyan) below
-  bar_y += bar_h + 2.0f;
-  float prey_w = (stats.avg_prey_fitness / max_fitness) * bar_w;
-  sf::RectangleShape prey_bar({prey_w, bar_h});
-  prey_bar.setPosition({tx, bar_y});
-  prey_bar.setFillColor(sf::Color(chart_colors::PREY_R, chart_colors::PREY_G,
-                                  chart_colors::PREY_B, ui::BAR_ALPHA));
-  target.draw(prey_bar);
-}
-
 void UIOverlay::draw_energy_distribution(sf::RenderTarget &target,
                                          const OverlayStats &stats, float x,
                                          float y, float w, float h) {
@@ -495,65 +416,6 @@ void UIOverlay::set_activations(
   node_activations_ = vals;
 }
 
-void UIOverlay::draw_fitness_chart(sf::RenderTarget &target) {
-  if (!font_loaded_)
-    return;
-
-  float chart_w = 300.0f;
-  float chart_h = 100.0f;
-  float margin = 10.0f;
-  sf::Vector2f view_size = target.getDefaultView().getSize();
-  float cx = view_size.x - chart_w - margin;
-  float cy = view_size.y - chart_h - margin;
-
-  draw_panel(target, cx, cy, chart_w, chart_h);
-
-  // Find max value for scaling
-  float max_val = 0.1f;
-  if (!best_history_.empty()) {
-    max_val = std::max(
-        max_val, *std::max_element(best_history_.begin(), best_history_.end()));
-  }
-  if (!avg_history_.empty()) {
-    max_val = std::max(
-        max_val, *std::max_element(avg_history_.begin(), avg_history_.end()));
-  }
-
-  int n = static_cast<int>(best_history_.size());
-  float inner_x = cx + 4.0f;
-  float inner_y = cy + 4.0f;
-  float inner_w = chart_w - 8.0f;
-  float inner_h = chart_h - 16.0f;
-
-  auto map_point = [&](int idx, float val) -> sf::Vector2f {
-    float px = inner_x + (static_cast<float>(idx) / (n - 1)) * inner_w;
-    float py = inner_y + inner_h * (1.0f - val / max_val);
-    return {px, py};
-  };
-
-  // Draw best fitness line (blue)
-  sf::VertexArray best_line(sf::PrimitiveType::LineStrip, n);
-  for (int i = 0; i < n; ++i) {
-    best_line[i].position = map_point(i, best_history_[i]);
-    best_line[i].color =
-        sf::Color(ui::CHART_BEST_R, ui::CHART_BEST_G, ui::CHART_BEST_B);
-  }
-  target.draw(best_line);
-
-  // Draw avg fitness line (green)
-  sf::VertexArray avg_line(sf::PrimitiveType::LineStrip, n);
-  for (int i = 0; i < n; ++i) {
-    avg_line[i].position = map_point(i, avg_history_[i]);
-    avg_line[i].color =
-        sf::Color(ui::CHART_AVG_R, ui::CHART_AVG_G, ui::CHART_AVG_B);
-  }
-  target.draw(avg_line);
-
-  // Labels
-  draw_text(target, "Fitness", cx + 4.0f, cy + chart_h - 14.0f, 11,
-            sf::Color(ui::MUTED_R, ui::MUTED_G, ui::MUTED_B));
-}
-
 void UIOverlay::draw_nn_panel(sf::RenderTarget &target, const Genome &genome) {
   constexpr float PANEL_W = 250.0f;
   constexpr float PANEL_H = 300.0f;
@@ -562,10 +424,8 @@ void UIOverlay::draw_nn_panel(sf::RenderTarget &target, const Genome &genome) {
 
   sf::Vector2f view_size = target.getDefaultView().getSize();
 
-  // Position: above the fitness chart (chart is 100px + margin at the bottom)
-  float chart_h = (best_history_.size() >= 2) ? 110.0f : 0.0f;
   float cx = view_size.x - PANEL_W - MARGIN;
-  float cy = view_size.y - PANEL_H - MARGIN - chart_h;
+  float cy = view_size.y - PANEL_H - MARGIN;
 
   draw_panel(target, cx, cy, PANEL_W, PANEL_H);
   draw_text(target, "Network", cx + 4.0f, cy + 2.0f, 11,
