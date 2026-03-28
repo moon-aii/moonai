@@ -173,7 +173,6 @@ nlohmann::json Profiler::finish_run(std::int64_t run_total_ns) {
   if (!enabled())
     return nlohmann::json{};
 
-  // Build JSON output - raw data only, no aggregation
   nlohmann::json profile;
   profile["schema_version"] = 1;
   profile["generated_at_utc"] = generated_at_utc_;
@@ -220,7 +219,7 @@ nlohmann::json Profiler::finish_run(std::int64_t run_total_ns) {
 namespace {
 
 struct Args {
-  int frames = 200;
+  int frames = 600;
   std::vector<std::uint64_t> seeds = {41, 42, 43, 44, 45, 46};
   std::string output_dir = "output/profiles";
   std::string experiment_name = "profile";

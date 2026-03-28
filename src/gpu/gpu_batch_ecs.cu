@@ -1,6 +1,7 @@
 #include "gpu/cuda_utils.cuh"
 #include "gpu/gpu_batch_ecs.hpp"
 
+#include <spdlog/spdlog.h>
 #include <cmath>
 #include <limits>
 
@@ -435,6 +436,7 @@ void GpuBatchECS::synchronize() {
   const cudaError_t err =
       cudaStreamSynchronize(static_cast<cudaStream_t>(stream_));
   if (err != cudaSuccess) {
+    spdlog::error("GPU synchronize failed: {}", cudaGetErrorString(err));
     had_error_ = true;
   }
 }
@@ -446,6 +448,7 @@ void GpuBatchECS::mark_error() {
 void GpuBatchECS::check_launch_error() {
   const cudaError_t err = cudaGetLastError();
   if (err != cudaSuccess) {
+    spdlog::error("GPU kernel launch failed: {}", cudaGetErrorString(err));
     mark_error();
   }
 }
