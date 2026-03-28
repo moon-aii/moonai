@@ -2,8 +2,6 @@
 
 #include "core/types.hpp"
 #include "simulation/entity.hpp"
-#include "simulation/food_store.hpp"
-#include "simulation/registry.hpp"
 
 #include <SFML/Graphics/CircleShape.hpp>
 #include <SFML/Graphics/Color.hpp>
@@ -12,8 +10,26 @@
 #include <SFML/Graphics/RenderTarget.hpp>
 
 #include <cstdint>
+#include <vector>
 
 namespace moonai {
+
+struct RenderFood {
+  Vec2 position;
+};
+
+struct RenderAgent {
+  Entity entity = INVALID_ENTITY;
+  Vec2 position;
+  Vec2 velocity;
+  uint8_t type = 0;
+};
+
+struct RenderLine {
+  Vec2 start;
+  Vec2 end;
+  sf::Color color;
+};
 
 class Renderer {
 public:
@@ -24,18 +40,16 @@ public:
                         float cell_size);
   static void draw_boundaries(sf::RenderTarget &target, int width, int height);
 
-  void draw_food(sf::RenderTarget &target, const FoodStore &food_store);
-  void draw_agent_ecs(sf::RenderTarget &target, const Registry &registry,
-                      Entity entity, bool selected = false);
-  void draw_all_agents_ecs(sf::RenderTarget &target, const Registry &registry,
-                           Entity selected_entity = INVALID_ENTITY);
-  static void draw_vision_range_ecs(sf::RenderTarget &target,
-                                    const Registry &registry, Entity entity,
-                                    float vision_range);
-  static void draw_sensor_lines_ecs(sf::RenderTarget &target,
-                                    const Registry &registry,
-                                    const FoodStore &food_store, Entity entity,
-                                    float vision_range, float world_size);
+  void draw_food(sf::RenderTarget &target, const std::vector<RenderFood> &food);
+  void draw_agent(sf::RenderTarget &target, const RenderAgent &agent,
+                  bool selected = false);
+  void draw_all_agents(sf::RenderTarget &target,
+                       const std::vector<RenderAgent> &agents,
+                       Entity selected_entity = INVALID_ENTITY);
+  static void draw_vision_range(sf::RenderTarget &target, Vec2 position,
+                                float vision_range);
+  static void draw_sensor_lines(sf::RenderTarget &target,
+                                const std::vector<RenderLine> &lines);
 
   static sf::Color species_color(int species_id);
 

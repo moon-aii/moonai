@@ -1,7 +1,6 @@
+#include "app.hpp"
 #include "core/config.hpp"
 #include "core/lua_runtime.hpp"
-#include "data/logger.hpp"
-#include "simulation/session.hpp"
 
 #include <spdlog/spdlog.h>
 
@@ -12,28 +11,25 @@ namespace {
 
 int run_experiment(const std::string &name, moonai::SimulationConfig config,
                    const moonai::CLIArgs &args) {
-  // Build SessionConfig
-  moonai::SessionConfig session_cfg;
-  session_cfg.sim_config = config;
+  moonai::AppConfig app_cfg;
+  app_cfg.sim_config = config;
   if (args.seed_override != 0) {
-    session_cfg.sim_config.seed = args.seed_override;
+    app_cfg.sim_config.seed = args.seed_override;
   }
-  session_cfg.experiment_name = name;
-  session_cfg.headless = args.headless;
-  session_cfg.enable_gpu = !args.no_gpu;
-  session_cfg.run_name_override =
+  app_cfg.experiment_name = name;
+  app_cfg.headless = args.headless;
+  app_cfg.enable_gpu = !args.no_gpu;
+  app_cfg.run_name_override =
       args.run_name.empty() ? std::nullopt : std::optional(args.run_name);
-  // Normal run: interactive GUI mode
-  session_cfg.interactive = true;
-  session_cfg.speed_multiplier = 1;
+  app_cfg.interactive = true;
+  app_cfg.speed_multiplier = 1;
 
   if (args.max_steps_override != 0) {
-    session_cfg.sim_config.max_steps = args.max_steps_override;
+    app_cfg.sim_config.max_steps = args.max_steps_override;
   }
 
-  // Create Session and run - signals handled internally
-  moonai::Session session(session_cfg);
-  session.run();
+  moonai::App app(app_cfg);
+  app.run();
 
   return 0;
 }

@@ -29,7 +29,7 @@ class MetricsCollector {
 public:
   StepMetrics collect_ecs(int step, const Registry &registry,
                           const EvolutionManager &evolution,
-                          const SimulationManager &simulation, int num_species);
+                          const std::vector<SimEvent> &events, int num_species);
 
   const std::vector<StepMetrics> &history() const {
     return history_;

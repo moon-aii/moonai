@@ -1,7 +1,7 @@
+#include "app.hpp"
 #include "core/config.hpp"
 #include "core/profiler_macros.hpp"
 #include "data/metrics.hpp"
-#include "simulation/session.hpp"
 
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
@@ -285,26 +285,24 @@ RunResult run_profiler(const std::string &experiment_name,
   auto &profiler = profiler::Profiler::instance();
   profiler.set_enabled(true);
 
-  // Build SessionConfig for profiling with GUI
-  SessionConfig session_cfg;
-  session_cfg.sim_config =
+  AppConfig app_cfg;
+  app_cfg.sim_config =
       SimulationConfig(); // default config (output_dir = "output")
-  session_cfg.sim_config.seed = seed;
-  // Run for specified number of frames with one simulation step per frame.
-  session_cfg.sim_config.max_steps = frames;
-  session_cfg.experiment_name = experiment_name;
-  session_cfg.headless = false; // Profiler always uses GUI mode
-  session_cfg.enable_gpu = !no_gpu;
-  session_cfg.interactive = false;  // Display-only mode: no pause, auto-run
-  session_cfg.speed_multiplier = 1; // Normal speed
+  app_cfg.sim_config.seed = seed;
+  app_cfg.sim_config.max_steps = frames;
+  app_cfg.experiment_name = experiment_name;
+  app_cfg.headless = false;
+  app_cfg.enable_gpu = !no_gpu;
+  app_cfg.interactive = false;
+  app_cfg.speed_multiplier = 1;
 
   // Initialize profiler run config
   profiler::RunConfig run_cfg;
   run_cfg.experiment = experiment_name;
   run_cfg.output_root = output_dir;
   run_cfg.seed = seed;
-  run_cfg.total_steps = session_cfg.sim_config.max_steps;
-  run_cfg.report_interval = session_cfg.sim_config.report_interval_steps;
+  run_cfg.total_steps = app_cfg.sim_config.max_steps;
+  run_cfg.report_interval = app_cfg.sim_config.report_interval_steps;
   run_cfg.gpu_allowed = !no_gpu;
 #ifdef MOONAI_ENABLE_CUDA
   run_cfg.cuda_compiled = true;
@@ -321,9 +319,8 @@ RunResult run_profiler(const std::string &experiment_name,
 
   const auto run_start = std::chrono::steady_clock::now();
 
-  // Create Session and run - signals handled internally
-  Session session(session_cfg);
-  bool completed = session.run();
+  App app(app_cfg);
+  bool completed = app.run();
 
   RunResult result;
   result.seed = seed;

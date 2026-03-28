@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/config.hpp"
+#include "core/types.hpp"
 #include "simulation/entity.hpp"
 #include "visualization/renderer.hpp"
 #include "visualization/ui_overlay.hpp"
@@ -17,9 +18,20 @@
 
 namespace moonai {
 
-class Registry;
-class EvolutionManager;
-class SimulationManager;
+struct FrameSnapshot {
+  int world_width = 0;
+  int world_height = 0;
+  std::vector<RenderFood> foods;
+  std::vector<RenderAgent> agents;
+  bool has_selected_vision = false;
+  Entity selected_entity = INVALID_ENTITY;
+  Vec2 selected_position;
+  float selected_vision_range = 0.0f;
+  std::vector<RenderLine> sensor_lines;
+  OverlayStats overlay_stats;
+  const Genome *selected_genome = nullptr;
+  std::unordered_map<std::uint32_t, float> selected_node_activations;
+};
 
 class VisualizationManager {
 public:
@@ -27,21 +39,9 @@ public:
   ~VisualizationManager();
 
   bool initialize();
-  void render_ecs(const Registry &registry, const EvolutionManager &evolution,
-                  const SimulationManager &simulation, int current_step);
+  void render(FrameSnapshot frame);
   bool should_close() const;
   void handle_events();
-
-  void set_fitness(float best, float avg) {
-    overlay_stats_.best_fitness = best;
-    overlay_stats_.avg_fitness = avg;
-  }
-  void set_species_count(int n) {
-    overlay_stats_.num_species = n;
-  }
-  void push_fitness(float best, float avg) {
-    overlay_.push_fitness(best, avg);
-  }
 
   bool is_paused() const {
     return paused_;
@@ -63,44 +63,6 @@ public:
   }
   Entity selected_entity() const {
     return selected_entity_;
-  }
-
-  void set_selected_activations(
-      const std::vector<float> &vals,
-      const std::unordered_map<std::uint32_t, int> &idx_map);
-
-  void update_population_chart(int predators, int prey, int food) {
-    overlay_.push_population(predators, prey, food);
-  }
-
-  void set_fitness_by_type(float best_pred, float avg_pred, float best_prey,
-                           float avg_prey) {
-    overlay_stats_.best_predator_fitness = best_pred;
-    overlay_stats_.avg_predator_fitness = avg_pred;
-    overlay_stats_.best_prey_fitness = best_prey;
-    overlay_stats_.avg_prey_fitness = avg_prey;
-  }
-
-  void set_energy_distribution(const float pred_dist[5],
-                               const float prey_dist[5]) {
-    for (int i = 0; i < 5; ++i) {
-      overlay_stats_.predator_energy_dist[i] = pred_dist[i];
-      overlay_stats_.prey_energy_dist[i] = prey_dist[i];
-    }
-  }
-
-  void set_event_counts(int kills, int food, int births, int deaths) {
-    overlay_stats_.kills_this_step = kills;
-    overlay_stats_.food_eaten_this_step = food;
-    overlay_stats_.births_this_step = births;
-    overlay_stats_.deaths_this_step = deaths;
-  }
-
-  void reset_cumulative_events() {
-    cumulative_kills_ = 0;
-    cumulative_food_ = 0;
-    cumulative_births_ = 0;
-    cumulative_deaths_ = 0;
   }
 
   static constexpr float left_column_width() {
@@ -125,8 +87,7 @@ public:
 private:
   static constexpr unsigned int kGuiMaxFps = 360;
 
-  void handle_mouse_click_ecs(float world_x, float world_y,
-                              const Registry &registry);
+  void handle_mouse_click(float world_x, float world_y);
   void update_camera();
 
   SimulationConfig config_;
@@ -134,10 +95,11 @@ private:
   sf::View camera_view_;
   Renderer renderer_;
   UIOverlay overlay_;
-  OverlayStats overlay_stats_;
+  FrameSnapshot frame_;
   sf::Clock frame_clock_;
   sf::Clock fps_clock_;
   int frame_count_ = 0;
+  int last_chart_step_ = -1;
 
   bool running_ = false;
   bool paused_ = false;
@@ -145,14 +107,6 @@ private:
   bool step_requested_ = false;
   int speed_multiplier_ = 1;
   Entity selected_entity_ = INVALID_ENTITY;
-
-  std::unordered_map<std::uint32_t, float> selected_node_activations_;
-
-  // Cumulative event counters
-  int cumulative_kills_ = 0;
-  int cumulative_food_ = 0;
-  int cumulative_births_ = 0;
-  int cumulative_deaths_ = 0;
 
   bool dragging_ = false;
   sf::Vector2f drag_start_;

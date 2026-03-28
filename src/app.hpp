@@ -2,7 +2,6 @@
 
 #include "core/config.hpp"
 #include "core/random.hpp"
-#include "core/types.hpp"
 #include "data/logger.hpp"
 #include "data/metrics.hpp"
 #include "evolution/evolution_manager.hpp"
@@ -11,14 +10,13 @@
 #include "visualization/visualization_manager.hpp"
 
 #include <csignal>
-#include <cstring>
-#include <functional>
 #include <memory>
 #include <optional>
+#include <unordered_map>
 
 namespace moonai {
 
-struct SessionConfig {
+struct AppConfig {
   SimulationConfig sim_config;
   std::string experiment_name;
   bool headless = false;
@@ -28,14 +26,14 @@ struct SessionConfig {
   std::optional<std::string> run_name_override;
 };
 
-class Session {
+class App {
 public:
-  explicit Session(const SessionConfig &cfg);
+  explicit App(const AppConfig &cfg);
 
   bool run();
 
 private:
-  SessionConfig cfg_;
+  AppConfig cfg_;
   Random rng_;
   Registry registry_;
   SimulationManager simulation_;
@@ -44,17 +42,27 @@ private:
   Logger logger_;
   std::unique_ptr<VisualizationManager> visualization_;
 
-  int steps_executed_ = 0;
+  struct RunEventTotals {
+    int kills = 0;
+    int food_eaten = 0;
+    int births = 0;
+    int deaths = 0;
+  };
 
-  // Signal handling (static - shared across all sessions)
+  int steps_executed_ = 0;
+  std::vector<SimEvent> last_step_events_;
+  RunEventTotals event_totals_;
+  std::unordered_map<std::uint32_t, float> selected_node_activations_;
+
   static volatile std::sig_atomic_t g_running_;
   static void signal_handler(int);
   static void register_signal_handlers();
 
-  // Internal helpers
   void step();
   StepMetrics record_and_log();
   void update_selected_visualization();
+  FrameSnapshot build_frame_snapshot() const;
+  void accumulate_events(const std::vector<SimEvent> &events);
   bool should_continue() const;
   void log_report(const StepMetrics &snapshot) const;
   void log_early_stop(bool user_quit) const;

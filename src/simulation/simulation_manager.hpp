@@ -31,12 +31,25 @@ struct SimEvent {
 
 class SimulationManager {
 public:
+  struct ReproductionPair {
+    Entity parent_a = INVALID_ENTITY;
+    Entity parent_b = INVALID_ENTITY;
+    Vec2 spawn_position;
+  };
+
+  struct SimulationStepResult {
+    std::vector<SimEvent> events;
+    std::vector<ReproductionPair> reproduction_pairs;
+  };
+
   explicit SimulationManager(const SimulationConfig &config);
   ~SimulationManager();
 
   void initialize();
-  void step_ecs(Registry &registry, EvolutionManager &evolution);
-  void step_gpu_ecs(Registry &registry, EvolutionManager &evolution);
+  SimulationStepResult step_ecs(Registry &registry,
+                                EvolutionManager &evolution);
+  SimulationStepResult step_gpu_ecs(Registry &registry,
+                                    EvolutionManager &evolution);
   void reset();
 
   void enable_gpu(bool enable);
@@ -69,22 +82,6 @@ public:
     return alive_prey_;
   }
 
-  const std::vector<SimEvent> &last_events() const {
-    return last_events_;
-  }
-  void record_event(const SimEvent &event) {
-    last_events_.push_back(event);
-  }
-
-  struct ReproductionPair {
-    Entity parent_a = INVALID_ENTITY;
-    Entity parent_b = INVALID_ENTITY;
-    Vec2 spawn_position;
-  };
-
-  std::vector<ReproductionPair>
-  find_reproduction_pairs_ecs(const Registry &registry) const;
-
   void refresh_state_ecs(Registry &registry);
 
 private:
@@ -93,7 +90,11 @@ private:
   PackedStepState pack_step_state(const Registry &registry) const;
   void apply_step_state(Registry &registry, const PackedStepState &state);
   void run_cpu_backend(PackedStepState &state, EvolutionManager &evolution);
-  void finalize_step(Registry &registry, const PackedStepState &state);
+  void collect_step_events(Registry &registry, const PackedStepState &state,
+                           std::vector<SimEvent> &events);
+  std::vector<ReproductionPair>
+  find_reproduction_pairs(const Registry &registry) const;
+  void refresh_world_state_after_step(Registry &registry);
   void rebuild_food_grid();
   void rebuild_spatial_grid_ecs(const Registry &registry);
   void count_alive_ecs(const Registry &registry);
@@ -103,7 +104,6 @@ private:
   SpatialGridECS grid_;
   SpatialGridECS food_grid_;
   FoodStore food_store_;
-  std::vector<SimEvent> last_events_;
   int current_step_ = 0;
   int alive_predators_ = 0;
   int alive_prey_ = 0;

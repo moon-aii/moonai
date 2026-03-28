@@ -3,7 +3,6 @@ set(MOONAI_SIMULATION_SOURCES
     simulation_manager.cpp
     registry.cpp
     spatial_grid_ecs.cpp
-    session.cpp
 )
 
 add_library(moonai_simulation STATIC ${MOONAI_SIMULATION_SOURCES})

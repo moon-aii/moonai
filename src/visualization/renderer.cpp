@@ -1,6 +1,5 @@
 #include "visualization/renderer.hpp"
-#include "simulation/food_store.hpp"
-#include "simulation/registry.hpp"
+#include "simulation/components.hpp"
 #include "visualization/visual_constants.hpp"
 
 #include <SFML/Graphics/PrimitiveType.hpp>
@@ -10,22 +9,6 @@
 #include <cmath>
 
 namespace moonai {
-
-namespace {
-Vec2 wrap_diff(Vec2 diff, float world_width, float world_height) {
-  if (std::abs(diff.x) > world_width * 0.5f) {
-    diff.x = diff.x > 0.0f ? diff.x - world_width : diff.x + world_width;
-  }
-  if (std::abs(diff.y) > world_height * 0.5f) {
-    diff.y = diff.y > 0.0f ? diff.y - world_height : diff.y + world_height;
-  }
-  return diff;
-}
-} // namespace
-
-namespace ecs {
-class Registry;
-}
 
 Renderer::Renderer() {
   // Pre-configure triangle shape (3 points for predator)
@@ -77,40 +60,26 @@ void Renderer::draw_boundaries(sf::RenderTarget &target, int width,
 }
 
 void Renderer::draw_food(sf::RenderTarget &target,
-                         const FoodStore &food_store) {
+                         const std::vector<RenderFood> &food) {
   circle_.setRadius(sizes::FOOD_RADIUS);
   circle_.setOrigin({sizes::FOOD_RADIUS, sizes::FOOD_RADIUS});
 
   sf::Color color(chart_colors::FOOD_R, chart_colors::FOOD_G,
                   chart_colors::FOOD_B, visual::FOOD_ALPHA);
 
-  for (std::size_t i = 0; i < food_store.size(); ++i) {
-    if (!food_store.active()[i]) {
-      continue;
-    }
-
-    circle_.setPosition({food_store.pos_x()[i], food_store.pos_y()[i]});
+  for (const auto &item : food) {
+    circle_.setPosition({item.position.x, item.position.y});
     circle_.setFillColor(color);
     circle_.setOutlineThickness(0);
     target.draw(circle_);
   }
 }
 
-void Renderer::draw_agent_ecs(sf::RenderTarget &target,
-                              const Registry &registry, Entity entity,
-                              bool selected) {
-  if (!registry.valid(entity)) {
-    return;
-  }
-
-  size_t idx = registry.index_of(entity);
-  const auto &positions = registry.positions();
-  const auto &motion = registry.motion();
-  const auto &identity = registry.identity();
-
+void Renderer::draw_agent(sf::RenderTarget &target, const RenderAgent &agent,
+                          bool selected) {
   sf::Color base_color;
   float visual_radius;
-  if (identity.type[idx] == IdentitySoA::TYPE_PREDATOR) {
+  if (agent.type == IdentitySoA::TYPE_PREDATOR) {
     base_color = sf::Color(chart_colors::PREDATOR_R, chart_colors::PREDATOR_G,
                            chart_colors::PREDATOR_B);
     visual_radius = sizes::PREDATOR_RADIUS;
@@ -130,15 +99,15 @@ void Renderer::draw_agent_ecs(sf::RenderTarget &target,
                           std::min(255, base_color.g + 30),
                           std::min(255, base_color.b + 30));
 
-  bool is_triangle = identity.type[idx] == IdentitySoA::TYPE_PREDATOR;
+  bool is_triangle = agent.type == IdentitySoA::TYPE_PREDATOR;
 
   if (is_triangle) {
     float size = visual_radius;
-    Vec2 vel{motion.vel_x[idx], motion.vel_y[idx]};
+    Vec2 vel = agent.velocity;
     float angle = std::atan2(vel.y, vel.x);
 
-    float x = positions.x[idx];
-    float y = positions.y[idx];
+    float x = agent.position.x;
+    float y = agent.position.y;
 
     float cos_a = std::cos(angle);
     float sin_a = std::sin(angle);
@@ -164,7 +133,7 @@ void Renderer::draw_agent_ecs(sf::RenderTarget &target,
     float radius = visual_radius;
     circle_.setRadius(radius);
     circle_.setOrigin({radius, radius});
-    circle_.setPosition({positions.x[idx], positions.y[idx]});
+    circle_.setPosition({agent.position.x, agent.position.y});
     circle_.setPointCount(visual::CIRCLE_POINT_COUNT);
 
     circle_.setFillColor(base_color);
@@ -176,33 +145,19 @@ void Renderer::draw_agent_ecs(sf::RenderTarget &target,
   }
 }
 
-void Renderer::draw_all_agents_ecs(sf::RenderTarget &target,
-                                   const Registry &registry,
-                                   Entity selected_entity) {
-  const auto &living = registry.living_entities();
-  const auto &vitals = registry.vitals();
-  for (Entity entity : living) {
-    size_t idx = registry.index_of(entity);
-    if (vitals.alive[idx]) {
-      bool is_selected = (entity == selected_entity);
-      draw_agent_ecs(target, registry, entity, is_selected);
-    }
+void Renderer::draw_all_agents(sf::RenderTarget &target,
+                               const std::vector<RenderAgent> &agents,
+                               Entity selected_entity) {
+  for (const auto &agent : agents) {
+    draw_agent(target, agent, agent.entity == selected_entity);
   }
 }
 
-void Renderer::draw_vision_range_ecs(sf::RenderTarget &target,
-                                     const Registry &registry, Entity entity,
-                                     float vision_range) {
-  if (!registry.valid(entity)) {
-    return;
-  }
-
-  size_t idx = registry.index_of(entity);
-  const auto &positions = registry.positions();
-
+void Renderer::draw_vision_range(sf::RenderTarget &target, Vec2 position,
+                                 float vision_range) {
   sf::CircleShape vision(vision_range, visual::VISION_POINT_COUNT);
   vision.setOrigin({vision_range, vision_range});
-  vision.setPosition({positions.x[idx], positions.y[idx]});
+  vision.setPosition({position.x, position.y});
   vision.setFillColor(sf::Color(visual::VISION_FILL_R, visual::VISION_FILL_G,
                                 visual::VISION_FILL_B,
                                 visual::VISION_FILL_ALPHA));
@@ -213,75 +168,12 @@ void Renderer::draw_vision_range_ecs(sf::RenderTarget &target,
   target.draw(vision);
 }
 
-void Renderer::draw_sensor_lines_ecs(sf::RenderTarget &target,
-                                     const Registry &registry,
-                                     const FoodStore &food_store, Entity entity,
-                                     float vision_range, float world_size) {
-  if (!registry.valid(entity)) {
-    return;
-  }
-
-  size_t idx = registry.index_of(entity);
-  const auto &positions = registry.positions();
-  const auto &vitals = registry.vitals();
-  const auto &identity = registry.identity();
-
-  if (!vitals.alive[idx]) {
-    return;
-  }
-
-  Vec2 pos{positions.x[idx], positions.y[idx]};
-
+void Renderer::draw_sensor_lines(sf::RenderTarget &target,
+                                 const std::vector<RenderLine> &lines_in) {
   sf::VertexArray lines(sf::PrimitiveType::Lines);
-
-  const auto &living = registry.living_entities();
-  for (Entity other_entity : living) {
-    if (other_entity == entity) {
-      continue;
-    }
-
-    size_t other_idx = registry.index_of(other_entity);
-    const auto &other_vitals = registry.vitals();
-
-    if (!other_vitals.alive[other_idx]) {
-      continue;
-    }
-
-    const auto &other_positions = registry.positions();
-    Vec2 other_pos{other_positions.x[other_idx], other_positions.y[other_idx]};
-
-    Vec2 diff = other_pos - pos;
-    if (diff.length() > vision_range) {
-      continue;
-    }
-
-    const auto &other_identity = registry.identity();
-    sf::Color line_color;
-    if (other_identity.type[other_idx] == IdentitySoA::TYPE_PREDATOR) {
-      line_color = sf::Color(chart_colors::PREDATOR_R, chart_colors::PREDATOR_G,
-                             chart_colors::PREDATOR_B, visual::SENSOR_ALPHA);
-    } else {
-      line_color = sf::Color(chart_colors::PREY_R, chart_colors::PREY_G,
-                             chart_colors::PREY_B, visual::SENSOR_ALPHA);
-    }
-
-    lines.append(sf::Vertex{{pos.x, pos.y}, line_color});
-    lines.append(sf::Vertex{{other_pos.x, other_pos.y}, line_color});
-  }
-
-  for (std::size_t food_idx = 0; food_idx < food_store.size(); ++food_idx) {
-    if (!food_store.active()[food_idx]) {
-      continue;
-    }
-    Vec2 food_pos{food_store.pos_x()[food_idx], food_store.pos_y()[food_idx]};
-    Vec2 diff = wrap_diff(food_pos - pos, world_size, world_size);
-    if (diff.length() > vision_range)
-      continue;
-
-    sf::Color food_line(chart_colors::FOOD_R, chart_colors::FOOD_G,
-                        chart_colors::FOOD_B, visual::FOOD_SENSOR_ALPHA);
-    lines.append(sf::Vertex{{pos.x, pos.y}, food_line});
-    lines.append(sf::Vertex{{food_pos.x, food_pos.y}, food_line});
+  for (const auto &line : lines_in) {
+    lines.append(sf::Vertex{{line.start.x, line.start.y}, line.color});
+    lines.append(sf::Vertex{{line.end.x, line.end.y}, line.color});
   }
 
   target.draw(lines);

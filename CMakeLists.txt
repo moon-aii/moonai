@@ -53,9 +53,9 @@ if(MOONAI_ENABLE_CUDA)
 endif()
 
 # ── Main executable ──────────────────────────────────────────────────────────
-add_executable(moonai src/main.cpp)
+add_executable(moonai src/main.cpp src/app.cpp)
 
-add_executable(moonai_profiler src/profiler_main.cpp)
+add_executable(moonai_profiler src/profiler_main.cpp src/app.cpp)
 
 target_link_libraries(moonai PRIVATE
     moonai_core
@@ -113,5 +113,4 @@ if(MOONAI_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
 endif()
-
 

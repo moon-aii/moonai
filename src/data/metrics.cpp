@@ -11,7 +11,7 @@ namespace moonai {
 
 StepMetrics MetricsCollector::collect_ecs(int step, const Registry &registry,
                                           const EvolutionManager &evolution,
-                                          const SimulationManager &simulation,
+                                          const std::vector<SimEvent> &events,
                                           int num_species) {
   StepMetrics metrics;
   metrics.step = step;
@@ -20,7 +20,7 @@ StepMetrics MetricsCollector::collect_ecs(int step, const Registry &registry,
   // Count births and deaths from events
   int births = 0;
   int deaths = 0;
-  for (const auto &event : simulation.last_events()) {
+  for (const auto &event : events) {
     if (event.type == SimEvent::Birth) {
       ++births;
     } else if (event.type == SimEvent::Death) {

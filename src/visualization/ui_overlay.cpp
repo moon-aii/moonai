@@ -263,22 +263,22 @@ void UIOverlay::draw_stats_widget(sf::RenderTarget &target,
   draw_text(target, buf, tx, ty, 13, sf::Color::White);
   ty += line_h;
 
-  std::snprintf(buf, sizeof(buf), "Kills: %d", stats.kills_this_step);
+  std::snprintf(buf, sizeof(buf), "Kills: %d", stats.total_kills);
   draw_text(target, buf, tx, ty, 13,
             sf::Color(ui::EVENT_KILL_R, ui::EVENT_KILL_G, ui::EVENT_KILL_B));
   ty += line_h;
 
-  std::snprintf(buf, sizeof(buf), "Eaten: %d", stats.food_eaten_this_step);
+  std::snprintf(buf, sizeof(buf), "Eaten: %d", stats.total_food_eaten);
   draw_text(target, buf, tx, ty, 13,
             sf::Color(ui::EVENT_FOOD_R, ui::EVENT_FOOD_G, ui::EVENT_FOOD_B));
   ty += line_h;
 
-  std::snprintf(buf, sizeof(buf), "Births: %d", stats.births_this_step);
+  std::snprintf(buf, sizeof(buf), "Births: %d", stats.total_births);
   draw_text(target, buf, tx, ty, 13,
             sf::Color(ui::EVENT_BIRTH_R, ui::EVENT_BIRTH_G, ui::EVENT_BIRTH_B));
   ty += line_h;
 
-  std::snprintf(buf, sizeof(buf), "Deaths: %d", stats.deaths_this_step);
+  std::snprintf(buf, sizeof(buf), "Deaths: %d", stats.total_deaths);
   draw_text(target, buf, tx, ty, 13,
             sf::Color(ui::EVENT_DEATH_R, ui::EVENT_DEATH_G, ui::EVENT_DEATH_B));
 }

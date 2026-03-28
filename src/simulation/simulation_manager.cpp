@@ -344,7 +344,6 @@ void SimulationManager::initialize() {
 
 void SimulationManager::initialize(bool log_initialization) {
   current_step_ = 0;
-  last_events_.clear();
   food_store_.initialize(config_, rng_);
   rebuild_food_grid();
 
@@ -453,8 +452,9 @@ void SimulationManager::run_cpu_backend(PackedStepState &state,
   apply_movement(state, config_);
 }
 
-void SimulationManager::finalize_step(Registry &registry,
-                                      const PackedStepState &state) {
+void SimulationManager::collect_step_events(Registry &registry,
+                                            const PackedStepState &state,
+                                            std::vector<SimEvent> &events) {
   auto &stats = registry.stats();
   const auto &positions = registry.positions();
 
@@ -471,8 +471,8 @@ void SimulationManager::finalize_step(Registry &registry,
     const std::size_t ecs_idx = registry.index_of(prey);
     stats.food_eaten[ecs_idx] += 1;
     Vec2 pos{positions.x[ecs_idx], positions.y[ecs_idx]};
-    last_events_.push_back(SimEvent{SimEvent::Food, prey, INVALID_ENTITY,
-                                    INVALID_ENTITY, INVALID_ENTITY, pos});
+    events.push_back(SimEvent{SimEvent::Food, prey, INVALID_ENTITY,
+                              INVALID_ENTITY, INVALID_ENTITY, pos});
   }
 
   for (std::size_t agent_idx = 0; agent_idx < state.agents.size();
@@ -491,18 +491,20 @@ void SimulationManager::finalize_step(Registry &registry,
       const Entity killer = state.agents.entities[static_cast<std::size_t>(
           state.agents.killed_by[agent_idx])];
       Vec2 pos{positions.x[ecs_idx], positions.y[ecs_idx]};
-      last_events_.push_back(SimEvent{SimEvent::Kill, killer, entity,
-                                      INVALID_ENTITY, INVALID_ENTITY, pos});
+      events.push_back(SimEvent{SimEvent::Kill, killer, entity, INVALID_ENTITY,
+                                INVALID_ENTITY, pos});
       continue;
     }
 
     if (state.agents.was_alive[agent_idx] && !state.agents.alive[agent_idx]) {
       Vec2 pos{positions.x[ecs_idx], positions.y[ecs_idx]};
-      last_events_.push_back(SimEvent{SimEvent::Death, entity, entity,
-                                      INVALID_ENTITY, INVALID_ENTITY, pos});
+      events.push_back(SimEvent{SimEvent::Death, entity, entity, INVALID_ENTITY,
+                                INVALID_ENTITY, pos});
     }
   }
+}
 
+void SimulationManager::refresh_world_state_after_step(Registry &registry) {
   food_store_.respawn_step(config_, current_step_, rng_.seed());
   rebuild_food_grid();
   rebuild_spatial_grid_ecs(registry);
@@ -521,15 +523,18 @@ void SimulationManager::rebuild_food_grid() {
   }
 }
 
-void SimulationManager::step_ecs(Registry &registry,
-                                 EvolutionManager &evolution) {
+SimulationManager::SimulationStepResult
+SimulationManager::step_ecs(Registry &registry, EvolutionManager &evolution) {
   MOONAI_PROFILE_SCOPE("simulation_step_cpu");
-  last_events_.clear();
+  SimulationStepResult result;
 
   PackedStepState state = pack_step_state(registry);
   run_cpu_backend(state, evolution);
   apply_step_state(registry, state);
-  finalize_step(registry, state);
+  collect_step_events(registry, state, result.events);
+  refresh_world_state_after_step(registry);
+  result.reproduction_pairs = find_reproduction_pairs(registry);
+  return result;
 }
 
 void SimulationManager::reset() {
@@ -554,7 +559,7 @@ void SimulationManager::rebuild_spatial_grid_ecs(const Registry &registry) {
 }
 
 std::vector<SimulationManager::ReproductionPair>
-SimulationManager::find_reproduction_pairs_ecs(const Registry &registry) const {
+SimulationManager::find_reproduction_pairs(const Registry &registry) const {
   std::vector<ReproductionPair> pairs;
   std::unordered_set<Entity, EntityHash> used;
 
@@ -660,16 +665,16 @@ void SimulationManager::enable_gpu(bool enable) {
   }
 }
 
-void SimulationManager::step_gpu_ecs(Registry &registry,
-                                     EvolutionManager &evolution) {
+SimulationManager::SimulationStepResult
+SimulationManager::step_gpu_ecs(Registry &registry,
+                                EvolutionManager &evolution) {
   MOONAI_PROFILE_SCOPE("simulation_step_gpu");
-  last_events_.clear();
+  SimulationStepResult result;
 
   if (!gpu_batch_ || !gpu_batch_->ok()) {
     spdlog::error(
         "GPU batch not initialized or in error state, falling back to CPU");
-    step_ecs(registry, evolution);
-    return;
+    return step_ecs(registry, evolution);
   }
 
   PackedStepState state = pack_step_state(registry);
@@ -682,14 +687,13 @@ void SimulationManager::step_gpu_ecs(Registry &registry,
     spdlog::error("GPU preparation failed: {}. Falling back to CPU step.",
                   ex.what());
     gpu_enabled_ = false;
-    step_ecs(registry, evolution);
-    return;
+    return step_ecs(registry, evolution);
   }
 
   const std::size_t agent_count = state.agents.size();
   const std::size_t food_count = state.foods.size();
   if (agent_count == 0) {
-    return;
+    return result;
   }
 
   gpu::GpuStepParams params;
@@ -717,14 +721,16 @@ void SimulationManager::step_gpu_ecs(Registry &registry,
     spdlog::error("GPU step failed, disabling GPU path and retrying on CPU");
     gpu_enabled_ = false;
     gpu_batch_.reset();
-    step_ecs(registry, evolution);
-    return;
+    return step_ecs(registry, evolution);
   }
 
   gpu::apply_gpu_results(gpu_batch_->buffer(), gpu_batch_->agent_mapping(),
                          gpu_batch_->food_mapping(), state);
   apply_step_state(registry, state);
-  finalize_step(registry, state);
+  collect_step_events(registry, state, result.events);
+  refresh_world_state_after_step(registry);
+  result.reproduction_pairs = find_reproduction_pairs(registry);
+  return result;
 }
 
 } // namespace moonai

@@ -54,11 +54,11 @@ struct OverlayStats {
   float predator_energy_dist[5] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
   float prey_energy_dist[5] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
 
-  // Event counts for current step
-  int kills_this_step = 0;
-  int food_eaten_this_step = 0;
-  int births_this_step = 0;
-  int deaths_this_step = 0;
+  // Event counts for the whole run
+  int total_kills = 0;
+  int total_food_eaten = 0;
+  int total_births = 0;
+  int total_deaths = 0;
 };
 
 class UIOverlay {
