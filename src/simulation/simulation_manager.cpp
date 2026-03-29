@@ -355,7 +355,6 @@ PackedStepState
 SimulationManager::pack_step_state(const Registry &registry) const {
   PackedStepState state;
   const auto &living = registry.living_entities();
-  state.agents.resize(living.size());
   state.foods.resize(food_store_.size());
 
   const auto &positions = registry.positions();
@@ -366,9 +365,22 @@ SimulationManager::pack_step_state(const Registry &registry) const {
   const auto &sensors = registry.sensors();
   const auto &brain = registry.brain();
 
-  for (std::size_t agent_idx = 0; agent_idx < living.size(); ++agent_idx) {
-    const Entity entity = living[agent_idx];
+  std::size_t alive_count = 0;
+  for (Entity entity : living) {
     const std::size_t idx = registry.index_of(entity);
+    if (vitals.alive[idx]) {
+      ++alive_count;
+    }
+  }
+
+  state.agents.resize(alive_count);
+
+  std::size_t agent_idx = 0;
+  for (Entity entity : living) {
+    const std::size_t idx = registry.index_of(entity);
+    if (!vitals.alive[idx]) {
+      continue;
+    }
 
     state.agents.entities[agent_idx] = entity;
     state.agents.pos_x[agent_idx] = positions.x[idx];
@@ -390,6 +402,7 @@ SimulationManager::pack_step_state(const Registry &registry) const {
                 state.agents.sensor_ptr(agent_idx));
     state.agents.brain_ptr(agent_idx)[0] = brain.decision_x[idx];
     state.agents.brain_ptr(agent_idx)[1] = brain.decision_y[idx];
+    ++agent_idx;
   }
 
   for (std::size_t food_idx = 0; food_idx < food_store_.size(); ++food_idx) {
@@ -650,16 +663,44 @@ void SimulationManager::refresh_state(Registry &registry) {
 
 SimulationManager::~SimulationManager() = default;
 
+void SimulationManager::ensure_gpu_capacity(std::size_t agent_count,
+                                            std::size_t food_count) {
+  if (!gpu_enabled_) {
+    return;
+  }
+
+  const bool needs_batch = !gpu_batch_;
+  const bool needs_resize =
+      gpu_batch_ && (agent_count > gpu_batch_->agent_capacity() ||
+                     food_count > gpu_batch_->food_capacity());
+  if (!needs_batch && !needs_resize) {
+    return;
+  }
+
+  const std::size_t current_agent_capacity =
+      gpu_batch_ ? gpu_batch_->agent_capacity() : 0;
+  const std::size_t current_food_capacity =
+      gpu_batch_ ? gpu_batch_->food_capacity() : 0;
+  const std::size_t new_agent_capacity = std::max(
+      agent_count,
+      current_agent_capacity == 0 ? agent_count : current_agent_capacity * 2);
+  const std::size_t new_food_capacity =
+      std::max(food_count,
+               current_food_capacity == 0 ? food_count : current_food_capacity);
+
+  gpu_batch_ =
+      std::make_unique<gpu::GpuBatch>(new_agent_capacity, new_food_capacity);
+  spdlog::info(
+      "GPU batch processing enabled with capacities {} agents / {} food",
+      new_agent_capacity, new_food_capacity);
+}
+
 void SimulationManager::enable_gpu(bool enable) {
   gpu_enabled_ = enable;
-  if (enable && !gpu_batch_) {
-    const size_t max_agents =
-        static_cast<size_t>((config_.predator_count + config_.prey_count) * 6);
-    const size_t max_food = static_cast<size_t>(config_.food_count);
-    gpu_batch_ = std::make_unique<gpu::GpuBatch>(max_agents, max_food);
-    spdlog::info(
-        "GPU batch processing enabled with capacities {} agents / {} food",
-        max_agents, max_food);
+  if (enable) {
+    ensure_gpu_capacity(
+        static_cast<std::size_t>(config_.predator_count + config_.prey_count),
+        static_cast<std::size_t>(config_.food_count));
   } else if (!enable) {
     gpu_batch_.reset();
     spdlog::info("GPU batch processing disabled");
@@ -682,6 +723,14 @@ SimulationManager::step_gpu(Registry &registry, EvolutionManager &evolution) {
     MOONAI_PROFILE_SCOPE("gpu_pack_state");
     state = pack_step_state(registry);
 
+    const std::size_t agent_count = state.agents.size();
+    const std::size_t food_count = state.foods.size();
+    if (agent_count == 0) {
+      return result;
+    }
+
+    ensure_gpu_capacity(agent_count, food_count);
+
     try {
       gpu::prepare_step_state_for_gpu(state, gpu_batch_->agent_mapping(),
                                       gpu_batch_->food_mapping(),
@@ -696,9 +745,6 @@ SimulationManager::step_gpu(Registry &registry, EvolutionManager &evolution) {
 
   const std::size_t agent_count = state.agents.size();
   const std::size_t food_count = state.foods.size();
-  if (agent_count == 0) {
-    return result;
-  }
 
   gpu::GpuStepParams params;
   params.world_width = static_cast<float>(config_.grid_size);
@@ -718,7 +764,13 @@ SimulationManager::step_gpu(Registry &registry, EvolutionManager &evolution) {
 
   gpu_batch_->launch_build_sensors_async(params, agent_count, food_count);
 
-  evolution.launch_gpu_neural(*gpu_batch_, agent_count);
+  if (!evolution.launch_gpu_neural(*gpu_batch_, agent_count)) {
+    spdlog::error(
+        "GPU neural inference failed, disabling GPU path and retrying on CPU");
+    gpu_enabled_ = false;
+    gpu_batch_.reset();
+    return step(registry, evolution);
+  }
 
   gpu_batch_->launch_post_inference_async(params, agent_count, food_count);
 

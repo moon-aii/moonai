@@ -255,9 +255,19 @@ void GpuNetworkCache::build_from(
 
     // Build evaluation order and connections
     // Get topological order (excluding input and bias nodes)
-    std::vector<uint32_t> eval_order_u32 = network->eval_order();
-    std::vector<int> eval_order(eval_order_u32.begin(), eval_order_u32.end());
-    
+    const auto &node_index_map = network->node_index_map();
+    std::vector<int> eval_order;
+    eval_order.reserve(network->eval_order().size());
+    for (uint32_t node_id : network->eval_order()) {
+      const auto it = node_index_map.find(node_id);
+      if (it == node_index_map.end()) {
+        spdlog::warn("Skipping missing node {} in GPU eval order", node_id);
+        continue;
+      }
+      eval_order.push_back(it->second);
+    }
+    desc.num_eval = static_cast<int>(eval_order.size());
+
     // Build CSR representation of connections
     // For each node in eval_order, collect its incoming connections
     int ptr = 0;
@@ -348,17 +358,17 @@ void GpuNetworkCache::build_from(
                 h_descriptors_.size(), current_node_off, current_conn_off);
 }
 
-void GpuNetworkCache::launch_inference_async(const float *d_sensor_inputs,
+bool GpuNetworkCache::launch_inference_async(const float *d_sensor_inputs,
                                              float *d_brain_outputs,
                                              std::size_t count,
                                              cudaStream_t stream) {
   if (count == 0 || !is_valid()) {
-    return;
+    return true;
   }
 
   if (count > h_descriptors_.size()) {
     spdlog::error("Agent count exceeds cached network count");
-    return;
+    return false;
   }
 
   // Zero node values for this step
@@ -378,7 +388,9 @@ void GpuNetworkCache::launch_inference_async(const float *d_sensor_inputs,
   cudaError_t err = cudaGetLastError();
   if (err != cudaSuccess) {
     spdlog::error("Neural inference kernel launch failed: {}", cudaGetErrorString(err));
+    return false;
   }
+  return true;
 }
 
 } // namespace gpu

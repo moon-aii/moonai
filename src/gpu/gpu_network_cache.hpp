@@ -56,7 +56,7 @@ public:
   // Launch neural inference kernel
   // d_sensor_inputs: [entity_count][12] floats
   // d_brain_outputs: [entity_count][2] floats
-  void launch_inference_async(const float *d_sensor_inputs,
+  bool launch_inference_async(const float *d_sensor_inputs,
                               float *d_brain_outputs, std::size_t count,
                               cudaStream_t stream);
 

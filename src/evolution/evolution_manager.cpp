@@ -311,13 +311,13 @@ void EvolutionManager::enable_gpu(bool use_gpu) {
   }
 }
 
-void EvolutionManager::launch_gpu_neural(gpu::GpuBatch &gpu_batch,
+bool EvolutionManager::launch_gpu_neural(gpu::GpuBatch &gpu_batch,
                                          std::size_t agent_count) {
   MOONAI_PROFILE_SCOPE("gpu_neural", gpu_batch.stream());
 
   if (!gpu_network_cache_) {
     spdlog::error("GPU neural cache not initialized");
-    return;
+    return false;
   }
 
   // Get entities from GPU mapping (in GPU buffer order) and filter to only
@@ -334,7 +334,7 @@ void EvolutionManager::launch_gpu_neural(gpu::GpuBatch &gpu_batch,
 
   if (network_entities_with_indices.empty()) {
     spdlog::warn("No entities with neural networks found in GPU batch");
-    return;
+    return true;
   }
 
   // Rebuild GPU cache if networks changed
@@ -356,10 +356,15 @@ void EvolutionManager::launch_gpu_neural(gpu::GpuBatch &gpu_batch,
   }
 
   // Launch kernel - only for entities with networks
-  gpu_network_cache_->launch_inference_async(
-      gpu_batch.buffer().device_agent_sensor_inputs(),
-      gpu_batch.buffer().device_agent_brain_outputs(),
-      network_entities_with_indices.size(), gpu_batch.stream());
+  if (!gpu_network_cache_->launch_inference_async(
+          gpu_batch.buffer().device_agent_sensor_inputs(),
+          gpu_batch.buffer().device_agent_brain_outputs(),
+          network_entities_with_indices.size(), gpu_batch.stream())) {
+    gpu_batch.mark_error();
+    return false;
+  }
+
+  return true;
 }
 
 } // namespace moonai

@@ -74,7 +74,7 @@ public:
   }
 
   // GPU neural inference (called by SimulationManager during GPU step)
-  void launch_gpu_neural(gpu::GpuBatch &gpu_batch, std::size_t agent_count);
+  bool launch_gpu_neural(gpu::GpuBatch &gpu_batch, std::size_t agent_count);
 
 private:
   SimulationConfig config_;

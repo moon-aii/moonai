@@ -70,12 +70,22 @@ public:
 
   void synchronize();
 
+  void mark_error();
+
   [[nodiscard]] bool ok() const noexcept {
     return !had_error_;
   }
 
   [[nodiscard]] cudaStream_t stream() const {
     return static_cast<cudaStream_t>(stream_);
+  }
+
+  [[nodiscard]] std::size_t agent_capacity() const noexcept {
+    return buffer_.agent_capacity();
+  }
+
+  [[nodiscard]] std::size_t food_capacity() const noexcept {
+    return buffer_.food_capacity();
   }
 
 private:
@@ -88,7 +98,6 @@ private:
 
   void init_cuda_resources();
   void cleanup_cuda_resources();
-  void mark_error();
   void check_launch_error();
 };
 

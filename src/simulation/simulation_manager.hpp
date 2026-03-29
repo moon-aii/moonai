@@ -83,6 +83,7 @@ public:
 
 private:
   void initialize(bool log_initialization);
+  void ensure_gpu_capacity(std::size_t agent_count, std::size_t food_count);
 
   PackedStepState pack_step_state(const Registry &registry) const;
   void apply_step_state(Registry &registry, const PackedStepState &state);
