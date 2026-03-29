@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <nlohmann/json.hpp>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -54,6 +55,37 @@ struct SimulationConfig {
 struct ConfigError {
   std::string field;
   std::string message;
+};
+
+struct AppConfig {
+  SimulationConfig sim_config;
+  std::string experiment_name;
+  bool headless = false;
+  bool interactive = true;
+  bool enable_gpu = true;
+  int speed_multiplier = 1;
+  std::optional<std::string> run_name_override;
+
+  static constexpr bool cuda_compiled =
+#ifdef MOONAI_ENABLE_CUDA
+      true;
+#else
+      false;
+#endif
+
+  static constexpr bool openmp_compiled =
+#ifdef MOONAI_OPENMP_ENABLED
+      true;
+#else
+      false;
+#endif
+
+  static constexpr const char *platform =
+#ifdef _WIN32
+      "windows";
+#else
+      "linux";
+#endif
 };
 
 nlohmann::json config_to_json(const SimulationConfig &config);

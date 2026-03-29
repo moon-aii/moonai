@@ -9,6 +9,27 @@
 
 namespace {
 
+bool prepare_config(moonai::SimulationConfig &config,
+                    const moonai::CLIArgs &args) {
+  const auto override_errors = moonai::apply_overrides(config, args.overrides);
+  if (!override_errors.empty()) {
+    for (const auto &error : override_errors) {
+      spdlog::error("Override error [{}]: {}", error.field, error.message);
+    }
+    return false;
+  }
+
+  const auto validation_errors = moonai::validate_config(config);
+  if (!validation_errors.empty()) {
+    for (const auto &error : validation_errors) {
+      spdlog::error("Config error [{}]: {}", error.field, error.message);
+    }
+    return false;
+  }
+
+  return true;
+}
+
 int run_experiment(const std::string &name, moonai::SimulationConfig config,
                    const moonai::CLIArgs &args) {
   moonai::AppConfig app_cfg;
@@ -28,10 +49,12 @@ int run_experiment(const std::string &name, moonai::SimulationConfig config,
     app_cfg.sim_config.max_steps = args.max_steps_override;
   }
 
-  moonai::App app(app_cfg);
-  app.run();
+  if (!prepare_config(app_cfg.sim_config, args)) {
+    return 1;
+  }
 
-  return 0;
+  moonai::App app(app_cfg);
+  return app.run() ? 0 : 1;
 }
 
 } // namespace
@@ -65,12 +88,30 @@ int main(int argc, const char *argv[]) {
     } else {
       config = configs.begin()->second;
     }
-    const auto errors = moonai::validate_config(config);
-    if (errors.empty()) {
+
+    if (args.seed_override != 0) {
+      config.seed = args.seed_override;
+    }
+    if (args.max_steps_override != 0) {
+      config.max_steps = args.max_steps_override;
+    }
+
+    const auto override_errors =
+        moonai::apply_overrides(config, args.overrides);
+    if (!override_errors.empty()) {
+      for (const auto &error : override_errors) {
+        std::fprintf(stderr, "ERROR [%s]: %s\n", error.field.c_str(),
+                     error.message.c_str());
+      }
+      return 1;
+    }
+
+    const auto validation_errors = moonai::validate_config(config);
+    if (validation_errors.empty()) {
       std::printf("OK\n");
       return 0;
     }
-    for (const auto &error : errors) {
+    for (const auto &error : validation_errors) {
       std::fprintf(stderr, "ERROR [%s]: %s\n", error.field.c_str(),
                    error.message.c_str());
     }

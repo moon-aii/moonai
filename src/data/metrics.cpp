@@ -1,83 +1,90 @@
 #include "data/metrics.hpp"
 
-#include "evolution/evolution_manager.hpp"
-#include "simulation/registry.hpp"
-#include "simulation/simulation_manager.hpp"
+#include "core/app_state.hpp"
 
-#include <algorithm>
-#include <numeric>
+namespace moonai::metrics {
 
-namespace moonai {
+namespace {
 
-StepMetrics MetricsCollector::collect(int step, const Registry &registry,
-                                      const EvolutionManager &evolution,
-                                      const std::vector<SimEvent> &events,
-                                      int num_species) {
-  StepMetrics metrics;
-  metrics.step = step;
-  metrics.num_species = num_species;
+int count_active_food(const FoodStore &food_store) {
+  int active_food = 0;
+  for (uint8_t active : food_store.active()) {
+    active_food += active ? 1 : 0;
+  }
+  return active_food;
+}
 
-  // Count births and deaths from events
-  int births = 0;
-  int deaths = 0;
-  for (const auto &event : events) {
-    if (event.type == SimEvent::Birth) {
-      ++births;
-    } else if (event.type == SimEvent::Death) {
-      ++deaths;
+} // namespace
+
+void refresh_live(AppState &state) {
+  state.metrics.live.alive_predators = 0;
+  state.metrics.live.alive_prey = 0;
+  state.metrics.live.active_food = count_active_food(state.food_store);
+  state.metrics.live.num_species =
+      static_cast<int>(state.evolution.species.size());
+
+  const auto &identity = state.registry.identity();
+  for (std::size_t idx = 0; idx < state.registry.size(); ++idx) {
+    if (identity.type[idx] == IdentitySoA::TYPE_PREDATOR) {
+      ++state.metrics.live.alive_predators;
+    } else {
+      ++state.metrics.live.alive_prey;
     }
   }
-  metrics.births = births;
-  metrics.deaths = deaths;
+}
+
+void record_report(AppState &state) {
+  refresh_live(state);
+
+  ReportMetrics report;
+  report.step = state.runtime.step;
+  report.predator_count = state.metrics.live.alive_predators;
+  report.prey_count = state.metrics.live.alive_prey;
+  report.births = state.runtime.report_events.births;
+  report.deaths = state.runtime.report_events.deaths;
+  report.num_species = state.metrics.live.num_species;
 
   float predator_energy_sum = 0.0f;
   float prey_energy_sum = 0.0f;
   int predator_energy_count = 0;
   int prey_energy_count = 0;
-
-  const auto &vitals = registry.vitals();
-  const auto &identity = registry.identity();
-
-  for (std::size_t idx = 0; idx < registry.size(); ++idx) {
-    if (identity.type[idx] == IdentitySoA::TYPE_PREDATOR) {
-      ++metrics.predator_count;
-      predator_energy_sum += vitals.energy[idx];
-      ++predator_energy_count;
-    } else {
-      ++metrics.prey_count;
-      prey_energy_sum += vitals.energy[idx];
-      ++prey_energy_count;
-    }
-  }
-
-  if (predator_energy_count > 0) {
-    metrics.avg_predator_energy =
-        predator_energy_sum / static_cast<float>(predator_energy_count);
-  }
-  if (prey_energy_count > 0) {
-    metrics.avg_prey_energy =
-        prey_energy_sum / static_cast<float>(prey_energy_count);
-  }
-
   float complexity_sum = 0.0f;
   int genome_count = 0;
 
-  for (std::size_t idx = 0; idx < registry.size(); ++idx) {
-    const Entity entity{static_cast<uint32_t>(idx)};
-    const Genome *genome = evolution.genome_for(entity);
-    if (genome) {
-      complexity_sum += static_cast<float>(genome->complexity());
+  const auto &vitals = state.registry.vitals();
+  const auto &identity = state.registry.identity();
+  for (std::size_t idx = 0; idx < state.registry.size(); ++idx) {
+    if (identity.type[idx] == IdentitySoA::TYPE_PREDATOR) {
+      predator_energy_sum += vitals.energy[idx];
+      ++predator_energy_count;
+    } else {
+      prey_energy_sum += vitals.energy[idx];
+      ++prey_energy_count;
+    }
+
+    if (idx < state.evolution.entity_genomes.size()) {
+      const auto &genome = state.evolution.entity_genomes[idx];
+      complexity_sum += static_cast<float>(genome.nodes().size() +
+                                           genome.connections().size());
       ++genome_count;
     }
   }
 
+  if (predator_energy_count > 0) {
+    report.avg_predator_energy =
+        predator_energy_sum / static_cast<float>(predator_energy_count);
+  }
+  if (prey_energy_count > 0) {
+    report.avg_prey_energy =
+        prey_energy_sum / static_cast<float>(prey_energy_count);
+  }
   if (genome_count > 0) {
-    metrics.avg_genome_complexity =
+    report.avg_genome_complexity =
         complexity_sum / static_cast<float>(genome_count);
   }
 
-  history_.push_back(metrics);
-  return metrics;
+  state.metrics.last_report = report;
+  state.metrics.history.push_back(report);
 }
 
-} // namespace moonai
+} // namespace moonai::metrics

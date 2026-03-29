@@ -17,8 +17,9 @@
 
 namespace moonai {
 
-VisualizationManager::VisualizationManager(const SimulationConfig &config)
-    : config_(config) {}
+VisualizationManager::VisualizationManager(const SimulationConfig &config,
+                                           UiState &ui_state)
+    : config_(config), ui_state_(ui_state) {}
 
 VisualizationManager::~VisualizationManager() = default;
 
@@ -78,7 +79,7 @@ void VisualizationManager::enter_experiment_select_mode() {
     experiment_select_mode_ = true;
     experiment_scroll_offset_ = 0;
     experiment_hover_index_ = -1;
-    paused_ = true;
+    ui_state_.paused = true;
   }
 }
 
@@ -124,13 +125,13 @@ void VisualizationManager::render(FrameSnapshot frame) {
     MOONAI_PROFILE_SCOPE("render_agents");
     renderer_.draw_all_agents(
         *window_, frame_.agents, frame_.overlay_stats.alive_predators,
-        frame_.overlay_stats.alive_prey, selected_agent_id_);
+        frame_.overlay_stats.alive_prey, ui_state_.selected_agent_id);
   }
 
   // Draw vision/sensor lines for selected entity (automatically shown when
   // agent is clicked)
   if (frame_.has_selected_vision &&
-      frame_.selected_agent_id == selected_agent_id_) {
+      frame_.selected_agent_id == ui_state_.selected_agent_id) {
     MOONAI_PROFILE_SCOPE("render_sensor_lines");
     Renderer::draw_vision_range(*window_, frame_.selected_position,
                                 frame_.selected_vision_range);
@@ -141,8 +142,9 @@ void VisualizationManager::render(FrameSnapshot frame) {
   update_fps(frame_clock_.restart().asSeconds());
   frame_.overlay_stats.fps = current_fps_;
 
-  if (selected_agent_id_ != 0) {
-    frame_.overlay_stats.selected_agent = static_cast<int>(selected_agent_id_);
+  if (ui_state_.selected_agent_id != 0) {
+    frame_.overlay_stats.selected_agent =
+        static_cast<int>(ui_state_.selected_agent_id);
   }
 
   if (frame_.overlay_stats.step != last_chart_step_) {
@@ -240,7 +242,7 @@ void VisualizationManager::handle_events() {
               experiment_names_[experiment_hover_index_];
           experiment_select_mode_ = false;
           experiment_selected_ = true;
-          paused_ = false;
+          ui_state_.paused = false;
           spdlog::info("Selected experiment: {}", selected_experiment_name_);
         }
       }
@@ -256,28 +258,30 @@ void VisualizationManager::handle_events() {
           break;
 
         case sf::Keyboard::Key::Space:
-          paused_ = !paused_;
+          ui_state_.paused = !ui_state_.paused;
           break;
 
         case sf::Keyboard::Key::Period: // > key (step forward)
-          if (paused_)
-            step_requested_ = true;
+          if (ui_state_.paused)
+            ui_state_.step_requested = true;
           break;
 
         case sf::Keyboard::Key::Equal: // + key
         case sf::Keyboard::Key::Up:
         case sf::Keyboard::Key::Add:
-          speed_multiplier_ = std::min(speed_multiplier_ * 2, 64);
+          ui_state_.speed_multiplier =
+              std::min(ui_state_.speed_multiplier * 2, 64);
           break;
 
         case sf::Keyboard::Key::Hyphen: // - key
         case sf::Keyboard::Key::Down:
         case sf::Keyboard::Key::Subtract:
-          speed_multiplier_ = std::max(speed_multiplier_ / 2, 1);
+          ui_state_.speed_multiplier =
+              std::max(ui_state_.speed_multiplier / 2, 1);
           break;
 
         case sf::Keyboard::Key::R:
-          reset_requested_ = true;
+          ui_state_.reset_requested = true;
           break;
 
         case sf::Keyboard::Key::E:
@@ -390,7 +394,7 @@ void VisualizationManager::handle_mouse_click(float world_x, float world_y) {
     }
   }
 
-  selected_agent_id_ = best_agent_id;
+  ui_state_.selected_agent_id = best_agent_id;
 }
 
 void VisualizationManager::update_camera() {

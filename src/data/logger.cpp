@@ -1,5 +1,6 @@
 #include "data/logger.hpp"
 
+#include "core/app_state.hpp"
 #include "data/metrics.hpp"
 #include "evolution/genome.hpp"
 #include "evolution/species.hpp"
@@ -88,7 +89,7 @@ bool Logger::initialize(const SimulationConfig &config) {
   return true;
 }
 
-void Logger::log_report(const StepMetrics &metrics) {
+void Logger::log_report(const ReportMetrics &metrics) {
   if (!stats_file_.is_open()) {
     return;
   }

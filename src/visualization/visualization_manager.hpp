@@ -1,8 +1,8 @@
 #pragma once
 
+#include "core/app_state.hpp"
 #include "core/config.hpp"
-#include "core/types.hpp"
-#include "simulation/entity.hpp"
+#include "visualization/frame_snapshot.hpp"
 #include "visualization/overlay.hpp"
 #include "visualization/renderer.hpp"
 
@@ -18,52 +18,15 @@
 
 namespace moonai {
 
-struct FrameSnapshot {
-  int world_width = 0;
-  int world_height = 0;
-  std::vector<RenderFood> foods;
-  std::vector<RenderAgent> agents;
-  bool has_selected_vision = false;
-  uint32_t selected_agent_id = 0;
-  Vec2 selected_position;
-  float selected_vision_range = 0.0f;
-  std::vector<RenderLine> sensor_lines;
-  OverlayStats overlay_stats;
-  const Genome *selected_genome = nullptr;
-  std::unordered_map<std::uint32_t, float> selected_node_activations;
-};
-
 class VisualizationManager {
 public:
-  explicit VisualizationManager(const SimulationConfig &config);
+  VisualizationManager(const SimulationConfig &config, UiState &ui_state);
   ~VisualizationManager();
 
   bool initialize();
   void render(FrameSnapshot frame);
   bool should_close() const;
   void handle_events();
-
-  bool is_paused() const {
-    return paused_;
-  }
-  int speed_multiplier() const {
-    return speed_multiplier_;
-  }
-  bool should_reset() const {
-    return reset_requested_;
-  }
-  void clear_reset() {
-    reset_requested_ = false;
-  }
-  bool should_step() const {
-    return step_requested_;
-  }
-  void clear_step() {
-    step_requested_ = false;
-  }
-  uint32_t selected_agent_id() const {
-    return selected_agent_id_;
-  }
 
   static constexpr float ui_side_margin() {
     return 300.0f;
@@ -94,6 +57,7 @@ private:
   void update_camera();
 
   SimulationConfig config_;
+  UiState &ui_state_;
   std::unique_ptr<sf::RenderWindow> window_;
   sf::View camera_view_;
   Renderer renderer_;
@@ -108,11 +72,6 @@ private:
   void update_fps(float dt);
 
   bool running_ = false;
-  bool paused_ = false;
-  bool reset_requested_ = false;
-  bool step_requested_ = false;
-  int speed_multiplier_ = 1;
-  uint32_t selected_agent_id_ = 0;
 
   bool dragging_ = false;
   sf::Vector2f drag_start_;
