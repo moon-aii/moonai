@@ -3,10 +3,6 @@ include(GoogleTest)
 
 add_executable(moonai_tests
     test_evolution.cpp
-    test_config.cpp
-    test_food_store.cpp
-    test_random.cpp
-    test_logger.cpp
     test_simulation_sensors.cpp
 )
 

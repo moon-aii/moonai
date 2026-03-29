@@ -1,7 +1,7 @@
 #pragma once
 
 #include "evolution/genome.hpp"
-#include "visualization/visual_constants.hpp"
+#include "visualization/constants.hpp"
 
 #include <SFML/Graphics/CircleShape.hpp>
 #include <SFML/Graphics/Font.hpp>

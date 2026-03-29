@@ -61,11 +61,6 @@ constexpr uint8_t SENSOR_ALPHA = 80;
 constexpr uint8_t FOOD_SENSOR_ALPHA = 60;
 } // namespace visual
 
-// Chart constants
-namespace charts {
-constexpr int CHART_MAX_POINTS = 300;
-} // namespace charts
-
 // Renderer constants
 namespace visual {
 constexpr uint8_t FOOD_ALPHA = 180;

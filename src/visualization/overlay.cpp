@@ -1,4 +1,4 @@
-#include "visualization/ui_overlay.hpp"
+#include "visualization/overlay.hpp"
 
 #include <SFML/Graphics/CircleShape.hpp>
 #include <SFML/Graphics/VertexArray.hpp>

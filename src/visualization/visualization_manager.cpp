@@ -1,5 +1,5 @@
 #include "visualization/visualization_manager.hpp"
-#include "visualization/visual_constants.hpp"
+#include "visualization/constants.hpp"
 
 #include "core/profiler_macros.hpp"
 

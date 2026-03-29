@@ -28,9 +28,6 @@ public:
   const std::vector<uint8_t> &active() const {
     return active_;
   }
-  const std::vector<uint32_t> &slot_index() const {
-    return slot_index_;
-  }
 
   std::vector<float> &pos_x() {
     return pos_x_;

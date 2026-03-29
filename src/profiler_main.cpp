@@ -5,6 +5,7 @@
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
@@ -12,6 +13,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 // CUDA includes for GPU profiling
@@ -33,20 +35,24 @@ std::string utc_timestamp() {
   return std::string(buf);
 }
 
+// Constants for time conversion
+constexpr double NS_TO_MS = 1'000'000.0;
+inline double ns_to_ms(std::int64_t ns) {
+  return static_cast<double>(ns) / NS_TO_MS;
+}
+
 namespace moonai {
 namespace profiler {
 
 struct ScopeNode {
   std::string name;
   std::chrono::steady_clock::time_point start;
-  std::int64_t inclusive_ns = 0;
-  std::int64_t exclusive_ns = 0;
+  std::int64_t duration_ns = 0;
   std::vector<std::unique_ptr<ScopeNode>> children;
   ScopeNode *parent = nullptr;
 };
 
 #ifdef MOONAI_ENABLE_CUDA
-// GPU event tracking structure
 struct GpuEventPair {
   const char *name;
   cudaEvent_t start;
@@ -67,13 +73,12 @@ public:
   void end_scope(const char *event_name);
 
 #ifdef MOONAI_ENABLE_CUDA
-  // GPU event tracking
   int record_gpu_event_start(const char *name, cudaStream_t stream);
   void record_gpu_event_end(int event_index);
-  void merge_gpu_timings(); // Calculate GPU times and add as children
+  void merge_gpu_timings();
 #endif
 
-  nlohmann::json finish_run(std::int64_t run_total_ns);
+  std::vector<std::unique_ptr<ScopeNode>> finish_run();
 
 private:
   Profiler();
@@ -85,15 +90,11 @@ private:
   std::unique_ptr<ScopeNode> pending_root_;
 
 #ifdef MOONAI_ENABLE_CUDA
-  // GPU event storage
   std::vector<GpuEventPair> pending_gpu_events_;
   int next_gpu_event_index_;
 #endif
-
-  nlohmann::json serialize_node(const ScopeNode *node) const;
 };
 
-// Profiler constructor/destructor
 Profiler::Profiler()
 #ifdef MOONAI_ENABLE_CUDA
     : next_gpu_event_index_(0)
@@ -103,7 +104,6 @@ Profiler::Profiler()
 
 Profiler::~Profiler() {
 #ifdef MOONAI_ENABLE_CUDA
-  // Clean up any remaining GPU events
   for (auto &event : pending_gpu_events_) {
     if (event.start)
       cudaEventDestroy(event.start);
@@ -113,11 +113,9 @@ Profiler::~Profiler() {
 #endif
 }
 
-// ScopedTimer implementation (declared in profiler_macros.hpp)
 ScopedTimer::ScopedTimer(const char *event_name, cudaStream_t stream)
     : event_name_(event_name), stream_(stream), gpu_event_index_(-1),
-      has_cpu_scope_(stream == nullptr) // No CPU scope when stream provided
-{
+      has_cpu_scope_(stream == nullptr) {
 #ifdef MOONAI_ENABLE_CUDA
   if (stream) {
     gpu_event_index_ =
@@ -130,7 +128,6 @@ ScopedTimer::ScopedTimer(const char *event_name, cudaStream_t stream)
 }
 
 ScopedTimer::~ScopedTimer() {
-  // Check if this is gpu_synchronize - merge GPU timings before ending scope
   if (std::strcmp(event_name_, "gpu_synchronize") == 0) {
 #ifdef MOONAI_ENABLE_CUDA
     Profiler::instance().merge_gpu_timings();
@@ -165,12 +162,10 @@ void Profiler::begin_scope(const char *event_name) {
   node->start = std::chrono::steady_clock::now();
 
   if (active_stack_.empty()) {
-    // This is a root scope
     node->parent = nullptr;
     pending_root_ = std::move(node);
     active_stack_.push_back(pending_root_.get());
   } else {
-    // This is a child scope
     node->parent = active_stack_.back();
     ScopeNode *node_ptr = node.get();
     active_stack_.back()->children.push_back(std::move(node));
@@ -188,25 +183,14 @@ void Profiler::end_scope(const char *event_name) {
   active_stack_.pop_back();
 
   const auto end = std::chrono::steady_clock::now();
-  node->inclusive_ns =
+  node->duration_ns =
       std::chrono::duration_cast<std::chrono::nanoseconds>(end - node->start)
           .count();
 
-  // Calculate exclusive time: inclusive - sum(children inclusive)
-  std::int64_t children_sum = 0;
-  for (const auto &child : node->children) {
-    children_sum += child->inclusive_ns;
-  }
-  node->exclusive_ns = node->inclusive_ns - children_sum;
-
-  // If this is frame_total (root), commit the frame
   if (std::strcmp(event_name, "frame_total") == 0) {
     assert(active_stack_.empty() &&
-           "frame_total ended but scope stack not empty - scopes not properly "
-           "nested");
+           "frame_total ended but scope stack not empty");
     assert(pending_root_ != nullptr && "Root node should exist");
-
-    // Move the root node to frame_trees
     frame_trees_.push_back(std::move(pending_root_));
     pending_root_.reset();
   }
@@ -226,7 +210,7 @@ int Profiler::record_gpu_event_start(const char *name, cudaStream_t stream) {
 
   cudaEventCreate(&pair.start);
   cudaEventRecord(pair.start, stream);
-  pair.end = nullptr; // Will be created on end
+  pair.end = nullptr;
 
   return index;
 }
@@ -245,65 +229,33 @@ void Profiler::merge_gpu_timings() {
     return;
   }
 
-  // All GPU events should be completed by now (synchronize was called)
   for (const auto &pair : pending_gpu_events_) {
     if (!pair.start || !pair.end) {
-      continue; // Incomplete event
+      continue;
     }
 
     float elapsed_ms = 0.0f;
     cudaError_t err = cudaEventElapsedTime(&elapsed_ms, pair.start, pair.end);
 
     if (err == cudaSuccess && elapsed_ms > 0.0f) {
-      // Create a child node for this GPU timing
       auto gpu_node = std::make_unique<ScopeNode>();
       gpu_node->name = std::string(pair.name) + "_gpu";
-      gpu_node->inclusive_ns =
-          static_cast<std::int64_t>(elapsed_ms * 1'000'000.0f);
-      gpu_node->exclusive_ns = gpu_node->inclusive_ns; // No children yet
+      gpu_node->duration_ns = static_cast<std::int64_t>(elapsed_ms * NS_TO_MS);
       gpu_node->parent = active_stack_.back();
-
-      // Add as child to current scope
       active_stack_.back()->children.push_back(std::move(gpu_node));
     }
 
-    // Clean up CUDA events
     cudaEventDestroy(pair.start);
     cudaEventDestroy(pair.end);
   }
 
-  // Clear for next frame
   pending_gpu_events_.clear();
   next_gpu_event_index_ = 0;
 }
 #endif
 
-nlohmann::json Profiler::serialize_node(const ScopeNode *node) const {
-  nlohmann::json j;
-  j["name"] = node->name;
-  j["inclusive_ms"] = static_cast<double>(node->inclusive_ns) / 1'000'000.0;
-  j["exclusive_ms"] = static_cast<double>(node->exclusive_ns) / 1'000'000.0;
-
-  nlohmann::json children = nlohmann::json::array();
-  for (const auto &child : node->children) {
-    children.push_back(serialize_node(child.get()));
-  }
-  j["children"] = std::move(children);
-
-  return j;
-}
-
-nlohmann::json Profiler::finish_run(std::int64_t run_total_ns) {
-  nlohmann::json profile;
-  profile["run_total_ms"] = static_cast<double>(run_total_ns) / 1'000'000.0;
-
-  nlohmann::json frames = nlohmann::json::array();
-  for (const auto &tree : frame_trees_) {
-    frames.push_back(serialize_node(tree.get()));
-  }
-  profile["frames"] = std::move(frames);
-
-  return profile;
+std::vector<std::unique_ptr<ScopeNode>> Profiler::finish_run() {
+  return std::move(frame_trees_);
 }
 
 } // namespace profiler
@@ -312,7 +264,7 @@ nlohmann::json Profiler::finish_run(std::int64_t run_total_ns) {
 namespace {
 
 struct Args {
-  int frames = 60;
+  int frames = 600;
   int speed_multiplier = 64;
   std::vector<std::uint64_t> seeds = {61, 62, 63, 64, 65, 66};
   std::string output_dir = "output/profiles";
@@ -337,17 +289,27 @@ Args parse_args(int argc, const char *argv[]) {
   return args;
 }
 
-struct RunResult {
+struct RunData {
   std::uint64_t seed = 0;
-  nlohmann::json profile;
-  bool completed = false;
+  std::vector<std::unique_ptr<moonai::profiler::ScopeNode>> frames;
+  double avg_frame_ms = 0.0;
+  double run_total_ms = 0.0;
+  std::string disposition;
 };
 
-RunResult run_profiler(const moonai::AppConfig &cfg) {
+struct AveragedNode {
+  std::string name;
+  double avg_ms = 0.0;
+  double total_ms = 0.0;
+  int count = 0;
+  double pct_of_parent = 0.0;
+  std::vector<std::unique_ptr<AveragedNode>> children;
+};
+
+RunData run_profiler(const moonai::AppConfig &cfg) {
   using namespace moonai;
 
   auto &profiler = profiler::Profiler::instance();
-
   profiler.start_run(cfg);
 
   const auto run_start = std::chrono::steady_clock::now();
@@ -355,53 +317,250 @@ RunResult run_profiler(const moonai::AppConfig &cfg) {
   App app(cfg);
   bool completed = app.run();
 
-  RunResult result;
-  result.seed = cfg.sim_config.seed;
-
   if (!completed) {
     spdlog::info("Run stopped early, skipping profile generation");
-    result.completed = false;
-    return result;
+    return RunData{.seed = cfg.sim_config.seed};
   }
+
+  RunData result;
+  result.seed = cfg.sim_config.seed;
 
   const auto run_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
                           std::chrono::steady_clock::now() - run_start)
                           .count();
-  result.profile = profiler.finish_run(run_ns);
-  result.completed = true;
+  result.run_total_ms = ns_to_ms(run_ns);
+  result.frames = profiler.finish_run();
+
+  // Calculate average frame time
+  if (!result.frames.empty()) {
+    double total = 0.0;
+    for (const auto &frame : result.frames) {
+      total += ns_to_ms(frame->duration_ns);
+    }
+    result.avg_frame_ms = total / result.frames.size();
+  }
 
   return result;
 }
 
-void write_manifest(std::vector<RunResult> runs,
+nlohmann::json serialize_averaged_node(const AveragedNode *node) {
+  nlohmann::json j;
+  j["name"] = node->name;
+  j["avg_ms"] = node->avg_ms;
+  j["total_ms"] = node->total_ms;
+  j["count"] = node->count;
+  j["pct_of_parent"] = node->pct_of_parent;
+
+  nlohmann::json children = nlohmann::json::array();
+  for (const auto &child : node->children) {
+    children.push_back(serialize_averaged_node(child.get()));
+  }
+  j["children"] = std::move(children);
+
+  return j;
+}
+
+void collect_scope_nodes(
+    const moonai::profiler::ScopeNode *node,
+    std::vector<const moonai::profiler::ScopeNode *> &out) {
+  out.push_back(node);
+  for (const auto &child : node->children) {
+    collect_scope_nodes(child.get(), out);
+  }
+}
+
+std::unique_ptr<AveragedNode>
+merge_nodes(const std::vector<const moonai::profiler::ScopeNode *> &nodes) {
+  if (nodes.empty())
+    return nullptr;
+
+  auto result = std::make_unique<AveragedNode>();
+  result->name = nodes[0]->name;
+
+  double total = 0.0;
+  for (const auto *node : nodes) {
+    total += ns_to_ms(node->duration_ns);
+  }
+
+  result->total_ms = total;
+  result->count = static_cast<int>(nodes.size());
+  result->avg_ms = total / nodes.size();
+
+  // Group children by name
+  std::unordered_map<std::string,
+                     std::vector<const moonai::profiler::ScopeNode *>>
+      child_groups;
+  for (const auto *node : nodes) {
+    for (const auto &child : node->children) {
+      child_groups[child->name].push_back(child.get());
+    }
+  }
+
+  // Recursively merge children
+  for (auto &[name, group] : child_groups) {
+    result->children.push_back(merge_nodes(group));
+  }
+
+  return result;
+}
+
+void calculate_percentages(AveragedNode *node, double parent_total) {
+  if (parent_total > 0.0) {
+    node->pct_of_parent = (node->total_ms / parent_total) * 100.0;
+  } else {
+    node->pct_of_parent = 100.0; // Root node
+  }
+
+  for (auto &child : node->children) {
+    calculate_percentages(child.get(), node->total_ms);
+  }
+}
+
+std::unique_ptr<AveragedNode>
+build_averaged_tree(const std::vector<RunData> &kept_runs) {
+  if (kept_runs.empty() || kept_runs[0].frames.empty()) {
+    return nullptr;
+  }
+
+  // Collect all frame roots from all kept runs
+  std::vector<const moonai::profiler::ScopeNode *> all_roots;
+  for (const auto &run : kept_runs) {
+    for (const auto &frame : run.frames) {
+      all_roots.push_back(frame.get());
+    }
+  }
+
+  auto tree = merge_nodes(all_roots);
+  if (tree) {
+    calculate_percentages(tree.get(), 0.0);
+  }
+
+  return tree;
+}
+
+std::vector<double>
+build_frame_timeline(const std::vector<RunData> &kept_runs) {
+  if (kept_runs.empty() || kept_runs[0].frames.empty()) {
+    return {};
+  }
+
+  size_t frame_count = kept_runs[0].frames.size();
+  std::vector<double> timeline(frame_count, 0.0);
+
+  for (size_t i = 0; i < frame_count; ++i) {
+    double sum = 0.0;
+    for (const auto &run : kept_runs) {
+      if (i < run.frames.size()) {
+        sum += ns_to_ms(run.frames[i]->duration_ns);
+      }
+    }
+    timeline[i] = sum / kept_runs.size();
+  }
+
+  return timeline;
+}
+
+void write_manifest(std::vector<RunData> runs,
                     const std::filesystem::path &output_path,
                     const moonai::AppConfig &cfg) {
   nlohmann::json manifest;
-  manifest["schema_version"] = 1;
 
+  // Metadata
   nlohmann::json metadata;
   metadata["suite_name"] = cfg.experiment_name;
   metadata["frame_count"] = cfg.sim_config.max_steps / cfg.speed_multiplier;
-  metadata["report_interval_steps"] = cfg.sim_config.report_interval_steps;
   metadata["gpu_allowed"] = cfg.enable_gpu;
   metadata["platform"] = moonai::AppConfig::platform;
   metadata["cuda_compiled"] = moonai::AppConfig::cuda_compiled;
   metadata["openmp_compiled"] = moonai::AppConfig::openmp_compiled;
   metadata["generated_at_utc"] = utc_timestamp();
-
   manifest["metadata"] = metadata;
 
-  nlohmann::json run_rows = nlohmann::json::array();
-  for (const auto &run : runs) {
-    if (run.completed) {
-      nlohmann::json run_obj;
-      run_obj["seed"] = run.seed;
-      run_obj["run_total_ms"] = run.profile["run_total_ms"];
-      run_obj["frames"] = run.profile["frames"];
-      run_rows.push_back(run_obj);
+  // Filter runs that have frames (completed successfully) and sort by
+  // avg_frame_ms
+  std::vector<RunData> completed;
+  for (auto &run : runs) {
+    if (!run.frames.empty()) {
+      completed.push_back(std::move(run));
     }
   }
-  manifest["runs"] = std::move(run_rows);
+
+  if (completed.empty()) {
+    spdlog::error("No completed runs to write");
+    return;
+  }
+
+  std::sort(completed.begin(), completed.end(),
+            [](const RunData &a, const RunData &b) {
+              return a.avg_frame_ms < b.avg_frame_ms;
+            });
+
+  // Mark dispositions
+  if (completed.size() > 2) {
+    completed[0].disposition = "dropped_fastest";
+    completed.back().disposition = "dropped_slowest";
+    for (size_t i = 1; i < completed.size() - 1; ++i) {
+      completed[i].disposition = "kept";
+    }
+  } else {
+    for (auto &run : completed) {
+      run.disposition = "kept";
+    }
+  }
+
+  // Build runs list with dispositions (do this before moving kept runs)
+  nlohmann::json run_array = nlohmann::json::array();
+  for (const auto &run : completed) {
+    nlohmann::json run_obj;
+    run_obj["seed"] = run.seed;
+    run_obj["avg_frame_ms"] = run.avg_frame_ms;
+    run_obj["disposition"] = run.disposition;
+    run_array.push_back(run_obj);
+  }
+  manifest["runs"] = run_array;
+
+  // Collect kept runs (move frames from completed to kept)
+  std::vector<RunData> kept;
+  for (auto &run : completed) {
+    if (run.disposition == "kept") {
+      kept.push_back(std::move(run));
+    }
+  }
+
+  // Summary statistics from kept runs
+  double sum_avg = 0.0;
+  double min_frame = kept.empty() ? 0.0 : kept[0].avg_frame_ms;
+  double max_frame = kept.empty() ? 0.0 : kept[0].avg_frame_ms;
+  for (const auto &run : kept) {
+    sum_avg += run.avg_frame_ms;
+    min_frame = std::min(min_frame, run.avg_frame_ms);
+    max_frame = std::max(max_frame, run.avg_frame_ms);
+  }
+  double avg_frame_ms = kept.empty() ? 0.0 : sum_avg / kept.size();
+
+  // Standard deviation
+  double variance = 0.0;
+  for (const auto &run : kept) {
+    variance += std::pow(run.avg_frame_ms - avg_frame_ms, 2);
+  }
+  double stddev = kept.empty() ? 0.0 : std::sqrt(variance / kept.size());
+
+  nlohmann::json summary;
+  summary["avg_frame_ms"] = avg_frame_ms;
+  summary["stddev_ms"] = stddev;
+  summary["min_frame_ms"] = min_frame;
+  summary["max_frame_ms"] = max_frame;
+  manifest["summary"] = summary;
+
+  // Build and serialize averaged tree
+  auto tree = build_averaged_tree(kept);
+  if (tree) {
+    manifest["tree"] = serialize_averaged_node(tree.get());
+  }
+
+  // Build frame timeline
+  auto timeline = build_frame_timeline(kept);
+  manifest["frame_timeline_ms"] = timeline;
 
   std::filesystem::create_directories(output_path.parent_path());
   std::ofstream file(output_path);
@@ -433,7 +592,7 @@ int main(int argc, const char *argv[]) {
       std::filesystem::path(args.output_dir) /
       (utc_timestamp() + "_" + args.experiment_name + ".json");
 
-  std::vector<RunResult> runs;
+  std::vector<RunData> runs;
   runs.reserve(args.seeds.size());
   for (std::uint64_t seed : args.seeds) {
     base_cfg.sim_config.seed = seed;

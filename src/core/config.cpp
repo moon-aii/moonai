@@ -3,22 +3,8 @@
 #include <cstdio>
 #include <fstream>
 #include <spdlog/spdlog.h>
-#include <sstream>
 
 namespace moonai {
-
-namespace {
-
-std::uint64_t fnv1a_64(const std::string &value) {
-  std::uint64_t hash = 1469598103934665603ull;
-  for (unsigned char ch : value) {
-    hash ^= static_cast<std::uint64_t>(ch);
-    hash *= 1099511628211ull;
-  }
-  return hash;
-}
-
-} // anonymous namespace
 
 // ── JSON output (for config snapshots) ──────────────────────────────────
 
@@ -59,13 +45,6 @@ nlohmann::json config_to_json(const SimulationConfig &config) {
   j["offspring_initial_energy"] = config.offspring_initial_energy;
   j["birth_spawn_radius"] = config.birth_spawn_radius;
   return j;
-}
-
-std::string fingerprint_config(const SimulationConfig &config) {
-  const std::string payload = config_to_json(config).dump();
-  std::ostringstream oss;
-  oss << std::hex << fnv1a_64(payload);
-  return oss.str();
 }
 
 void save_config(const SimulationConfig &config, const std::string &filepath) {

@@ -14,7 +14,7 @@ import matplotlib.patches as mpatches
 import numpy as np
 
 from .html_report import render_html_report
-from .io import AveragedScopeNode, ProfileSuite, load_suites
+from .io import AveragedNode, ProfileSuite, load_suites
 
 
 @dataclass(frozen=True)
@@ -22,6 +22,11 @@ class Chart:
     title: str
     image_uri: str
     caption: str
+
+
+def _sort_nodes_by_time(nodes: list[AveragedNode]) -> list[AveragedNode]:
+    """Sort nodes by total time descending."""
+    return sorted(nodes, key=lambda c: c.total_ms, reverse=True)
 
 
 def generate_report(input_dir: Path, output_dir: Path) -> None:
@@ -33,7 +38,6 @@ def generate_report(input_dir: Path, output_dir: Path) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now()
 
-    # Generate comparison charts (without hotspots)
     comparison = [
         _chart_frame_comparison(suites),
         _chart_timelines(suites),
@@ -91,7 +95,7 @@ def _build_summary_rows(suites: list[ProfileSuite]) -> list[dict]:
             {
                 "name": s.name,
                 "total_frames": s.frames,
-                "kept_runs": len(s.kept),
+                "kept_runs": len([m for m in s.members if m.disposition == "kept"]),
                 "avg_frame_ms": f"{avg_frame_ms:.2f}",
                 "change_pct": change_pct,
                 "change_class": change_class,
@@ -112,14 +116,12 @@ def _build_section(suite: ProfileSuite) -> dict:
     return {
         "name": suite.name,
         "total_frame_count": suite.frames,
-        "kept_run_count": len(suite.kept),
+        "kept_run_count": len([m for m in suite.members if m.disposition == "kept"]),
         "path": str(suite.path),
         "members": [
             {
                 "seed": str(m.seed),
                 "avg_frame_ms": f"{m.avg_frame_ms:.2f}",
-                "run_total_ms": f"{m.run_total_ms:.2f}",
-                "frame_count": str(m.frame_count),
                 "disposition": m.disposition,
             }
             for m in suite.members
@@ -140,30 +142,22 @@ def _build_section(suite: ProfileSuite) -> dict:
     }
 
 
-def _format_tree_events(tree: AveragedScopeNode | None, frame_count: int) -> list[dict]:
+def _format_tree_events(tree: AveragedNode | None, frame_count: int) -> list[dict]:
     """Format tree events with indentation to show hierarchy."""
     if tree is None:
         return []
 
     # Use tree.count for total frames across all kept runs (not per-run frame_count)
-    total_frames = tree.count if tree else 0
+    total_frames = tree.count
     rows = []
 
-    def traverse_node(
-        node: AveragedScopeNode, depth: int, parent_total_ms: float
-    ) -> None:
+    def traverse_node(node: AveragedNode, depth: int, parent_total_ms: float) -> None:
         # Calculate percentage based on parent time (root shows 100%)
-        pct = (
-            (node.total_inclusive_ms / parent_total_ms * 100)
-            if parent_total_ms > 0
-            else 0.0
-        )
+        pct = (node.total_ms / parent_total_ms * 100) if parent_total_ms > 0 else 0.0
 
         # Calculate average per frame (consistent with percentage column)
         # This shows the average time contribution per frame
-        avg_per_frame = (
-            node.total_inclusive_ms / total_frames if total_frames > 0 else 0.0
-        )
+        avg_per_frame = node.total_ms / total_frames if total_frames > 0 else 0.0
 
         # Add non-breaking space indentation (copy-paste friendly, consistent visual width)
         indented_name = "&nbsp;&nbsp;&nbsp;&nbsp;" * depth + node.name
@@ -175,19 +169,17 @@ def _format_tree_events(tree: AveragedScopeNode | None, frame_count: int) -> lis
                 "percentage": f"{pct:.1f}",
                 "avg_ms": f"{avg_per_frame:.3f}",
                 "count": str(node.count),
-                "total_ms": f"{node.total_inclusive_ms:.3f}",
+                "total_ms": f"{node.total_ms:.3f}",
             }
         )
 
         # Recursively process children (sorted by inclusive time descending)
-        sorted_children = sorted(
-            node.children, key=lambda c: c.total_inclusive_ms, reverse=True
-        )
+        sorted_children = _sort_nodes_by_time(node.children)
         for child in sorted_children:
-            traverse_node(child, depth + 1, node.total_inclusive_ms)
+            traverse_node(child, depth + 1, node.total_ms)
 
     # Root node uses its own total as the baseline (shows 100%)
-    traverse_node(tree, 0, tree.total_inclusive_ms)
+    traverse_node(tree, 0, tree.total_ms)
     return rows
 
 
@@ -234,22 +226,13 @@ def _chart_timelines(suites: list[ProfileSuite]) -> Chart:
     fig, ax = plt.subplots(figsize=(11, 5.4))
     has_data = False
     for suite in suites:
-        members = [m for m in suite.kept if m.frame_times_ms] or [
-            m for m in suite.members if m.frame_times_ms
-        ]
-        if not members:
+        timeline = suite.frame_timeline_ms
+        if not timeline:
             continue
-        count = min(len(m.frame_times_ms) for m in members)
-        if count == 0:
-            continue
-        averaged = [
-            sum(m.frame_times_ms[i] for m in members) / len(members)
-            for i in range(count)
-        ]
         has_data = True
         ax.plot(
-            list(range(1, count + 1)),
-            averaged,
+            list(range(1, len(timeline) + 1)),
+            timeline,
             label=suite.name,
             color="#355070",
             alpha=0.95,
@@ -317,7 +300,7 @@ def _chart_flame_graph(suite: ProfileSuite) -> Chart | None:
         return color_map[name]
 
     def draw_flame_node(
-        node: AveragedScopeNode, x: float, y: float, width: float, height: float
+        node: AveragedNode, x: float, y: float, width: float, height: float
     ):
         """Recursively draw flame graph rectangles."""
         if width <= 0:
@@ -339,9 +322,7 @@ def _chart_flame_graph(suite: ProfileSuite) -> Chart | None:
         # Add text label if rectangle is wide enough
         if width > 0.05 and node.name != "frame_total":
             # Calculate per-frame average (consistent with table)
-            avg_per_frame = (
-                node.total_inclusive_ms / total_frames if total_frames > 0 else 0.0
-            )
+            avg_per_frame = node.total_ms / total_frames if total_frames > 0 else 0.0
             text_color = "white" if np.mean(color[:3]) < 0.5 else "black"
             ax.text(
                 x + width / 2,
@@ -357,23 +338,19 @@ def _chart_flame_graph(suite: ProfileSuite) -> Chart | None:
         # Draw children
         if node.children:
             # Sort children by inclusive time (descending)
-            sorted_children = sorted(
-                node.children, key=lambda c: c.total_inclusive_ms, reverse=True
-            )
+            sorted_children = _sort_nodes_by_time(node.children)
 
             child_x = x
 
             for child in sorted_children:
                 child_width = (
-                    width * (child.total_inclusive_ms / node.total_inclusive_ms)
-                    if node.total_inclusive_ms > 0
-                    else 0
+                    width * (child.total_ms / node.total_ms) if node.total_ms > 0 else 0
                 )
                 draw_flame_node(child, child_x, y + height, child_width, height)
                 child_x += child_width
 
     # Calculate dimensions
-    total_time = suite.tree.total_inclusive_ms
+    total_time = suite.tree.total_ms
     height_per_level = 0.15
     max_depth = _get_max_depth(suite.tree)
 
@@ -403,7 +380,7 @@ def _chart_flame_graph(suite: ProfileSuite) -> Chart | None:
     )
 
 
-def _get_max_depth(node: AveragedScopeNode, current_depth: int = 0) -> int:
+def _get_max_depth(node: AveragedNode, current_depth: int = 0) -> int:
     """Get maximum depth of the tree."""
     if not node.children:
         return current_depth

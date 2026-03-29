@@ -3,8 +3,8 @@
 #include "core/config.hpp"
 #include "core/types.hpp"
 #include "simulation/entity.hpp"
+#include "visualization/overlay.hpp"
 #include "visualization/renderer.hpp"
-#include "visualization/ui_overlay.hpp"
 
 #include <SFML/Graphics/RenderWindow.hpp>
 #include <SFML/Graphics/View.hpp>

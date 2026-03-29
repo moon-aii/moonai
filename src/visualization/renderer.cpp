@@ -1,6 +1,6 @@
 #include "visualization/renderer.hpp"
 #include "simulation/components.hpp"
-#include "visualization/visual_constants.hpp"
+#include "visualization/constants.hpp"
 
 #include <SFML/Graphics/CircleShape.hpp>
 #include <SFML/Graphics/PrimitiveType.hpp>

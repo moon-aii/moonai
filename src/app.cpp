@@ -4,7 +4,7 @@
 #include "evolution/genome.hpp"
 #include "evolution/neural_network.hpp"
 #include "simulation/components.hpp"
-#include "visualization/visual_constants.hpp"
+#include "visualization/constants.hpp"
 
 #include <algorithm>
 #include <chrono>
