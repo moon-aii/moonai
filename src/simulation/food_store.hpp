@@ -21,9 +21,6 @@ struct FoodStore {
   std::size_t size() const {
     return pos_x.size();
   }
-
-private:
-  std::vector<uint32_t> slot_index;
 };
 
 } // namespace moonai
