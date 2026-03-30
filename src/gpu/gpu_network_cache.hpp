@@ -1,6 +1,5 @@
 #pragma once
 
-#include "simulation/entity.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -48,10 +47,10 @@ public:
   GpuNetworkCache &operator=(GpuNetworkCache &&) = delete;
 
   // Build GPU cache from CPU NetworkCache for given entities
-  // entities_with_indices: pairs of (Entity, gpu_buffer_index)
+  // entities_with_indices: pairs of (uint32_t, gpu_buffer_index)
   void
   build_from(const NetworkCache &cpu_cache,
-             const std::vector<std::pair<Entity, int>> &entities_with_indices);
+             const std::vector<std::pair<uint32_t, int>> &entities_with_indices);
 
   // Launch neural inference kernel
   // d_sensor_inputs: [entity_count][12] floats
@@ -71,8 +70,8 @@ public:
     return !dirty_ && entity_capacity_ > 0;
   }
 
-  // Get current entity mapping (network index -> Entity)
-  const std::vector<Entity> &entity_mapping() const {
+  // Get current entity mapping (network index -> uint32_t)
+  const std::vector<uint32_t> &entity_mapping() const {
     return entity_to_gpu_;
   }
 
@@ -131,8 +130,8 @@ private:
   std::vector<GpuNetDescriptor> h_descriptors_;
   std::vector<int> h_network_to_gpu_;
 
-  // Entity mapping (network index -> Entity)
-  std::vector<Entity> entity_to_gpu_;
+  // uint32_t mapping (network index -> uint32_t)
+  std::vector<uint32_t> entity_to_gpu_;
   // Mapping from network index to GPU buffer index
   std::vector<int> network_to_gpu_;
   int *d_network_to_gpu_ = nullptr;

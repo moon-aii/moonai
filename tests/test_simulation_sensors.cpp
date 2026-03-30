@@ -54,13 +54,13 @@ TEST(SimulationSensorsTest, EncodesDxDySentinelsAndFoodDensity) {
   ASSERT_EQ(state.registry.size(), 2u);
   ASSERT_EQ(SensorSoA::INPUT_COUNT, 12);
 
-  Entity predator = INVALID_ENTITY;
-  Entity prey = INVALID_ENTITY;
+  uint32_t predator = INVALID_ENTITY;
+  uint32_t prey = INVALID_ENTITY;
   for (std::size_t idx = 0; idx < state.registry.size(); ++idx) {
-    const Entity entity{static_cast<uint32_t>(idx)};
-    if (state.registry.identity().type[idx] == IdentitySoA::TYPE_PREDATOR) {
+    const uint32_t entity{static_cast<uint32_t>(idx)};
+    if (state.registry.identity.type[idx] == IdentitySoA::TYPE_PREDATOR) {
       predator = entity;
-    } else if (state.registry.identity().type[idx] == IdentitySoA::TYPE_PREY) {
+    } else if (state.registry.identity.type[idx] == IdentitySoA::TYPE_PREY) {
       prey = entity;
     }
   }
@@ -68,26 +68,26 @@ TEST(SimulationSensorsTest, EncodesDxDySentinelsAndFoodDensity) {
   ASSERT_NE(predator, INVALID_ENTITY);
   ASSERT_NE(prey, INVALID_ENTITY);
 
-  const std::size_t predator_idx = state.registry.index_of(predator);
-  const std::size_t prey_idx = state.registry.index_of(prey);
-  state.registry.positions().x[predator_idx] = 10.0f;
-  state.registry.positions().y[predator_idx] = 10.0f;
-  state.registry.positions().x[prey_idx] = 22.0f;
-  state.registry.positions().y[prey_idx] = 16.0f;
+  const std::size_t predator_idx = predator;
+  const std::size_t prey_idx = prey;
+  state.registry.positions.x[predator_idx] = 10.0f;
+  state.registry.positions.y[predator_idx] = 10.0f;
+  state.registry.positions.x[prey_idx] = 22.0f;
+  state.registry.positions.y[prey_idx] = 16.0f;
 
   simulation.step(state, evolution);
 
   const auto &food_store = state.food_store;
   ASSERT_EQ(food_store.size(), 2u);
-  ASSERT_TRUE(food_store.active()[0]);
-  ASSERT_TRUE(food_store.active()[1]);
+  ASSERT_TRUE(food_store.active[0]);
+  ASSERT_TRUE(food_store.active[1]);
 
   auto nearest_food_delta = [&](const Vec2 &origin) {
     Vec2 best{0.0f, 0.0f};
     float best_dist = std::numeric_limits<float>::max();
     for (std::size_t i = 0; i < food_store.size(); ++i) {
       Vec2 diff = wrap_diff(
-          {food_store.pos_x()[i] - origin.x, food_store.pos_y()[i] - origin.y},
+          {food_store.pos_x[i] - origin.x, food_store.pos_y[i] - origin.y},
           static_cast<float>(config.grid_size));
       const float dist = distance_sq(diff);
       if (dist < best_dist) {
@@ -98,10 +98,10 @@ TEST(SimulationSensorsTest, EncodesDxDySentinelsAndFoodDensity) {
     return best;
   };
 
-  const Vec2 predator_pos{state.registry.positions().x[predator_idx],
-                          state.registry.positions().y[predator_idx]};
-  const Vec2 prey_pos{state.registry.positions().x[prey_idx],
-                      state.registry.positions().y[prey_idx]};
+  const Vec2 predator_pos{state.registry.positions.x[predator_idx],
+                          state.registry.positions.y[predator_idx]};
+  const Vec2 prey_pos{state.registry.positions.x[prey_idx],
+                      state.registry.positions.y[prey_idx]};
   const Vec2 predator_to_prey =
       wrap_diff({prey_pos.x - predator_pos.x, prey_pos.y - predator_pos.y},
                 static_cast<float>(config.grid_size));
@@ -112,7 +112,7 @@ TEST(SimulationSensorsTest, EncodesDxDySentinelsAndFoodDensity) {
   const Vec2 prey_to_food = nearest_food_delta(prey_pos);
 
   const float *predator_sensors =
-      state.registry.sensors().input_ptr(predator_idx);
+      state.registry.sensors.input_ptr(predator_idx);
   EXPECT_FLOAT_EQ(predator_sensors[0], kMissingTargetSentinel);
   EXPECT_FLOAT_EQ(predator_sensors[1], kMissingTargetSentinel);
   EXPECT_NEAR(predator_sensors[2], predator_to_prey.x / config.vision_range,
@@ -130,7 +130,7 @@ TEST(SimulationSensorsTest, EncodesDxDySentinelsAndFoodDensity) {
   EXPECT_FLOAT_EQ(predator_sensors[10], 1.0f / kMaxDensity);
   EXPECT_FLOAT_EQ(predator_sensors[11], 2.0f / kMaxDensity);
 
-  const float *prey_sensors = state.registry.sensors().input_ptr(prey_idx);
+  const float *prey_sensors = state.registry.sensors.input_ptr(prey_idx);
   EXPECT_NEAR(prey_sensors[0], prey_to_predator.x / config.vision_range,
               kEpsilon);
   EXPECT_NEAR(prey_sensors[1], prey_to_predator.y / config.vision_range,

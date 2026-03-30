@@ -1,7 +1,11 @@
 #pragma once
+
+#include "core/types.hpp"
 #include "evolution/genome.hpp"
 #include "evolution/neural_network.hpp"
-#include "simulation/entity.hpp"
+
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <vector>
 
@@ -9,20 +13,21 @@ namespace moonai {
 
 class NetworkCache {
 public:
-  void assign(Entity e, const Genome &genome);
+  void assign(uint32_t e, const Genome &genome);
 
-  NeuralNetwork *get(Entity e) const;
+  NeuralNetwork *get(uint32_t e) const;
 
-  NeuralNetwork *get_network(Entity e) const {
+  NeuralNetwork *get_network(uint32_t e) const {
     return get(e);
   }
 
-  void remove(Entity e);
-  void move_entity(Entity from, Entity to);
+  void remove(uint32_t e);
+  void move_entity(uint32_t from, uint32_t to);
 
-  bool has(Entity e) const;
+  bool has(uint32_t e) const;
 
-  std::vector<float> activate(Entity e, const std::vector<float> &inputs) const;
+  std::vector<float> activate(uint32_t e,
+                              const std::vector<float> &inputs) const;
 
   void activate_batch(std::size_t entity_count,
                       const std::vector<float> &all_inputs,
@@ -31,7 +36,7 @@ public:
 
   void clear();
 
-  size_t size() const {
+  std::size_t size() const {
     return networks_.size();
   }
   bool empty() const {

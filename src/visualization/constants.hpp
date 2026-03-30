@@ -4,7 +4,7 @@
 
 namespace moonai {
 
-// Entity sizes
+// uint32_t sizes
 namespace sizes {
 constexpr float PREDATOR_RADIUS = 12.0f;
 constexpr float PREY_RADIUS = 9.6f;

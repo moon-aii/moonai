@@ -3,7 +3,6 @@
 #include "core/config.hpp"
 #include "core/types.hpp"
 #include "evolution/genome.hpp"
-#include "simulation/entity.hpp"
 
 #include <memory>
 #include <vector>
@@ -29,7 +28,7 @@ public:
 
   void seed_initial_population(AppState &state);
 
-  Entity create_offspring(AppState &state, Entity parent_a, Entity parent_b,
+  uint32_t create_offspring(AppState &state, uint32_t parent_a, uint32_t parent_b,
                           Vec2 spawn_position);
 
   void refresh_species(AppState &state);
@@ -39,11 +38,11 @@ public:
                              const std::vector<float> &all_inputs,
                              std::vector<float> &all_outputs);
 
-  void on_entity_destroyed(AppState &state, Entity e);
-  void on_entity_moved(AppState &state, Entity from, Entity to);
+  void on_entity_destroyed(AppState &state, uint32_t e);
+  void on_entity_moved(AppState &state, uint32_t from, uint32_t to);
 
-  Genome *genome_for(AppState &state, Entity e);
-  const Genome *genome_for(const AppState &state, Entity e) const;
+  Genome *genome_for(AppState &state, uint32_t e);
+  const Genome *genome_for(const AppState &state, uint32_t e) const;
 
   int species_count(const AppState &state) const;
 

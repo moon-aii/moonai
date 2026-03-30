@@ -28,14 +28,14 @@ void build_sensors(Registry &registry, const FoodStore &food_store,
   const float world_size = static_cast<float>(config.grid_size);
   const float vision = config.vision_range;
   const float vision_sq = vision * vision;
-  const auto agent_count = registry.size();
-  const auto &positions = registry.positions();
-  const auto &motion = registry.motion();
-  const auto &vitals = registry.vitals();
-  const auto &identity = registry.identity();
-  auto &sensors = registry.sensors();
+  const uint32_t agent_count = static_cast<uint32_t>(registry.size());
+  const auto &positions = registry.positions;
+  const auto &motion = registry.motion;
+  const auto &vitals = registry.vitals;
+  const auto &identity = registry.identity;
+  auto &sensors = registry.sensors;
 
-  for (std::size_t i = 0; i < agent_count; ++i) {
+  for (uint32_t i = 0; i < agent_count; ++i) {
     float *sensor_ptr = sensors.input_ptr(i);
     sensor_ptr[0] = kMissingTargetSentinel;
     sensor_ptr[1] = kMissingTargetSentinel;
@@ -65,7 +65,7 @@ void build_sensors(Registry &registry, const FoodStore &food_store,
     int local_prey = 0;
     int local_food = 0;
 
-    for (std::size_t other = 0; other < agent_count; ++other) {
+    for (uint32_t other = 0; other < agent_count; ++other) {
       if (other == i || !vitals.alive[other]) {
         continue;
       }
@@ -94,12 +94,12 @@ void build_sensors(Registry &registry, const FoodStore &food_store,
     }
 
     for (std::size_t food_idx = 0; food_idx < food_store.size(); ++food_idx) {
-      if (!food_store.active()[food_idx]) {
+      if (!food_store.active[food_idx]) {
         continue;
       }
 
-      Vec2 diff = wrap_diff({food_store.pos_x()[food_idx] - pos.x,
-                             food_store.pos_y()[food_idx] - pos.y},
+      Vec2 diff = wrap_diff({food_store.pos_x[food_idx] - pos.x,
+                             food_store.pos_y[food_idx] - pos.y},
                             world_size, world_size);
       const float dist_sq = diff.x * diff.x + diff.y * diff.y;
       if (dist_sq > vision_sq) {
@@ -145,9 +145,10 @@ void build_sensors(Registry &registry, const FoodStore &food_store,
 }
 
 void update_vitals(Registry &registry, const SimulationConfig &config) {
-  auto &vitals = registry.vitals();
+  auto &vitals = registry.vitals;
 
-  for (std::size_t i = 0; i < registry.size(); ++i) {
+  const uint32_t entity_count = static_cast<uint32_t>(registry.size());
+  for (uint32_t i = 0; i < entity_count; ++i) {
     if (!vitals.alive[i]) {
       continue;
     }
@@ -171,11 +172,12 @@ void process_food(Registry &registry, FoodStore &food_store,
   std::fill(food_consumed_by.begin(), food_consumed_by.end(), -1);
   const float world_size = static_cast<float>(config.grid_size);
   const float range_sq = config.interaction_range * config.interaction_range;
-  const auto &positions = registry.positions();
-  auto &vitals = registry.vitals();
-  const auto &identity = registry.identity();
+  const auto &positions = registry.positions;
+  auto &vitals = registry.vitals;
+  const auto &identity = registry.identity;
 
-  for (std::size_t prey_idx = 0; prey_idx < registry.size(); ++prey_idx) {
+  const uint32_t entity_count = static_cast<uint32_t>(registry.size());
+  for (uint32_t prey_idx = 0; prey_idx < entity_count; ++prey_idx) {
     if (!vitals.alive[prey_idx] ||
         identity.type[prey_idx] != IdentitySoA::TYPE_PREY) {
       continue;
@@ -186,12 +188,12 @@ void process_food(Registry &registry, FoodStore &food_store,
     const Vec2 prey_pos{positions.x[prey_idx], positions.y[prey_idx]};
 
     for (std::size_t food_idx = 0; food_idx < food_store.size(); ++food_idx) {
-      if (!food_store.active()[food_idx]) {
+      if (!food_store.active[food_idx]) {
         continue;
       }
 
-      Vec2 diff = wrap_diff({food_store.pos_x()[food_idx] - prey_pos.x,
-                             food_store.pos_y()[food_idx] - prey_pos.y},
+      Vec2 diff = wrap_diff({food_store.pos_x[food_idx] - prey_pos.x,
+                             food_store.pos_y[food_idx] - prey_pos.y},
                             world_size, world_size);
       const float dist_sq = diff.x * diff.x + diff.y * diff.y;
       if (dist_sq <= best_dist_sq) {
@@ -210,14 +212,13 @@ void process_food(Registry &registry, FoodStore &food_store,
 
   for (std::size_t food_idx = 0; food_idx < food_store.size(); ++food_idx) {
     const int prey_idx = food_consumed_by[food_idx];
-    if (!food_store.active()[food_idx] || prey_idx < 0 ||
-        !vitals.alive[static_cast<std::size_t>(prey_idx)]) {
+    if (!food_store.active[food_idx] || prey_idx < 0 ||
+        !vitals.alive[prey_idx]) {
       continue;
     }
 
-    food_store.active()[food_idx] = 0;
-    vitals.energy[static_cast<std::size_t>(prey_idx)] +=
-        static_cast<float>(config.energy_gain_from_food);
+    food_store.active[food_idx] = 0;
+    vitals.energy[prey_idx] += static_cast<float>(config.energy_gain_from_food);
   }
 }
 
@@ -228,12 +229,12 @@ void process_combat(Registry &registry, const SimulationConfig &config,
   std::fill(kill_counts.begin(), kill_counts.end(), 0U);
   const float world_size = static_cast<float>(config.grid_size);
   const float range_sq = config.interaction_range * config.interaction_range;
-  const auto &positions = registry.positions();
-  auto &vitals = registry.vitals();
-  const auto &identity = registry.identity();
+  const auto &positions = registry.positions;
+  auto &vitals = registry.vitals;
+  const auto &identity = registry.identity;
 
-  for (std::size_t predator_idx = 0; predator_idx < registry.size();
-       ++predator_idx) {
+  const uint32_t entity_count = static_cast<uint32_t>(registry.size());
+  for (uint32_t predator_idx = 0; predator_idx < entity_count; ++predator_idx) {
     if (!vitals.alive[predator_idx] ||
         identity.type[predator_idx] != IdentitySoA::TYPE_PREDATOR) {
       continue;
@@ -244,7 +245,7 @@ void process_combat(Registry &registry, const SimulationConfig &config,
     const Vec2 predator_pos{positions.x[predator_idx],
                             positions.y[predator_idx]};
 
-    for (std::size_t prey_idx = 0; prey_idx < registry.size(); ++prey_idx) {
+    for (uint32_t prey_idx = 0; prey_idx < entity_count; ++prey_idx) {
       if (!vitals.alive[prey_idx] ||
           identity.type[prey_idx] != IdentitySoA::TYPE_PREY) {
         continue;
@@ -268,30 +269,31 @@ void process_combat(Registry &registry, const SimulationConfig &config,
     }
   }
 
-  for (std::size_t prey_idx = 0; prey_idx < registry.size(); ++prey_idx) {
+  for (uint32_t prey_idx = 0; prey_idx < entity_count; ++prey_idx) {
     const int killer_idx = killed_by[prey_idx];
     if (!vitals.alive[prey_idx] ||
         identity.type[prey_idx] != IdentitySoA::TYPE_PREY || killer_idx < 0 ||
-        !vitals.alive[static_cast<std::size_t>(killer_idx)]) {
+        !vitals.alive[killer_idx]) {
       continue;
     }
 
     vitals.alive[prey_idx] = 0;
-    vitals.energy[static_cast<std::size_t>(killer_idx)] +=
+    vitals.energy[killer_idx] +=
         static_cast<float>(config.energy_gain_from_kill);
-    kill_counts[static_cast<std::size_t>(killer_idx)] += 1;
+    kill_counts[killer_idx] += 1;
   }
 }
 
 void apply_movement(Registry &registry, const SimulationConfig &config) {
   const float world_size = static_cast<float>(config.grid_size);
-  auto &positions = registry.positions();
-  auto &motion = registry.motion();
-  const auto &vitals = registry.vitals();
-  auto &stats = registry.stats();
-  const auto &brain = registry.brain();
+  auto &positions = registry.positions;
+  auto &motion = registry.motion;
+  const auto &vitals = registry.vitals;
+  auto &stats = registry.stats;
+  const auto &brain = registry.brain;
 
-  for (std::size_t i = 0; i < registry.size(); ++i) {
+  const uint32_t entity_count = static_cast<uint32_t>(registry.size());
+  for (uint32_t i = 0; i < entity_count; ++i) {
     if (!vitals.alive[i]) {
       continue;
     }
@@ -338,39 +340,38 @@ void collect_cpu_step_events(Registry &registry, const FoodStore &food_store,
                              const std::vector<int> &killed_by,
                              const std::vector<uint32_t> &kill_counts,
                              std::vector<SimEvent> &events) {
-  auto &stats = registry.stats();
-  const auto &positions = registry.positions();
-  const auto &vitals = registry.vitals();
+  auto &stats = registry.stats;
+  const auto &positions = registry.positions;
+  const auto &vitals = registry.vitals;
 
   for (std::size_t food_idx = 0; food_idx < food_store.size(); ++food_idx) {
     const int prey_idx = food_consumed_by[food_idx];
-    if (!was_food_active[food_idx] || food_store.active()[food_idx] ||
-        prey_idx < 0 || static_cast<std::size_t>(prey_idx) >= registry.size()) {
+    if (!was_food_active[food_idx] || food_store.active[food_idx] ||
+        prey_idx < 0 || static_cast<uint32_t>(prey_idx) >= registry.size()) {
       continue;
     }
 
-    stats.food_eaten[static_cast<std::size_t>(prey_idx)] += 1;
-    events.push_back(SimEvent{
-        SimEvent::Food, Entity{static_cast<uint32_t>(prey_idx)}, INVALID_ENTITY,
-        Vec2{positions.x[static_cast<std::size_t>(prey_idx)],
-             positions.y[static_cast<std::size_t>(prey_idx)]}});
+    stats.food_eaten[prey_idx] += 1;
+    events.push_back(
+        SimEvent{SimEvent::Food, static_cast<uint32_t>(prey_idx), INVALID_ENTITY,
+                 Vec2{positions.x[prey_idx], positions.y[prey_idx]}});
   }
 
-  for (std::size_t agent_idx = 0; agent_idx < registry.size(); ++agent_idx) {
+  const uint32_t entity_count = static_cast<uint32_t>(registry.size());
+  for (uint32_t agent_idx = 0; agent_idx < entity_count; ++agent_idx) {
     if (kill_counts[agent_idx] > 0) {
       stats.kills[agent_idx] += static_cast<int>(kill_counts[agent_idx]);
     }
 
     if (killed_by[agent_idx] >= 0 &&
-        static_cast<std::size_t>(killed_by[agent_idx]) < registry.size()) {
+        static_cast<uint32_t>(killed_by[agent_idx]) < registry.size()) {
       events.push_back(SimEvent{
-          SimEvent::Kill, Entity{static_cast<uint32_t>(killed_by[agent_idx])},
-          Entity{static_cast<uint32_t>(agent_idx)},
+          SimEvent::Kill, static_cast<uint32_t>(killed_by[agent_idx]), agent_idx,
           Vec2{positions.x[agent_idx], positions.y[agent_idx]}});
     }
 
     if (was_alive[agent_idx] && !vitals.alive[agent_idx]) {
-      const Entity entity{static_cast<uint32_t>(agent_idx)};
+      const uint32_t entity = agent_idx;
       events.push_back(
           SimEvent{SimEvent::Death, entity, entity,
                    Vec2{positions.x[agent_idx], positions.y[agent_idx]}});

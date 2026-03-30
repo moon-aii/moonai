@@ -36,7 +36,6 @@ private:
   ReportMetrics record_and_log();
   bool should_continue() const;
   void log_report(const ReportMetrics &snapshot) const;
-  void log_early_stop(bool user_quit) const;
 };
 
 } // namespace moonai

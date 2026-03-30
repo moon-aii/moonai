@@ -180,7 +180,7 @@ void GpuNetworkCache::free_device_memory() {
 
 void GpuNetworkCache::build_from(
     const NetworkCache &cpu_cache,
-    const std::vector<std::pair<Entity, int>> &entities_with_indices) {
+    const std::vector<std::pair<uint32_t, int>> &entities_with_indices) {
   if (entities_with_indices.empty()) {
     dirty_ = false;
     return;
@@ -215,7 +215,7 @@ void GpuNetworkCache::build_from(
   for (const auto &[e, gpu_idx] : entities_with_indices) {
     const NeuralNetwork *network = cpu_cache.get_network(e);
     if (!network) {
-      spdlog::warn("No network found for entity {}", e.index);
+      spdlog::warn("No network found for entity {}", e);
       continue;
     }
 

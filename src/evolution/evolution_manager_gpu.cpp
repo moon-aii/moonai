@@ -32,17 +32,16 @@ bool EvolutionManager::launch_gpu_neural(AppState &state,
     return false;
   }
 
-  std::vector<std::pair<Entity, int>> network_entities_with_indices;
+  std::vector<std::pair<uint32_t, int>> network_entities_with_indices;
   {
     MOONAI_PROFILE_SCOPE("gpu_network_scan");
     network_entities_with_indices.reserve(agent_count);
 
-    for (std::size_t gpu_idx = 0; gpu_idx < agent_count; ++gpu_idx) {
-      const Entity entity{static_cast<uint32_t>(gpu_idx)};
-      if (entity != INVALID_ENTITY &&
-          state.evolution.network_cache.has(entity)) {
-        network_entities_with_indices.emplace_back(entity,
-                                                   static_cast<int>(gpu_idx));
+    const uint32_t entity_count = static_cast<uint32_t>(agent_count);
+    for (uint32_t entity = 0; entity < entity_count; ++entity) {
+      const int gpu_idx = static_cast<int>(entity);
+      if (state.evolution.network_cache.has(entity)) {
+        network_entities_with_indices.emplace_back(entity, gpu_idx);
       }
     }
 
@@ -55,14 +54,14 @@ bool EvolutionManager::launch_gpu_neural(AppState &state,
   if (gpu_network_cache_->is_dirty() ||
       gpu_network_cache_->entity_mapping().size() !=
           network_entities_with_indices.size() ||
-      !std::equal(
-          gpu_network_cache_->entity_mapping().begin(),
-          gpu_network_cache_->entity_mapping().end(),
-          network_entities_with_indices.begin(),
-          network_entities_with_indices.end(),
-          [](Entity entity, const std::pair<Entity, int> &entity_with_index) {
-            return entity == entity_with_index.first;
-          })) {
+      !std::equal(gpu_network_cache_->entity_mapping().begin(),
+                  gpu_network_cache_->entity_mapping().end(),
+                  network_entities_with_indices.begin(),
+                  network_entities_with_indices.end(),
+                  [](uint32_t entity,
+                     const std::pair<uint32_t, int> &entity_with_index) {
+                    return entity == entity_with_index.first;
+                  })) {
     MOONAI_PROFILE_SCOPE("gpu_cache_build");
     spdlog::debug("Rebuilding GPU network cache for {} network entities",
                   network_entities_with_indices.size());

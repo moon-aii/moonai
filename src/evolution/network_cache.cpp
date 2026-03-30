@@ -1,51 +1,50 @@
 #include "evolution/network_cache.hpp"
 namespace moonai {
 
-void NetworkCache::assign(Entity e, const Genome &genome) {
-  if (e.index >= networks_.size()) {
-    networks_.resize(static_cast<std::size_t>(e.index) + 1);
+void NetworkCache::assign(uint32_t e, const Genome &genome) {
+  if (e >= networks_.size()) {
+    networks_.resize(static_cast<std::size_t>(e) + 1);
   }
-  networks_[e.index] = std::make_unique<NeuralNetwork>(genome);
+  networks_[e] = std::make_unique<NeuralNetwork>(genome);
 }
 
-NeuralNetwork *NetworkCache::get(Entity e) const {
-  if (e == INVALID_ENTITY || e.index >= networks_.size()) {
+NeuralNetwork *NetworkCache::get(uint32_t e) const {
+  if (e == INVALID_ENTITY || e >= networks_.size()) {
     return nullptr;
   }
-  return networks_[e.index].get();
+  return networks_[e].get();
 }
 
-void NetworkCache::remove(Entity e) {
-  if (e == INVALID_ENTITY || e.index >= networks_.size()) {
+void NetworkCache::remove(uint32_t e) {
+  if (e == INVALID_ENTITY || e >= networks_.size()) {
     return;
   }
-  if (e.index + 1 == networks_.size()) {
+  if (static_cast<std::size_t>(e) + 1 == networks_.size()) {
     networks_.pop_back();
     return;
   }
-  networks_[e.index].reset();
+  networks_[e].reset();
 }
 
-void NetworkCache::move_entity(Entity from, Entity to) {
+void NetworkCache::move_entity(uint32_t from, uint32_t to) {
   if (from == to) {
     return;
   }
-  if (from == INVALID_ENTITY || from.index >= networks_.size() ||
-      !networks_[from.index]) {
+  if (from == INVALID_ENTITY || from >= networks_.size() || !networks_[from]) {
     return;
   }
-  if (to.index >= networks_.size()) {
-    networks_.resize(static_cast<std::size_t>(to.index) + 1);
+  if (to >= networks_.size()) {
+    networks_.resize(static_cast<std::size_t>(to) + 1);
   }
-  networks_[to.index] = std::move(networks_[from.index]);
+  networks_[to] = std::move(networks_[from]);
 }
 
-bool NetworkCache::has(Entity e) const {
+bool NetworkCache::has(uint32_t e) const {
   return get(e) != nullptr;
 }
 
 std::vector<float>
-NetworkCache::activate(Entity e, const std::vector<float> &inputs) const {
+NetworkCache::activate(uint32_t e, const std::vector<float> &inputs) const {
   auto *network = get(e);
   if (network) {
     return network->activate(inputs);
@@ -60,8 +59,9 @@ void NetworkCache::activate_batch(std::size_t entity_count,
                                   int outputs_per_network) {
   all_outputs.resize(entity_count * outputs_per_network);
 
-  for (size_t i = 0; i < entity_count; ++i) {
-    Entity e{static_cast<uint32_t>(i)};
+  const uint32_t count = static_cast<uint32_t>(entity_count);
+  for (uint32_t e = 0; e < count; ++e) {
+    const std::size_t i = e;
     const float *input_ptr = &all_inputs[i * inputs_per_network];
     float *output_ptr = &all_outputs[i * outputs_per_network];
 

@@ -5,7 +5,6 @@
 #include "evolution/mutation.hpp"
 #include "evolution/neural_network.hpp"
 #include "evolution/species.hpp"
-#include "simulation/entity.hpp"
 #include <gtest/gtest.h>
 
 #include <cmath>
@@ -271,8 +270,8 @@ TEST(SpeciesTest, AverageComplexityUsesMembers) {
   g2.add_node({11, NodeType::Hidden});
   g2.add_connection({0, 11, 0.5f, true, 0});
 
-  s.add_member(Entity{1, 1}, g1);
-  s.add_member(Entity{2, 1}, g2);
+  s.add_member(static_cast<uint32_t>(1), g1);
+  s.add_member(static_cast<uint32_t>(2), g2);
   s.refresh_summary();
 
   EXPECT_GT(s.average_complexity(), 0.0f);

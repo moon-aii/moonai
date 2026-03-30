@@ -6,7 +6,6 @@
 #include "evolution/mutation.hpp"
 #include "evolution/network_cache.hpp"
 #include "evolution/species.hpp"
-#include "simulation/entity.hpp"
 #include "simulation/food_store.hpp"
 #include "simulation/registry.hpp"
 
@@ -19,14 +18,14 @@ namespace moonai {
 struct SimEvent {
   enum Type : uint8_t { Kill, Food, Birth, Death };
   Type type;
-  Entity agent_id;
-  Entity target_id;
+  uint32_t agent_id;
+  uint32_t target_id;
   Vec2 position;
 };
 
 struct PendingOffspring {
-  Entity parent_a = INVALID_ENTITY;
-  Entity parent_b = INVALID_ENTITY;
+  uint32_t parent_a = INVALID_ENTITY;
+  uint32_t parent_b = INVALID_ENTITY;
   Vec2 spawn_position;
 };
 
@@ -120,20 +119,20 @@ inline void accumulate_step_events(AppState &state) {
   state.runtime.total_events.add(state.runtime.step_events);
 }
 
-inline Genome *genome_for(AppState &state, Entity entity) {
+inline Genome *genome_for(AppState &state, uint32_t entity) {
   if (entity == INVALID_ENTITY ||
-      entity.index >= state.evolution.entity_genomes.size()) {
+      entity >= state.evolution.entity_genomes.size()) {
     return nullptr;
   }
-  return &state.evolution.entity_genomes[entity.index];
+  return &state.evolution.entity_genomes[entity];
 }
 
-inline const Genome *genome_for(const AppState &state, Entity entity) {
+inline const Genome *genome_for(const AppState &state, uint32_t entity) {
   if (entity == INVALID_ENTITY ||
-      entity.index >= state.evolution.entity_genomes.size()) {
+      entity >= state.evolution.entity_genomes.size()) {
     return nullptr;
   }
-  return &state.evolution.entity_genomes[entity.index];
+  return &state.evolution.entity_genomes[entity];
 }
 
 } // namespace moonai

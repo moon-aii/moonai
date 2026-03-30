@@ -1,7 +1,6 @@
 #pragma once
 
 #include "core/types.hpp"
-#include "simulation/entity.hpp"
 
 #include <SFML/Graphics/Color.hpp>
 #include <SFML/Graphics/RectangleShape.hpp>
@@ -19,7 +18,7 @@ struct RenderFood {
 };
 
 struct RenderAgent {
-  Entity entity = INVALID_ENTITY;
+  uint32_t entity = INVALID_ENTITY;
   uint32_t agent_id = 0;
   Vec2 position;
   Vec2 velocity;

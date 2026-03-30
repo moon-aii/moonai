@@ -89,7 +89,7 @@ void App::step() {
   }
 
   for (const auto &pair : state_.runtime.pending_offspring) {
-    const Entity child = evolution_.create_offspring(
+    const uint32_t child = evolution_.create_offspring(
         state_, pair.parent_a, pair.parent_b, pair.spawn_position);
     if (child != INVALID_ENTITY) {
       state_.runtime.last_step_events.push_back(
@@ -119,9 +119,9 @@ ReportMetrics App::record_and_log() {
 
   const Genome *best_genome = nullptr;
   std::size_t best_complexity = 0;
-  for (std::size_t idx = 0; idx < state_.registry.size(); ++idx) {
-    const Genome *genome =
-        moonai::genome_for(state_, Entity{static_cast<uint32_t>(idx)});
+  const uint32_t entity_count = static_cast<uint32_t>(state_.registry.size());
+  for (uint32_t idx = 0; idx < entity_count; ++idx) {
+    const Genome *genome = moonai::genome_for(state_, idx);
     if (!genome) {
       continue;
     }
@@ -146,16 +146,9 @@ ReportMetrics App::record_and_log() {
 }
 
 bool App::should_continue() const {
-  if (cfg_.sim_config.max_steps > 0 &&
-      state_.runtime.step >= cfg_.sim_config.max_steps) {
-    return false;
-  }
-
-  if (g_running_ == 0) {
-    return false;
-  }
-
-  return true;
+  return !(g_running_ == 0) &&
+         !(cfg_.sim_config.max_steps > 0 &&
+           state_.runtime.step >= cfg_.sim_config.max_steps);
 }
 
 void App::log_report(const ReportMetrics &snapshot) const {
@@ -165,21 +158,11 @@ void App::log_report(const ReportMetrics &snapshot) const {
       snapshot.births, snapshot.deaths, snapshot.num_species);
 }
 
-void App::log_early_stop(bool user_quit) const {
-  if (user_quit) {
-    spdlog::info("Simulation stopped by user (window closed)");
-  } else {
-    spdlog::info("Simulation stopped by signal (Ctrl+C)");
-  }
-}
-
 bool App::run() {
-  if (!cfg_.headless) {
-    if (std::getenv("DISPLAY") == nullptr &&
-        std::getenv("WAYLAND_DISPLAY") == nullptr) {
-      spdlog::error("No display server found. GUI mode requires a display.");
-      return false;
-    }
+  if (!cfg_.headless && std::getenv("DISPLAY") == nullptr &&
+      std::getenv("WAYLAND_DISPLAY") == nullptr) {
+    spdlog::error("No display server found. GUI mode requires a display.");
+    return false;
   }
 
   bool completed = true;
@@ -272,7 +255,7 @@ bool App::run() {
   }
 
   if (!completed) {
-    log_early_stop(user_quit);
+    spdlog::info("Simulation stopped by user (window closed)");
   }
 
   spdlog::info("Output saved to: {}", logger_.run_dir());

@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <limits>
 
 namespace moonai {
 
@@ -17,5 +18,7 @@ struct Vec2 {
     return std::sqrt(x * x + y * y);
   }
 };
+
+constexpr uint32_t INVALID_ENTITY = std::numeric_limits<uint32_t>::max();
 
 } // namespace moonai

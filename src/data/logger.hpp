@@ -1,7 +1,6 @@
 #pragma once
 
 #include "core/config.hpp"
-#include "simulation/entity.hpp"
 
 #include <cstdint>
 #include <fstream>

@@ -2,7 +2,6 @@
 
 #include "core/config.hpp"
 #include "core/types.hpp"
-#include "simulation/entity.hpp"
 
 #include <cstddef>
 #include <memory>

@@ -8,7 +8,7 @@ namespace {
 
 int count_active_food(const FoodStore &food_store) {
   int active_food = 0;
-  for (uint8_t active : food_store.active()) {
+  for (uint8_t active : food_store.active) {
     active_food += active ? 1 : 0;
   }
   return active_food;
@@ -23,8 +23,9 @@ void refresh_live(AppState &state) {
   state.metrics.live.num_species =
       static_cast<int>(state.evolution.species.size());
 
-  const auto &identity = state.registry.identity();
-  for (std::size_t idx = 0; idx < state.registry.size(); ++idx) {
+  const auto &identity = state.registry.identity;
+  const uint32_t entity_count = static_cast<uint32_t>(state.registry.size());
+  for (uint32_t idx = 0; idx < entity_count; ++idx) {
     if (identity.type[idx] == IdentitySoA::TYPE_PREDATOR) {
       ++state.metrics.live.alive_predators;
     } else {
@@ -51,9 +52,10 @@ void record_report(AppState &state) {
   float complexity_sum = 0.0f;
   int genome_count = 0;
 
-  const auto &vitals = state.registry.vitals();
-  const auto &identity = state.registry.identity();
-  for (std::size_t idx = 0; idx < state.registry.size(); ++idx) {
+  const auto &vitals = state.registry.vitals;
+  const auto &identity = state.registry.identity;
+  const uint32_t entity_count = static_cast<uint32_t>(state.registry.size());
+  for (uint32_t idx = 0; idx < entity_count; ++idx) {
     if (identity.type[idx] == IdentitySoA::TYPE_PREDATOR) {
       predator_energy_sum += vitals.energy[idx];
       ++predator_energy_count;

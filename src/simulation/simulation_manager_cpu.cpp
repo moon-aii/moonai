@@ -50,7 +50,7 @@ public:
     std::fill(counts_.begin(), counts_.end(), 0);
     std::fill(offsets_.begin(), offsets_.end(), 0);
 
-    for (std::size_t idx = 0; idx < entity_count; ++idx) {
+    for (uint32_t idx = 0; idx < entity_count; ++idx) {
       const int cell = cell_index(positions.x[idx], positions.y[idx]);
       counts_[static_cast<std::size_t>(cell)] += 1;
     }
@@ -60,11 +60,11 @@ public:
     }
 
     std::copy(offsets_.begin(), offsets_.end() - 1, write_offsets_.begin());
-    for (std::size_t idx = 0; idx < entity_count; ++idx) {
+    for (uint32_t idx = 0; idx < entity_count; ++idx) {
       const int cell = cell_index(positions.x[idx], positions.y[idx]);
       const std::size_t slot = static_cast<std::size_t>(
           write_offsets_[static_cast<std::size_t>(cell)]++);
-      entries_[slot] = Entity{static_cast<uint32_t>(idx)};
+      entries_[slot] = idx;
     }
   }
 
@@ -122,7 +122,7 @@ private:
   std::vector<int> counts_;
   std::vector<int> offsets_;
   std::vector<int> write_offsets_;
-  std::vector<Entity> entries_;
+  std::vector<uint32_t> entries_;
 };
 
 } // namespace
@@ -133,7 +133,7 @@ void SimulationManager::compact_registry(AppState &state,
   for (const auto &[from, to] : result.moved) {
     evolution.on_entity_moved(state, from, to);
   }
-  for (Entity removed : result.removed) {
+  for (uint32_t removed : result.removed) {
     evolution.on_entity_destroyed(state, removed);
   }
 }
@@ -151,8 +151,8 @@ void SimulationManager::step(AppState &state, EvolutionManager &evolution) {
   state.runtime.pending_offspring.clear();
   state.runtime.step_events.clear();
 
-  const std::vector<uint8_t> was_alive = state.registry.vitals().alive;
-  const std::vector<uint8_t> was_food_active = state.food_store.active();
+  const std::vector<uint8_t> was_alive = state.registry.vitals.alive;
+  const std::vector<uint8_t> was_food_active = state.food_store.active;
   std::vector<int> food_consumed_by(state.food_store.size(), -1);
   std::vector<int> killed_by(state.registry.size(), -1);
   std::vector<uint32_t> kill_counts(state.registry.size(), 0U);
@@ -182,32 +182,33 @@ SimulationManager::find_reproduction_pairs(const AppState &state) const {
   std::vector<PendingOffspring> pairs;
   std::vector<uint8_t> used(state.registry.size(), 0);
 
-  const auto &positions = state.registry.positions();
-  const auto &vitals = state.registry.vitals();
-  const auto &identity = state.registry.identity();
+  const auto &positions = state.registry.positions;
+  const auto &vitals = state.registry.vitals;
+  const auto &identity = state.registry.identity;
   DenseReproductionGrid grid(static_cast<float>(config_.grid_size),
                              static_cast<float>(config_.grid_size),
                              config_.mate_range, state.registry.size());
   grid.build(positions, state.registry.size());
   const float world_size = static_cast<float>(config_.grid_size);
 
-  for (std::size_t idx = 0; idx < state.registry.size(); ++idx) {
-    const Entity entity{static_cast<uint32_t>(idx)};
+  const uint32_t entity_count = static_cast<uint32_t>(state.registry.size());
+  for (uint32_t idx = 0; idx < entity_count; ++idx) {
+    const uint32_t entity = idx;
     if (vitals.energy[idx] < config_.reproduction_energy_threshold ||
         used[idx] != 0) {
       continue;
     }
 
     const Vec2 pos{positions.x[idx], positions.y[idx]};
-    Entity best_mate = INVALID_ENTITY;
+    uint32_t best_mate = INVALID_ENTITY;
     float best_dist_sq = config_.mate_range * config_.mate_range;
 
-    grid.for_each_candidate(pos, config_.mate_range, [&](Entity mate_id) {
-      if (mate_id == entity || used[mate_id.index] != 0) {
+    grid.for_each_candidate(pos, config_.mate_range, [&](uint32_t mate_id) {
+      if (mate_id == entity || used[static_cast<std::size_t>(mate_id)] != 0) {
         return;
       }
 
-      const std::size_t mate_idx = state.registry.index_of(mate_id);
+      const uint32_t mate_idx = mate_id;
       if (identity.type[mate_idx] != identity.type[idx] ||
           vitals.energy[mate_idx] < config_.reproduction_energy_threshold) {
         return;
@@ -223,7 +224,7 @@ SimulationManager::find_reproduction_pairs(const AppState &state) const {
     });
 
     if (best_mate != INVALID_ENTITY) {
-      const std::size_t mate_idx = state.registry.index_of(best_mate);
+      const uint32_t mate_idx = best_mate;
       const Vec2 mate_pos{positions.x[mate_idx], positions.y[mate_idx]};
       const Vec2 diff = wrap_diff(mate_pos - pos, world_size, world_size);
 

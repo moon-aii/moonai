@@ -26,7 +26,7 @@ Vec2 wrap_diff(Vec2 diff, float world_width, float world_height) {
 void update_selected_activations(AppState &state) {
   state.ui.selected_node_activations.clear();
 
-  const Entity selected =
+  const uint32_t selected =
       state.registry.find_by_agent_id(state.ui.selected_agent_id);
   if (selected == INVALID_ENTITY || !state.registry.valid(selected)) {
     return;
@@ -37,8 +37,8 @@ void update_selected_activations(AppState &state) {
     return;
   }
 
-  const std::size_t idx = state.registry.index_of(selected);
-  const float *sensors = state.registry.sensors().input_ptr(idx);
+  const uint32_t idx = selected;
+  const float *sensors = state.registry.sensors.input_ptr(idx);
   std::vector<float> sensor_values(sensors, sensors + SensorSoA::INPUT_COUNT);
 
   NeuralNetwork *network = state.evolution.network_cache.get_network(selected);
@@ -65,22 +65,23 @@ FrameSnapshot build_frame_snapshot(const AppState &state,
   float pred_dist[5] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
   float prey_dist[5] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
 
-  const auto &positions = state.registry.positions();
-  const auto &motion = state.registry.motion();
-  const auto &identity = state.registry.identity();
-  const auto &vitals = state.registry.vitals();
-  const auto &stats = state.registry.stats();
+  const auto &positions = state.registry.positions;
+  const auto &motion = state.registry.motion;
+  const auto &identity = state.registry.identity;
+  const auto &vitals = state.registry.vitals;
+  const auto &stats = state.registry.stats;
 
   frame.foods.reserve(static_cast<std::size_t>(state.metrics.live.active_food));
   for (std::size_t i = 0; i < state.food_store.size(); ++i) {
-    if (!state.food_store.active()[i]) {
+    if (!state.food_store.active[i]) {
       continue;
     }
     frame.foods.push_back(RenderFood{
-        Vec2{state.food_store.pos_x()[i], state.food_store.pos_y()[i]}});
+        Vec2{state.food_store.pos_x[i], state.food_store.pos_y[i]}});
   }
 
-  for (std::size_t idx = 0; idx < state.registry.size(); ++idx) {
+  const uint32_t entity_count = static_cast<uint32_t>(state.registry.size());
+  for (uint32_t idx = 0; idx < entity_count; ++idx) {
     float energy_ratio = vitals.energy[idx] / config.sim_config.initial_energy;
     energy_ratio = std::clamp(energy_ratio, 0.0f, 1.0f);
     const int bucket = std::min(static_cast<int>(energy_ratio * 5.0f), 4);
@@ -92,8 +93,7 @@ FrameSnapshot build_frame_snapshot(const AppState &state,
     }
 
     frame.agents.push_back(RenderAgent{
-        Entity{static_cast<uint32_t>(idx)}, identity.entity_id[idx],
-        Vec2{positions.x[idx], positions.y[idx]},
+        idx, identity.entity_id[idx], Vec2{positions.x[idx], positions.y[idx]},
         Vec2{motion.vel_x[idx], motion.vel_y[idx]}, identity.type[idx]});
   }
 
@@ -126,10 +126,10 @@ FrameSnapshot build_frame_snapshot(const AppState &state,
     frame.overlay_stats.prey_energy_dist[i] = prey_dist[i];
   }
 
-  const Entity selected =
+  const uint32_t selected =
       state.registry.find_by_agent_id(state.ui.selected_agent_id);
   if (selected != INVALID_ENTITY && state.registry.valid(selected)) {
-    const std::size_t idx = state.registry.index_of(selected);
+    const uint32_t idx = selected;
     const Genome *genome = genome_for(state, selected);
     if (genome) {
       frame.overlay_stats.selected_agent =
@@ -148,8 +148,7 @@ FrameSnapshot build_frame_snapshot(const AppState &state,
       frame.selected_node_activations = state.ui.selected_node_activations;
 
       const Vec2 selected_pos{positions.x[idx], positions.y[idx]};
-      for (std::size_t other_idx = 0; other_idx < state.registry.size();
-           ++other_idx) {
+      for (uint32_t other_idx = 0; other_idx < entity_count; ++other_idx) {
         if (other_idx == idx) {
           continue;
         }
