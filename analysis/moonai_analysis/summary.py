@@ -30,7 +30,10 @@ def build_summary(
     rows: list[SummaryRow] = []
 
     for aggregate in aggregates:
-        row = aggregate.summary_frame[aggregate.summary_frame["step"] == step].iloc[-1]
+        eligible = aggregate.summary_frame[aggregate.summary_frame["step"] <= step]
+        if eligible.empty:
+            eligible = aggregate.summary_frame
+        row = eligible.iloc[-1]
         metrics = {
             metric: f"{row[f'{metric}_mean']:.3f} +/- {row[f'{metric}_std']:.3f}"
             for metric in COMPARISON_METRICS

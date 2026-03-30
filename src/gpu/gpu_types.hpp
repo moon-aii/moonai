@@ -2,14 +2,14 @@
 
 namespace moonai::gpu {
 
-struct alignas(16) GpuSensorAgentEntry {
+struct alignas(16) GpuPopulationEntry {
   unsigned int id;
-  unsigned int type;
   float pos_x;
   float pos_y;
+  float padding;
 };
 
-struct alignas(16) GpuSensorFoodEntry {
+struct alignas(16) GpuFoodEntry {
   unsigned int id;
   float pos_x;
   float pos_y;

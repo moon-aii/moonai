@@ -54,8 +54,7 @@ App::App(AppConfig cfg)
   state_.ui.speed_multiplier = cfg_.speed_multiplier;
 
   simulation_.initialize(state_);
-  evolution_.initialize(state_, SensorSoA::INPUT_COUNT,
-                        SensorSoA::OUTPUT_COUNT);
+  evolution_.initialize(state_, AgentSoA::INPUT_COUNT, AgentSoA::OUTPUT_COUNT);
   evolution_.seed_initial_population(state_);
   metrics::refresh_live(state_);
 
@@ -88,16 +87,29 @@ void App::step() {
     simulation_.step(state_, evolution_);
   }
 
-  for (const auto &pair : state_.runtime.pending_offspring) {
-    const uint32_t child = evolution_.create_offspring(
+  for (const auto &pair : state_.runtime.pending_predator_offspring) {
+    const uint32_t child = evolution_.create_predator_offspring(
         state_, pair.parent_a, pair.parent_b, pair.spawn_position);
     if (child != INVALID_ENTITY) {
-      state_.runtime.last_step_events.push_back(
-          SimEvent{SimEvent::Birth, child, child, pair.spawn_position});
+      state_.runtime.last_step_events.push_back(SimEvent{
+          SimEvent::Birth, state_.predators.agents.entity_id[child],
+          state_.predators.agents.entity_id[child], pair.spawn_position});
       ++state_.runtime.step_events.births;
     }
   }
-  state_.runtime.pending_offspring.clear();
+
+  for (const auto &pair : state_.runtime.pending_prey_offspring) {
+    const uint32_t child = evolution_.create_prey_offspring(
+        state_, pair.parent_a, pair.parent_b, pair.spawn_position);
+    if (child != INVALID_ENTITY) {
+      state_.runtime.last_step_events.push_back(
+          SimEvent{SimEvent::Birth, state_.prey.agents.entity_id[child],
+                   state_.prey.agents.entity_id[child], pair.spawn_position});
+      ++state_.runtime.step_events.births;
+    }
+  }
+  state_.runtime.pending_predator_offspring.clear();
+  state_.runtime.pending_prey_offspring.clear();
 
   accumulate_step_events(state_);
 
@@ -119,17 +131,19 @@ ReportMetrics App::record_and_log() {
 
   const Genome *best_genome = nullptr;
   std::size_t best_complexity = 0;
-  const uint32_t entity_count = static_cast<uint32_t>(state_.registry.size());
-  for (uint32_t idx = 0; idx < entity_count; ++idx) {
-    const Genome *genome = moonai::genome_for(state_, idx);
-    if (!genome) {
-      continue;
-    }
-
+  for (const auto &genome : state_.evolution.predators.genomes) {
     const std::size_t complexity =
-        genome->nodes().size() + genome->connections().size();
+        genome.nodes().size() + genome.connections().size();
     if (!best_genome || complexity > best_complexity) {
-      best_genome = genome;
+      best_genome = &genome;
+      best_complexity = complexity;
+    }
+  }
+  for (const auto &genome : state_.evolution.prey.genomes) {
+    const std::size_t complexity =
+        genome.nodes().size() + genome.connections().size();
+    if (!best_genome || complexity > best_complexity) {
+      best_genome = &genome;
       best_complexity = complexity;
     }
   }
@@ -138,7 +152,10 @@ ReportMetrics App::record_and_log() {
     logger_.log_best_genome(state_.runtime.step, *best_genome);
   }
 
-  logger_.log_species(state_.runtime.step, state_.evolution.species);
+  logger_.log_species(state_.runtime.step, state_.evolution.predators.species,
+                      "predator");
+  logger_.log_species(state_.runtime.step, state_.evolution.prey.species,
+                      "prey");
   logger_.flush();
   state_.runtime.report_events.clear();
 
@@ -152,10 +169,11 @@ bool App::should_continue() const {
 }
 
 void App::log_report(const ReportMetrics &snapshot) const {
-  spdlog::info(
-      "Step {:6d}: predators={} prey={} births={} deaths={} species={}",
-      snapshot.step, snapshot.predator_count, snapshot.prey_count,
-      snapshot.births, snapshot.deaths, snapshot.num_species);
+  spdlog::info("Step {:6d}: predators={} prey={} births={} deaths={} "
+               "pred_species={} prey_species={}",
+               snapshot.step, snapshot.predator_count, snapshot.prey_count,
+               snapshot.births, snapshot.deaths, snapshot.predator_species,
+               snapshot.prey_species);
 }
 
 bool App::run() {
@@ -177,7 +195,8 @@ bool App::run() {
       }
     }
 
-    if (state_.metrics.history.empty()) {
+    if (state_.metrics.history.empty() ||
+        state_.metrics.history.back().step != state_.runtime.step) {
       record_and_log();
     }
 
@@ -247,7 +266,8 @@ bool App::run() {
       }
     }
 
-    if (state_.metrics.history.empty()) {
+    if (state_.metrics.history.empty() ||
+        state_.metrics.history.back().step != state_.runtime.step) {
       record_and_log();
     }
 

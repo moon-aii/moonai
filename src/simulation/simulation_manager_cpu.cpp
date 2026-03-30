@@ -125,16 +125,85 @@ private:
   std::vector<uint32_t> entries_;
 };
 
+template <typename RegistryT>
+std::vector<PendingOffspring>
+find_reproduction_pairs_impl(const RegistryT &registry,
+                             const SimulationConfig &config) {
+  std::vector<PendingOffspring> pairs;
+  std::vector<uint8_t> used(registry.size(), 0);
+
+  DenseReproductionGrid grid(static_cast<float>(config.grid_size),
+                             static_cast<float>(config.grid_size),
+                             config.mate_range, registry.size());
+  grid.build(registry.positions, registry.size());
+  const float world_size = static_cast<float>(config.grid_size);
+  const uint32_t entity_count = static_cast<uint32_t>(registry.size());
+
+  for (uint32_t idx = 0; idx < entity_count; ++idx) {
+    if (registry.agents.energy[idx] < config.reproduction_energy_threshold ||
+        used[idx] != 0) {
+      continue;
+    }
+
+    const Vec2 pos{registry.positions.x[idx], registry.positions.y[idx]};
+    uint32_t best_mate = INVALID_ENTITY;
+    float best_dist_sq = config.mate_range * config.mate_range;
+
+    grid.for_each_candidate(pos, config.mate_range, [&](uint32_t mate_id) {
+      if (mate_id == idx || used[mate_id] != 0 ||
+          registry.agents.energy[mate_id] <
+              config.reproduction_energy_threshold) {
+        return;
+      }
+
+      const Vec2 mate_pos{registry.positions.x[mate_id],
+                          registry.positions.y[mate_id]};
+      const Vec2 diff = wrap_diff(mate_pos - pos, world_size, world_size);
+      const float dist_sq = diff.x * diff.x + diff.y * diff.y;
+      if (dist_sq < best_dist_sq) {
+        best_dist_sq = dist_sq;
+        best_mate = mate_id;
+      }
+    });
+
+    if (best_mate != INVALID_ENTITY) {
+      const Vec2 mate_pos{registry.positions.x[best_mate],
+                          registry.positions.y[best_mate]};
+      const Vec2 diff = wrap_diff(mate_pos - pos, world_size, world_size);
+      pairs.push_back(
+          PendingOffspring{idx,
+                           best_mate,
+                           {wrap_coord(pos.x + diff.x * 0.5f, world_size),
+                            wrap_coord(pos.y + diff.y * 0.5f, world_size)}});
+      used[idx] = 1;
+      used[best_mate] = 1;
+    }
+  }
+
+  return pairs;
+}
+
 } // namespace
 
-void SimulationManager::compact_registry(AppState &state,
-                                         EvolutionManager &evolution) {
-  const auto result = state.registry.compact_dead();
+void SimulationManager::compact_predators(AppState &state,
+                                          EvolutionManager &evolution) {
+  const auto result = state.predators.compact_dead();
   for (const auto &[from, to] : result.moved) {
-    evolution.on_entity_moved(state, from, to);
+    evolution.on_predator_moved(state, from, to);
   }
   for (uint32_t removed : result.removed) {
-    evolution.on_entity_destroyed(state, removed);
+    evolution.on_predator_destroyed(state, removed);
+  }
+}
+
+void SimulationManager::compact_prey(AppState &state,
+                                     EvolutionManager &evolution) {
+  const auto result = state.prey.compact_dead();
+  for (const auto &[from, to] : result.moved) {
+    evolution.on_prey_moved(state, from, to);
+  }
+  for (uint32_t removed : result.removed) {
+    evolution.on_prey_destroyed(state, removed);
   }
 }
 
@@ -148,98 +217,69 @@ void SimulationManager::step(AppState &state, EvolutionManager &evolution) {
   MOONAI_PROFILE_SCOPE("simulation_step_cpu");
 
   state.runtime.last_step_events.clear();
-  state.runtime.pending_offspring.clear();
+  state.runtime.pending_predator_offspring.clear();
+  state.runtime.pending_prey_offspring.clear();
   state.runtime.step_events.clear();
 
-  const std::vector<uint8_t> was_alive = state.registry.vitals.alive;
+  const std::vector<uint8_t> was_predator_alive = state.predators.agents.alive;
+  const std::vector<uint8_t> was_prey_alive = state.prey.agents.alive;
   const std::vector<uint8_t> was_food_active = state.food_store.active;
   std::vector<int> food_consumed_by(state.food_store.size(), -1);
-  std::vector<int> killed_by(state.registry.size(), -1);
-  std::vector<uint32_t> kill_counts(state.registry.size(), 0U);
+  std::vector<int> killed_by(state.prey.size(), -1);
+  std::vector<uint32_t> kill_counts(state.predators.size(), 0U);
 
-  simulation_detail::build_sensors(state.registry, state.food_store, config_);
+  simulation_detail::build_sensors(
+      state.predators.agents, state.predators.positions, state.predators.agents,
+      state.predators.positions, state.prey.agents, state.prey.positions,
+      state.food_store, config_);
+  simulation_detail::build_sensors(
+      state.prey.agents, state.prey.positions, state.predators.agents,
+      state.predators.positions, state.prey.agents, state.prey.positions,
+      state.food_store, config_);
   evolution.compute_actions(state);
-  simulation_detail::update_vitals(state.registry, config_);
-  simulation_detail::process_food(state.registry, state.food_store, config_,
+  simulation_detail::update_vitals(state.predators.agents, config_);
+  simulation_detail::update_vitals(state.prey.agents, config_);
+  simulation_detail::process_food(state.prey, state.food_store, config_,
                                   food_consumed_by);
-  simulation_detail::process_combat(state.registry, config_, killed_by,
-                                    kill_counts);
-  simulation_detail::apply_movement(state.registry, config_);
+  simulation_detail::process_combat(state.predators, state.prey, config_,
+                                    killed_by, kill_counts);
+  simulation_detail::apply_movement(state.predators.positions,
+                                    state.predators.agents, config_);
+  simulation_detail::apply_movement(state.prey.positions, state.prey.agents,
+                                    config_);
 
-  simulation_detail::collect_cpu_step_events(
-      state.registry, state.food_store, was_alive, was_food_active,
-      food_consumed_by, killed_by, kill_counts, state.runtime.last_step_events);
-  compact_registry(state, evolution);
+  simulation_detail::collect_food_events(state.prey, state.food_store,
+                                         was_food_active, food_consumed_by,
+                                         state.runtime.last_step_events);
+  simulation_detail::collect_combat_events(state.predators, state.prey,
+                                           killed_by, kill_counts,
+                                           state.runtime.last_step_events);
+  simulation_detail::collect_death_events(state.predators, was_predator_alive,
+                                          state.runtime.last_step_events);
+  simulation_detail::collect_death_events(state.prey, was_prey_alive,
+                                          state.runtime.last_step_events);
+
+  compact_predators(state, evolution);
+  compact_prey(state, evolution);
   refresh_world_state_after_step(state);
-  state.runtime.pending_offspring = find_reproduction_pairs(state);
+  state.runtime.pending_predator_offspring =
+      find_predator_reproduction_pairs(state);
+  state.runtime.pending_prey_offspring = find_prey_reproduction_pairs(state);
   simulation_detail::accumulate_events(state.runtime.step_events,
                                        state.runtime.last_step_events);
 }
 
 std::vector<PendingOffspring>
-SimulationManager::find_reproduction_pairs(const AppState &state) const {
-  MOONAI_PROFILE_SCOPE("find_reproduction_pairs");
-  std::vector<PendingOffspring> pairs;
-  std::vector<uint8_t> used(state.registry.size(), 0);
+SimulationManager::find_predator_reproduction_pairs(
+    const AppState &state) const {
+  MOONAI_PROFILE_SCOPE("find_predator_reproduction_pairs");
+  return find_reproduction_pairs_impl(state.predators, config_);
+}
 
-  const auto &positions = state.registry.positions;
-  const auto &vitals = state.registry.vitals;
-  const auto &identity = state.registry.identity;
-  DenseReproductionGrid grid(static_cast<float>(config_.grid_size),
-                             static_cast<float>(config_.grid_size),
-                             config_.mate_range, state.registry.size());
-  grid.build(positions, state.registry.size());
-  const float world_size = static_cast<float>(config_.grid_size);
-
-  const uint32_t entity_count = static_cast<uint32_t>(state.registry.size());
-  for (uint32_t idx = 0; idx < entity_count; ++idx) {
-    const uint32_t entity = idx;
-    if (vitals.energy[idx] < config_.reproduction_energy_threshold ||
-        used[idx] != 0) {
-      continue;
-    }
-
-    const Vec2 pos{positions.x[idx], positions.y[idx]};
-    uint32_t best_mate = INVALID_ENTITY;
-    float best_dist_sq = config_.mate_range * config_.mate_range;
-
-    grid.for_each_candidate(pos, config_.mate_range, [&](uint32_t mate_id) {
-      if (mate_id == entity || used[static_cast<std::size_t>(mate_id)] != 0) {
-        return;
-      }
-
-      const uint32_t mate_idx = mate_id;
-      if (identity.type[mate_idx] != identity.type[idx] ||
-          vitals.energy[mate_idx] < config_.reproduction_energy_threshold) {
-        return;
-      }
-
-      const Vec2 mate_pos{positions.x[mate_idx], positions.y[mate_idx]};
-      const Vec2 diff = wrap_diff(mate_pos - pos, world_size, world_size);
-      const float dist_sq = diff.x * diff.x + diff.y * diff.y;
-      if (dist_sq < best_dist_sq) {
-        best_dist_sq = dist_sq;
-        best_mate = mate_id;
-      }
-    });
-
-    if (best_mate != INVALID_ENTITY) {
-      const uint32_t mate_idx = best_mate;
-      const Vec2 mate_pos{positions.x[mate_idx], positions.y[mate_idx]};
-      const Vec2 diff = wrap_diff(mate_pos - pos, world_size, world_size);
-
-      PendingOffspring pair;
-      pair.parent_a = entity;
-      pair.parent_b = best_mate;
-      pair.spawn_position = {wrap_coord(pos.x + diff.x * 0.5f, world_size),
-                             wrap_coord(pos.y + diff.y * 0.5f, world_size)};
-      pairs.push_back(pair);
-      used[idx] = 1;
-      used[mate_idx] = 1;
-    }
-  }
-
-  return pairs;
+std::vector<PendingOffspring>
+SimulationManager::find_prey_reproduction_pairs(const AppState &state) const {
+  MOONAI_PROFILE_SCOPE("find_prey_reproduction_pairs");
+  return find_reproduction_pairs_impl(state.prey, config_);
 }
 
 } // namespace moonai

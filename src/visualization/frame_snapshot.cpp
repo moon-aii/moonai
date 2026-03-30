@@ -26,34 +26,51 @@ Vec2 wrap_diff(Vec2 diff, float world_width, float world_height) {
 void update_selected_activations(AppState &state) {
   state.ui.selected_node_activations.clear();
 
-  const uint32_t selected =
-      state.registry.find_by_agent_id(state.ui.selected_agent_id);
-  if (selected == INVALID_ENTITY || !state.registry.valid(selected)) {
+  if (state.ui.selected_agent_id == 0) {
     return;
   }
 
-  const auto *genome = genome_for(state, selected);
-  if (!genome) {
-    return;
-  }
-
-  const uint32_t idx = selected;
-  const float *sensors = state.registry.sensors.input_ptr(idx);
-  std::vector<float> sensor_values(sensors, sensors + SensorSoA::INPUT_COUNT);
-
-  NeuralNetwork *network = state.evolution.network_cache.get_network(selected);
-  if (!network) {
-    return;
-  }
-
-  network->activate(sensor_values);
-  for (const auto &[node_id, node_index] : network->node_index_map()) {
-    if (node_index >= 0 &&
-        node_index < static_cast<int>(network->last_activations().size())) {
-      state.ui.selected_node_activations[node_id] =
-          network->last_activations()[node_index];
+  auto populate_activations = [&](const auto &registry,
+                                  const auto &network_cache,
+                                  const Genome *genome, uint32_t selected) {
+    if (selected == INVALID_ENTITY || !registry.valid(selected)) {
+      return false;
     }
+    if (!genome) {
+      return false;
+    }
+
+    const float *sensors = registry.agents.input_ptr(selected);
+    std::vector<float> sensor_values(sensors, sensors + AgentSoA::INPUT_COUNT);
+
+    NeuralNetwork *network = network_cache.get_network(selected);
+    if (!network) {
+      return false;
+    }
+
+    network->activate(sensor_values);
+    for (const auto &[node_id, node_index] : network->node_index_map()) {
+      if (node_index >= 0 &&
+          node_index < static_cast<int>(network->last_activations().size())) {
+        state.ui.selected_node_activations[node_id] =
+            network->last_activations()[node_index];
+      }
+    }
+    return true;
+  };
+
+  const uint32_t predator_selected =
+      state.predators.find_by_agent_id(state.ui.selected_agent_id);
+  if (populate_activations(
+          state.predators, state.evolution.predators.network_cache,
+          predator_genome_for(state, predator_selected), predator_selected)) {
+    return;
   }
+
+  const uint32_t prey_selected =
+      state.prey.find_by_agent_id(state.ui.selected_agent_id);
+  populate_activations(state.prey, state.evolution.prey.network_cache,
+                       prey_genome_for(state, prey_selected), prey_selected);
 }
 
 FrameSnapshot build_frame_snapshot(const AppState &state,
@@ -65,12 +82,6 @@ FrameSnapshot build_frame_snapshot(const AppState &state,
   float pred_dist[5] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
   float prey_dist[5] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
 
-  const auto &positions = state.registry.positions;
-  const auto &motion = state.registry.motion;
-  const auto &identity = state.registry.identity;
-  const auto &vitals = state.registry.vitals;
-  const auto &stats = state.registry.stats;
-
   frame.foods.reserve(static_cast<std::size_t>(state.metrics.live.active_food));
   for (std::size_t i = 0; i < state.food_store.size(); ++i) {
     if (!state.food_store.active[i]) {
@@ -80,21 +91,34 @@ FrameSnapshot build_frame_snapshot(const AppState &state,
                                           state.food_store.positions.y[i]}});
   }
 
-  const uint32_t entity_count = static_cast<uint32_t>(state.registry.size());
-  for (uint32_t idx = 0; idx < entity_count; ++idx) {
-    float energy_ratio = vitals.energy[idx] / config.sim_config.initial_energy;
+  frame.predators.reserve(state.predators.size());
+  for (uint32_t idx = 0; idx < state.predators.size(); ++idx) {
+    float energy_ratio =
+        state.predators.agents.energy[idx] / config.sim_config.initial_energy;
     energy_ratio = std::clamp(energy_ratio, 0.0f, 1.0f);
     const int bucket = std::min(static_cast<int>(energy_ratio * 5.0f), 4);
+    pred_dist[bucket] += 1.0f;
 
-    if (identity.type[idx] == IdentitySoA::TYPE_PREDATOR) {
-      pred_dist[bucket] += 1.0f;
-    } else {
-      prey_dist[bucket] += 1.0f;
-    }
+    frame.predators.push_back(
+        RenderAgent{idx, state.predators.agents.entity_id[idx],
+                    Vec2{state.predators.positions.x[idx],
+                         state.predators.positions.y[idx]},
+                    Vec2{state.predators.agents.vel_x[idx],
+                         state.predators.agents.vel_y[idx]}});
+  }
 
-    frame.agents.push_back(RenderAgent{
-        idx, identity.entity_id[idx], Vec2{positions.x[idx], positions.y[idx]},
-        Vec2{motion.vel_x[idx], motion.vel_y[idx]}, identity.type[idx]});
+  frame.prey.reserve(state.prey.size());
+  for (uint32_t idx = 0; idx < state.prey.size(); ++idx) {
+    float energy_ratio =
+        state.prey.agents.energy[idx] / config.sim_config.initial_energy;
+    energy_ratio = std::clamp(energy_ratio, 0.0f, 1.0f);
+    const int bucket = std::min(static_cast<int>(energy_ratio * 5.0f), 4);
+    prey_dist[bucket] += 1.0f;
+
+    frame.prey.push_back(RenderAgent{
+        idx, state.prey.agents.entity_id[idx],
+        Vec2{state.prey.positions.x[idx], state.prey.positions.y[idx]},
+        Vec2{state.prey.agents.vel_x[idx], state.prey.agents.vel_y[idx]}});
   }
 
   if (state.metrics.live.alive_predators > 0) {
@@ -113,7 +137,8 @@ FrameSnapshot build_frame_snapshot(const AppState &state,
   frame.overlay_stats.alive_predators = state.metrics.live.alive_predators;
   frame.overlay_stats.alive_prey = state.metrics.live.alive_prey;
   frame.overlay_stats.active_food = state.metrics.live.active_food;
-  frame.overlay_stats.num_species = state.metrics.live.num_species;
+  frame.overlay_stats.predator_species = state.metrics.live.predator_species;
+  frame.overlay_stats.prey_species = state.metrics.live.prey_species;
   frame.overlay_stats.speed_multiplier = state.ui.speed_multiplier;
   frame.overlay_stats.paused = state.ui.paused;
   frame.overlay_stats.experiment_name = config.experiment_name;
@@ -126,49 +151,69 @@ FrameSnapshot build_frame_snapshot(const AppState &state,
     frame.overlay_stats.prey_energy_dist[i] = prey_dist[i];
   }
 
-  const uint32_t selected =
-      state.registry.find_by_agent_id(state.ui.selected_agent_id);
-  if (selected != INVALID_ENTITY && state.registry.valid(selected)) {
-    const uint32_t idx = selected;
-    const Genome *genome = genome_for(state, selected);
+  const uint32_t predator_selected =
+      state.predators.find_by_agent_id(state.ui.selected_agent_id);
+  if (predator_selected != INVALID_ENTITY &&
+      state.predators.valid(predator_selected)) {
+    const Genome *genome = predator_genome_for(state, predator_selected);
     if (genome) {
       frame.overlay_stats.selected_agent =
-          static_cast<int>(identity.entity_id[idx]);
-      frame.overlay_stats.selected_energy = vitals.energy[idx];
-      frame.overlay_stats.selected_age = vitals.age[idx];
-      frame.overlay_stats.selected_kills = stats.kills[idx];
-      frame.overlay_stats.selected_food_eaten = stats.food_eaten[idx];
+          static_cast<int>(state.predators.agents.entity_id[predator_selected]);
+      frame.overlay_stats.selected_energy =
+          state.predators.agents.energy[predator_selected];
+      frame.overlay_stats.selected_age =
+          state.predators.agents.age[predator_selected];
+      frame.overlay_stats.selected_kills =
+          state.predators.predator.kills[predator_selected];
+      frame.overlay_stats.selected_food_eaten = 0;
       frame.overlay_stats.selected_genome_complexity = static_cast<int>(
           genome->nodes().size() + genome->connections().size());
       frame.selected_genome = genome;
-      frame.selected_agent_id = identity.entity_id[idx];
+      frame.selected_agent_id =
+          state.predators.agents.entity_id[predator_selected];
       frame.has_selected_vision = true;
-      frame.selected_position = Vec2{positions.x[idx], positions.y[idx]};
+      frame.selected_position =
+          Vec2{state.predators.positions.x[predator_selected],
+               state.predators.positions.y[predator_selected]};
       frame.selected_vision_range = config.sim_config.vision_range;
       frame.selected_node_activations = state.ui.selected_node_activations;
 
-      const Vec2 selected_pos{positions.x[idx], positions.y[idx]};
-      for (uint32_t other_idx = 0; other_idx < entity_count; ++other_idx) {
-        if (other_idx == idx) {
+      const Vec2 selected_pos = frame.selected_position;
+      for (uint32_t idx = 0; idx < state.predators.size(); ++idx) {
+        if (idx == predator_selected) {
           continue;
         }
-
-        const Vec2 other_pos{positions.x[other_idx], positions.y[other_idx]};
-        Vec2 diff = other_pos - selected_pos;
+        const Vec2 other_pos{state.predators.positions.x[idx],
+                             state.predators.positions.y[idx]};
+        const Vec2 diff =
+            wrap_diff(other_pos - selected_pos,
+                      static_cast<float>(config.sim_config.grid_size),
+                      static_cast<float>(config.sim_config.grid_size));
         if (diff.length() > config.sim_config.vision_range) {
           continue;
         }
-
-        const sf::Color color =
-            identity.type[other_idx] == IdentitySoA::TYPE_PREDATOR
-                ? sf::Color(chart_colors::PREDATOR_R, chart_colors::PREDATOR_G,
-                            chart_colors::PREDATOR_B, visual::SENSOR_ALPHA)
-                : sf::Color(chart_colors::PREY_R, chart_colors::PREY_G,
-                            chart_colors::PREY_B, visual::SENSOR_ALPHA);
-        frame.sensor_lines.push_back(
-            RenderLine{selected_pos, other_pos, color});
+        frame.sensor_lines.push_back(RenderLine{
+            selected_pos,
+            Vec2{selected_pos.x + diff.x, selected_pos.y + diff.y},
+            sf::Color(chart_colors::PREDATOR_R, chart_colors::PREDATOR_G,
+                      chart_colors::PREDATOR_B, visual::SENSOR_ALPHA)});
       }
-
+      for (uint32_t idx = 0; idx < state.prey.size(); ++idx) {
+        const Vec2 other_pos{state.prey.positions.x[idx],
+                             state.prey.positions.y[idx]};
+        const Vec2 diff =
+            wrap_diff(other_pos - selected_pos,
+                      static_cast<float>(config.sim_config.grid_size),
+                      static_cast<float>(config.sim_config.grid_size));
+        if (diff.length() > config.sim_config.vision_range) {
+          continue;
+        }
+        frame.sensor_lines.push_back(
+            RenderLine{selected_pos,
+                       Vec2{selected_pos.x + diff.x, selected_pos.y + diff.y},
+                       sf::Color(chart_colors::PREY_R, chart_colors::PREY_G,
+                                 chart_colors::PREY_B, visual::SENSOR_ALPHA)});
+      }
       for (const auto &food : frame.foods) {
         const Vec2 diff =
             wrap_diff(food.position - selected_pos,
@@ -177,7 +222,83 @@ FrameSnapshot build_frame_snapshot(const AppState &state,
         if (diff.length() > config.sim_config.vision_range) {
           continue;
         }
+        frame.sensor_lines.push_back(RenderLine{
+            selected_pos, food.position,
+            sf::Color(chart_colors::FOOD_R, chart_colors::FOOD_G,
+                      chart_colors::FOOD_B, visual::FOOD_SENSOR_ALPHA)});
+      }
+    }
 
+    return frame;
+  }
+
+  const uint32_t prey_selected =
+      state.prey.find_by_agent_id(state.ui.selected_agent_id);
+  if (prey_selected != INVALID_ENTITY && state.prey.valid(prey_selected)) {
+    const Genome *genome = prey_genome_for(state, prey_selected);
+    if (genome) {
+      frame.overlay_stats.selected_agent =
+          static_cast<int>(state.prey.agents.entity_id[prey_selected]);
+      frame.overlay_stats.selected_energy =
+          state.prey.agents.energy[prey_selected];
+      frame.overlay_stats.selected_age = state.prey.agents.age[prey_selected];
+      frame.overlay_stats.selected_kills = 0;
+      frame.overlay_stats.selected_food_eaten =
+          state.prey.prey.food_eaten[prey_selected];
+      frame.overlay_stats.selected_genome_complexity = static_cast<int>(
+          genome->nodes().size() + genome->connections().size());
+      frame.selected_genome = genome;
+      frame.selected_agent_id = state.prey.agents.entity_id[prey_selected];
+      frame.has_selected_vision = true;
+      frame.selected_position = Vec2{state.prey.positions.x[prey_selected],
+                                     state.prey.positions.y[prey_selected]};
+      frame.selected_vision_range = config.sim_config.vision_range;
+      frame.selected_node_activations = state.ui.selected_node_activations;
+
+      const Vec2 selected_pos = frame.selected_position;
+      for (uint32_t idx = 0; idx < state.predators.size(); ++idx) {
+        const Vec2 other_pos{state.predators.positions.x[idx],
+                             state.predators.positions.y[idx]};
+        const Vec2 diff =
+            wrap_diff(other_pos - selected_pos,
+                      static_cast<float>(config.sim_config.grid_size),
+                      static_cast<float>(config.sim_config.grid_size));
+        if (diff.length() > config.sim_config.vision_range) {
+          continue;
+        }
+        frame.sensor_lines.push_back(RenderLine{
+            selected_pos,
+            Vec2{selected_pos.x + diff.x, selected_pos.y + diff.y},
+            sf::Color(chart_colors::PREDATOR_R, chart_colors::PREDATOR_G,
+                      chart_colors::PREDATOR_B, visual::SENSOR_ALPHA)});
+      }
+      for (uint32_t idx = 0; idx < state.prey.size(); ++idx) {
+        if (idx == prey_selected) {
+          continue;
+        }
+        const Vec2 other_pos{state.prey.positions.x[idx],
+                             state.prey.positions.y[idx]};
+        const Vec2 diff =
+            wrap_diff(other_pos - selected_pos,
+                      static_cast<float>(config.sim_config.grid_size),
+                      static_cast<float>(config.sim_config.grid_size));
+        if (diff.length() > config.sim_config.vision_range) {
+          continue;
+        }
+        frame.sensor_lines.push_back(
+            RenderLine{selected_pos,
+                       Vec2{selected_pos.x + diff.x, selected_pos.y + diff.y},
+                       sf::Color(chart_colors::PREY_R, chart_colors::PREY_G,
+                                 chart_colors::PREY_B, visual::SENSOR_ALPHA)});
+      }
+      for (const auto &food : frame.foods) {
+        const Vec2 diff =
+            wrap_diff(food.position - selected_pos,
+                      static_cast<float>(config.sim_config.grid_size),
+                      static_cast<float>(config.sim_config.grid_size));
+        if (diff.length() > config.sim_config.vision_range) {
+          continue;
+        }
         frame.sensor_lines.push_back(RenderLine{
             selected_pos, food.position,
             sf::Color(chart_colors::FOOD_R, chart_colors::FOOD_G,

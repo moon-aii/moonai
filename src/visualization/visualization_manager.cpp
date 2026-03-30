@@ -123,9 +123,9 @@ void VisualizationManager::render(FrameSnapshot frame) {
   // Draw all agents using ECS
   {
     MOONAI_PROFILE_SCOPE("render_agents");
-    renderer_.draw_all_agents(
-        *window_, frame_.agents, frame_.overlay_stats.alive_predators,
-        frame_.overlay_stats.alive_prey, ui_state_.selected_agent_id);
+    renderer_.draw_predators(*window_, frame_.predators,
+                             ui_state_.selected_agent_id);
+    renderer_.draw_prey(*window_, frame_.prey, ui_state_.selected_agent_id);
   }
 
   // Draw vision/sensor lines for selected entity (automatically shown when
@@ -141,11 +141,6 @@ void VisualizationManager::render(FrameSnapshot frame) {
   // Update FPS counter using exponential moving average
   update_fps(frame_clock_.restart().asSeconds());
   frame_.overlay_stats.fps = current_fps_;
-
-  if (ui_state_.selected_agent_id != 0) {
-    frame_.overlay_stats.selected_agent =
-        static_cast<int>(ui_state_.selected_agent_id);
-  }
 
   if (frame_.overlay_stats.step != last_chart_step_) {
     overlay_.push_population(frame_.overlay_stats.alive_predators,
@@ -384,7 +379,17 @@ void VisualizationManager::handle_mouse_click(float world_x, float world_y) {
   float best_dist = 20.0f * zoom_level_; // click threshold in world units
   uint32_t best_agent_id = 0;
 
-  for (const auto &agent : frame_.agents) {
+  for (const auto &agent : frame_.predators) {
+    float dx = agent.position.x - world_x;
+    float dy = agent.position.y - world_y;
+    float dist = std::sqrt(dx * dx + dy * dy);
+    if (dist < best_dist) {
+      best_dist = dist;
+      best_agent_id = agent.agent_id;
+    }
+  }
+
+  for (const auto &agent : frame_.prey) {
     float dx = agent.position.x - world_x;
     float dy = agent.position.y - world_y;
     float dist = std::sqrt(dx * dx + dy * dy);

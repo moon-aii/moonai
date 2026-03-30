@@ -22,7 +22,6 @@ struct RenderAgent {
   uint32_t agent_id = 0;
   Vec2 position;
   Vec2 velocity;
-  uint8_t type = 0;
 };
 
 struct RenderLine {
@@ -41,10 +40,11 @@ public:
   static void draw_boundaries(sf::RenderTarget &target, int width, int height);
 
   void draw_food(sf::RenderTarget &target, const std::vector<RenderFood> &food);
-  void draw_all_agents(sf::RenderTarget &target,
-                       const std::vector<RenderAgent> &agents,
-                       int alive_predators, int alive_prey,
-                       uint32_t selected_agent_id = 0);
+  void draw_predators(sf::RenderTarget &target,
+                      const std::vector<RenderAgent> &predators,
+                      uint32_t selected_agent_id = 0);
+  void draw_prey(sf::RenderTarget &target, const std::vector<RenderAgent> &prey,
+                 uint32_t selected_agent_id = 0);
   static void draw_vision_range(sf::RenderTarget &target, Vec2 position,
                                 float vision_range);
   static void draw_sensor_lines(sf::RenderTarget &target,

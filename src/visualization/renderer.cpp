@@ -1,5 +1,4 @@
 #include "visualization/renderer.hpp"
-#include "simulation/components.hpp"
 #include "visualization/constants.hpp"
 
 #include <SFML/Graphics/CircleShape.hpp>
@@ -163,36 +162,60 @@ void Renderer::write_circle(sf::Vertex *vertices, Vec2 position, float radius,
   }
 }
 
-void Renderer::draw_all_agents(sf::RenderTarget &target,
-                               const std::vector<RenderAgent> &agents,
-                               int alive_predators, int alive_prey,
-                               uint32_t selected_agent_id) {
+void Renderer::draw_predators(sf::RenderTarget &target,
+                              const std::vector<RenderAgent> &predators,
+                              uint32_t selected_agent_id) {
   bool has_selected = false;
   RenderAgent selected_agent;
 
-  predator_vertices_.resize(static_cast<std::size_t>(alive_predators) * 3);
-  prey_vertices_.resize(static_cast<std::size_t>(alive_prey) *
-                        kPreyCircleSegments * 3);
+  predator_vertices_.resize(predators.size() * 3);
 
   std::size_t predator_index = 0;
-  std::size_t prey_index = 0;
   const sf::Color predator_color(chart_colors::PREDATOR_R,
                                  chart_colors::PREDATOR_G,
                                  chart_colors::PREDATOR_B);
-  const sf::Color prey_color(chart_colors::PREY_R, chart_colors::PREY_G,
-                             chart_colors::PREY_B);
 
-  for (const auto &agent : agents) {
+  for (const auto &agent : predators) {
     if (selected_agent_id != 0 && agent.agent_id == selected_agent_id) {
       has_selected = true;
       selected_agent = agent;
     }
 
-    if (agent.type == IdentitySoA::TYPE_PREDATOR) {
-      write_triangle(predator_vertices_.data() + predator_index, agent,
-                     sizes::PREDATOR_RADIUS, predator_color);
-      predator_index += 3;
-      continue;
+    write_triangle(predator_vertices_.data() + predator_index, agent,
+                   sizes::PREDATOR_RADIUS, predator_color);
+    predator_index += 3;
+  }
+
+  draw_triangles(target, predator_vertices_);
+
+  if (has_selected) {
+    const sf::Color selected_fill = brighten_color(predator_color, 60);
+    const sf::Color outline_color = brighten_color(predator_color, 30);
+    selected_vertices_.resize(6);
+    write_triangle(selected_vertices_.data(), selected_agent,
+                   sizes::PREDATOR_RADIUS + visual::SELECTED_OUTLINE_THICKNESS,
+                   outline_color);
+    write_triangle(selected_vertices_.data() + 3, selected_agent,
+                   sizes::PREDATOR_RADIUS, selected_fill);
+    draw_triangles(target, selected_vertices_);
+  }
+}
+
+void Renderer::draw_prey(sf::RenderTarget &target,
+                         const std::vector<RenderAgent> &prey,
+                         uint32_t selected_agent_id) {
+  bool has_selected = false;
+  RenderAgent selected_agent;
+
+  prey_vertices_.resize(prey.size() * kPreyCircleSegments * 3);
+  std::size_t prey_index = 0;
+  const sf::Color prey_color(chart_colors::PREY_R, chart_colors::PREY_G,
+                             chart_colors::PREY_B);
+
+  for (const auto &agent : prey) {
+    if (selected_agent_id != 0 && agent.agent_id == selected_agent_id) {
+      has_selected = true;
+      selected_agent = agent;
     }
 
     write_circle(prey_vertices_.data() + prey_index, agent.position,
@@ -200,34 +223,17 @@ void Renderer::draw_all_agents(sf::RenderTarget &target,
     prey_index += kPreyCircleSegments * 3;
   }
 
-  draw_triangles(target, predator_vertices_);
   draw_triangles(target, prey_vertices_);
 
   if (has_selected) {
-    const sf::Color base_color =
-        selected_agent.type == IdentitySoA::TYPE_PREDATOR ? predator_color
-                                                          : prey_color;
-    const sf::Color selected_fill = brighten_color(base_color, 60);
-    const sf::Color outline_color = brighten_color(base_color, 30);
-    const float base_size = selected_agent.type == IdentitySoA::TYPE_PREDATOR
-                                ? sizes::PREDATOR_RADIUS
-                                : sizes::PREY_RADIUS;
-    if (selected_agent.type == IdentitySoA::TYPE_PREDATOR) {
-      selected_vertices_.resize(6);
-      write_triangle(selected_vertices_.data(), selected_agent,
-                     base_size + visual::SELECTED_OUTLINE_THICKNESS,
-                     outline_color);
-      write_triangle(selected_vertices_.data() + 3, selected_agent, base_size,
-                     selected_fill);
-    } else {
-      selected_vertices_.resize(kPreyCircleSegments * 6);
-      write_circle(selected_vertices_.data(), selected_agent.position,
-                   base_size + visual::SELECTED_OUTLINE_THICKNESS,
-                   outline_color);
-      write_circle(selected_vertices_.data() + (kPreyCircleSegments * 3),
-                   selected_agent.position, base_size, selected_fill);
-    }
-
+    const sf::Color selected_fill = brighten_color(prey_color, 60);
+    const sf::Color outline_color = brighten_color(prey_color, 30);
+    selected_vertices_.resize(kPreyCircleSegments * 6);
+    write_circle(selected_vertices_.data(), selected_agent.position,
+                 sizes::PREY_RADIUS + visual::SELECTED_OUTLINE_THICKNESS,
+                 outline_color);
+    write_circle(selected_vertices_.data() + (kPreyCircleSegments * 3),
+                 selected_agent.position, sizes::PREY_RADIUS, selected_fill);
     draw_triangles(target, selected_vertices_);
   }
 }

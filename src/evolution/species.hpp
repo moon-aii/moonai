@@ -22,6 +22,9 @@ public:
   void add_member(uint32_t entity, const Genome &genome);
   void clear_members();
   void refresh_summary();
+  void set_representative(const Genome &genome) {
+    representative_ = genome;
+  }
 
   const Genome &representative() const {
     return representative_;
@@ -37,6 +40,7 @@ public:
   }
 
   static int next_species_id();
+  static void reset_id_counter();
 
 private:
   int id_;

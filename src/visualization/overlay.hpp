@@ -24,7 +24,8 @@ struct OverlayStats {
   int alive_predators = 0;
   int alive_prey = 0;
   int active_food = 0;
-  int num_species = 0;
+  int predator_species = 0;
+  int prey_species = 0;
   float fps = 0.0f;
   int speed_multiplier = 1;
   bool paused = false;

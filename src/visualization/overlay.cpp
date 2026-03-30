@@ -241,7 +241,11 @@ void UIOverlay::draw_stats_widget(sf::RenderTarget &target,
                       chart_colors::FOOD_B));
   ty += line_h;
 
-  std::snprintf(buf, sizeof(buf), "Species: %d", stats.num_species);
+  std::snprintf(buf, sizeof(buf), "Pred Species: %d", stats.predator_species);
+  draw_text(target, buf, tx, ty, 13, sf::Color::White);
+  ty += line_h;
+
+  std::snprintf(buf, sizeof(buf), "Prey Species: %d", stats.prey_species);
   draw_text(target, buf, tx, ty, 13, sf::Color::White);
   ty += line_h;
 

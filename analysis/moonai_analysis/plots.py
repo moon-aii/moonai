@@ -21,14 +21,16 @@ from .io import RunData, load_optional_csv
 STYLE = {
     "predator_count": "#DC2626",
     "prey_count": "#16A34A",
-    "num_species": "#7C3AED",
+    "predator_species": "#7C3AED",
+    "prey_species": "#2563EB",
     "avg_complexity": "#F97316",
     "nodes": "#0EA5E9",
     "connections": "#EF4444",
 }
 
 COMPARISON_METRICS = [
-    "num_species",
+    "predator_species",
+    "prey_species",
     "avg_complexity",
     "predator_count",
     "prey_count",
@@ -137,52 +139,86 @@ def render_population_chart(aggregate: ConditionAggregate) -> EmbeddedChart:
 def render_species_chart(run: RunData, label: str) -> EmbeddedChart:
     species_path = run.path / "species.csv"
     species_frame = load_optional_csv(
-        species_path, required_columns=["step", "species_id", "size"]
+        species_path, required_columns=["step", "population", "species_id", "size"]
     )
-    figure, axes = plt.subplots(2, 1, figsize=(12, 10), sharex=True)
+    figure, axes = plt.subplots(3, 1, figsize=(12, 14), sharex=True)
 
     if species_frame is None:
-        axes[0].text(0.5, 0.5, "species.csv not available", ha="center", va="center")
-        axes[1].text(0.5, 0.5, "species.csv not available", ha="center", va="center")
+        for axis in axes:
+            axis.text(0.5, 0.5, "species.csv not available", ha="center", va="center")
         for axis in axes:
             axis.set_axis_off()
     else:
         axes[0].plot(
             run.stats["step"],
-            run.stats["num_species"],
-            color=STYLE["num_species"],
+            run.stats["predator_species"],
+            color=STYLE["predator_species"],
             linewidth=1.7,
+            label="Predator Species",
         )
-        axes[0].fill_between(
+        axes[0].plot(
             run.stats["step"],
-            0,
-            run.stats["num_species"],
-            alpha=0.15,
-            color=STYLE["num_species"],
+            run.stats["prey_species"],
+            color=STYLE["prey_species"],
+            linewidth=1.7,
+            label="Prey Species",
         )
         axes[0].set_ylabel("Species")
         axes[0].set_title(f"{label} - Species Count ({run.name})")
         axes[0].grid(True, alpha=0.3)
+        axes[0].legend(loc="upper right")
 
-        pivot = species_frame.pivot_table(
+        predator_frame = species_frame[species_frame["population"] == "predator"]
+        prey_frame = species_frame[species_frame["population"] == "prey"]
+
+        predator_pivot = predator_frame.pivot_table(
             index="step", columns="species_id", values="size", fill_value=0
         )
-        colors = [
-            plt.get_cmap("tab20")(index % 20) for index in range(len(pivot.columns))
-        ]
-        axes[1].stackplot(
-            pivot.index,
-            pivot.T.values,
-            labels=[f"S{species_id}" for species_id in pivot.columns],
-            colors=colors,
-            alpha=0.85,
+        if predator_pivot.empty:
+            axes[1].text(0.5, 0.5, "No predator species data", ha="center", va="center")
+            axes[1].set_axis_off()
+        else:
+            predator_colors = [
+                plt.get_cmap("tab20")(index % 20)
+                for index in range(len(predator_pivot.columns))
+            ]
+            axes[1].stackplot(
+                predator_pivot.index,
+                predator_pivot.T.values,
+                labels=[f"P{species_id}" for species_id in predator_pivot.columns],
+                colors=predator_colors,
+                alpha=0.85,
+            )
+            axes[1].set_ylabel("Predator Size")
+            axes[1].set_title("Predator Species Distribution")
+            axes[1].grid(True, alpha=0.3)
+            if len(predator_pivot.columns) <= 15:
+                axes[1].legend(loc="upper right", fontsize=8, ncol=3)
+
+        prey_pivot = prey_frame.pivot_table(
+            index="step", columns="species_id", values="size", fill_value=0
         )
-        axes[1].set_xlabel("Step")
-        axes[1].set_ylabel("Species Size")
-        axes[1].set_title("Species Size Distribution")
-        axes[1].grid(True, alpha=0.3)
-        if len(pivot.columns) <= 15:
-            axes[1].legend(loc="upper right", fontsize=8, ncol=3)
+        if prey_pivot.empty:
+            axes[2].text(0.5, 0.5, "No prey species data", ha="center", va="center")
+            axes[2].set_axis_off()
+        else:
+            prey_colors = [
+                plt.get_cmap("tab20b")(index % 20)
+                for index in range(len(prey_pivot.columns))
+            ]
+            axes[2].stackplot(
+                prey_pivot.index,
+                prey_pivot.T.values,
+                labels=[f"Q{species_id}" for species_id in prey_pivot.columns],
+                colors=prey_colors,
+                alpha=0.85,
+            )
+            axes[2].set_xlabel("Step")
+            axes[2].set_ylabel("Prey Size")
+            axes[2].set_title("Prey Species Distribution")
+            axes[2].grid(True, alpha=0.3)
+            if len(prey_pivot.columns) <= 15:
+                axes[2].legend(loc="upper right", fontsize=8, ncol=3)
 
     return EmbeddedChart(
         title="Species",

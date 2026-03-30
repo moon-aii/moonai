@@ -10,6 +10,10 @@ int Species::next_species_id() {
   return species_id_counter_++;
 }
 
+void Species::reset_id_counter() {
+  species_id_counter_ = 0;
+}
+
 Species::Species(const Genome &representative)
     : id_(next_species_id()), representative_(representative) {}
 

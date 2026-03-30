@@ -70,14 +70,15 @@ bool Logger::initialize(const SimulationConfig &config) {
     return false;
   }
   stats_file_ << "# master_seed=" << seed_ << "\n";
-  stats_file_ << "step,predator_count,prey_count,births,deaths,num_species,"
-                 "avg_complexity,avg_predator_energy,"
-                 "avg_prey_energy\n";
+  stats_file_
+      << "step,predator_count,prey_count,births,deaths,"
+         "predator_species,prey_species,avg_complexity,avg_predator_energy,"
+         "avg_prey_energy\n";
 
   species_file_.open(run_dir_ + "/species.csv");
   if (species_file_.is_open()) {
     species_file_ << "# master_seed=" << seed_ << "\n";
-    species_file_ << "step,species_id,size,avg_complexity\n";
+    species_file_ << "step,population,species_id,size,avg_complexity\n";
   }
 
   genomes_file_.open(run_dir_ + "/genomes.json");
@@ -95,10 +96,10 @@ void Logger::log_report(const ReportMetrics &metrics) {
   }
   stats_file_ << metrics.step << ',' << metrics.predator_count << ','
               << metrics.prey_count << ',' << metrics.births << ','
-              << metrics.deaths << ',' << metrics.num_species << ','
-              << metrics.avg_genome_complexity << ','
-              << metrics.avg_predator_energy << ',' << metrics.avg_prey_energy
-              << '\n';
+              << metrics.deaths << ',' << metrics.predator_species << ','
+              << metrics.prey_species << ',' << metrics.avg_genome_complexity
+              << ',' << metrics.avg_predator_energy << ','
+              << metrics.avg_prey_energy << '\n';
 }
 
 void Logger::log_best_genome(int step, const Genome &genome) {
@@ -119,13 +120,15 @@ void Logger::log_best_genome(int step, const Genome &genome) {
   genomes_first_entry_ = false;
 }
 
-void Logger::log_species(int step, const std::vector<Species> &species) {
+void Logger::log_species(int step, const std::vector<Species> &species,
+                         const std::string &population_name) {
   if (!species_file_.is_open()) {
     return;
   }
   for (const auto &entry : species) {
-    species_file_ << step << ',' << entry.id() << ',' << entry.members().size()
-                  << ',' << entry.average_complexity() << '\n';
+    species_file_ << step << ',' << population_name << ',' << entry.id() << ','
+                  << entry.members().size() << ',' << entry.average_complexity()
+                  << '\n';
   }
 }
 

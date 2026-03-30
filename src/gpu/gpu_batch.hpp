@@ -1,16 +1,15 @@
 #pragma once
+
 #include "gpu/gpu_data_buffer.hpp"
 #include "gpu/gpu_types.hpp"
-#include <cstddef>
-#include <cstdint>
 
-// CUDA forward declarations for non-CUDA compilation
+#include <cstddef>
+
 #ifndef __CUDACC__
 typedef struct CUstream_st *cudaStream_t;
 #endif
 
-namespace moonai {
-namespace gpu {
+namespace moonai::gpu {
 
 struct GpuStepParams {
   float world_width = 0.0f;
@@ -26,7 +25,8 @@ struct GpuStepParams {
 
 class GpuBatch {
 public:
-  GpuBatch(std::size_t max_agents, std::size_t max_food);
+  GpuBatch(std::size_t max_predators, std::size_t max_prey,
+           std::size_t max_food);
   ~GpuBatch();
 
   GpuBatch(const GpuBatch &) = delete;
@@ -34,55 +34,78 @@ public:
   GpuBatch(GpuBatch &&) = delete;
   GpuBatch &operator=(GpuBatch &&) = delete;
 
-  [[nodiscard]] GpuDataBuffer &buffer() {
-    return buffer_;
+  [[nodiscard]] GpuPopulationBuffer &predator_buffer() {
+    return predator_buffer_;
   }
-  [[nodiscard]] const GpuDataBuffer &buffer() const {
-    return buffer_;
+  [[nodiscard]] const GpuPopulationBuffer &predator_buffer() const {
+    return predator_buffer_;
+  }
+  [[nodiscard]] GpuPopulationBuffer &prey_buffer() {
+    return prey_buffer_;
+  }
+  [[nodiscard]] const GpuPopulationBuffer &prey_buffer() const {
+    return prey_buffer_;
+  }
+  [[nodiscard]] GpuFoodBuffer &food_buffer() {
+    return food_buffer_;
+  }
+  [[nodiscard]] const GpuFoodBuffer &food_buffer() const {
+    return food_buffer_;
   }
 
   void launch_build_sensors_async(const GpuStepParams &params,
-                                  std::size_t agent_count,
+                                  std::size_t predator_count,
+                                  std::size_t prey_count,
                                   std::size_t food_count);
   void launch_post_inference_async(const GpuStepParams &params,
-                                   std::size_t agent_count,
+                                   std::size_t predator_count,
+                                   std::size_t prey_count,
                                    std::size_t food_count);
 
-  void upload_async(std::size_t agent_count, std::size_t food_count);
-
-  void download_async(std::size_t agent_count, std::size_t food_count);
-
+  void upload_async(std::size_t predator_count, std::size_t prey_count,
+                    std::size_t food_count);
+  void download_async(std::size_t predator_count, std::size_t prey_count,
+                      std::size_t food_count);
   void synchronize();
-
   void mark_error();
 
   [[nodiscard]] bool ok() const noexcept {
     return !had_error_;
   }
-
   [[nodiscard]] cudaStream_t stream() const {
     return static_cast<cudaStream_t>(stream_);
   }
 
-  [[nodiscard]] std::size_t agent_capacity() const noexcept {
-    return buffer_.agent_capacity();
+  [[nodiscard]] std::size_t predator_capacity() const noexcept {
+    return predator_buffer_.capacity();
   }
-
+  [[nodiscard]] std::size_t prey_capacity() const noexcept {
+    return prey_buffer_.capacity();
+  }
   [[nodiscard]] std::size_t food_capacity() const noexcept {
-    return buffer_.food_capacity();
+    return food_buffer_.capacity();
   }
 
 private:
-  GpuDataBuffer buffer_;
+  GpuPopulationBuffer predator_buffer_;
+  GpuPopulationBuffer prey_buffer_;
+  GpuFoodBuffer food_buffer_;
 
-  int *d_agent_cell_counts_ = nullptr;
-  int *d_agent_cell_offsets_ = nullptr;
-  int *d_agent_cell_write_offsets_ = nullptr;
-  GpuSensorAgentEntry *d_agent_grid_entries_ = nullptr;
+  int *d_predator_cell_counts_ = nullptr;
+  int *d_predator_cell_offsets_ = nullptr;
+  int *d_predator_cell_write_offsets_ = nullptr;
+  GpuPopulationEntry *d_predator_grid_entries_ = nullptr;
+
+  int *d_prey_cell_counts_ = nullptr;
+  int *d_prey_cell_offsets_ = nullptr;
+  int *d_prey_cell_write_offsets_ = nullptr;
+  GpuPopulationEntry *d_prey_grid_entries_ = nullptr;
+
   int *d_food_cell_counts_ = nullptr;
   int *d_food_cell_offsets_ = nullptr;
   int *d_food_cell_write_offsets_ = nullptr;
-  GpuSensorFoodEntry *d_food_grid_entries_ = nullptr;
+  GpuFoodEntry *d_food_grid_entries_ = nullptr;
+
   std::size_t grid_cell_capacity_ = 0;
   int grid_cols_ = 0;
   int grid_rows_ = 0;
@@ -98,30 +121,4 @@ private:
   void check_launch_error();
 };
 
-void launch_build_sensors_kernel(
-    const float *d_pos_x, const float *d_pos_y, const float *d_vel_x,
-    const float *d_vel_y, const float *d_speed, const uint32_t *d_agent_alive,
-    const float *d_energy, const int *d_agent_cell_offsets,
-    const GpuSensorAgentEntry *d_agent_entries, const int *d_food_cell_offsets,
-    const GpuSensorFoodEntry *d_food_entries, float *d_sensor_inputs,
-    std::size_t agent_count, int grid_cols, int grid_rows, float grid_cell_size,
-    float world_width, float world_height, float vision_range, float max_energy,
-    cudaStream_t stream);
-
-void launch_post_inference_kernel(
-    float *d_agent_pos_x, float *d_agent_pos_y, float *d_agent_vel_x,
-    float *d_agent_vel_y, const float *d_agent_speed, float *d_agent_energy,
-    int *d_agent_age, uint32_t *d_agent_alive, const uint8_t *d_agent_types,
-    float *d_agent_distance_traveled, uint32_t *d_agent_kill_counts,
-    int *d_agent_killed_by, const float *d_agent_brain_outputs,
-    float *d_food_pos_x, float *d_food_pos_y, uint32_t *d_food_active,
-    int *d_food_consumed_by, const int *d_agent_cell_offsets,
-    const GpuSensorAgentEntry *d_agent_entries, const int *d_food_cell_offsets,
-    const GpuSensorFoodEntry *d_food_entries, int grid_cols, int grid_rows,
-    float grid_cell_size, std::size_t agent_count, std::size_t food_count,
-    float world_width, float world_height, float energy_drain, int max_age,
-    float interaction_range, float energy_gain_from_food,
-    float energy_gain_from_kill, cudaStream_t stream);
-
-} // namespace gpu
-} // namespace moonai
+} // namespace moonai::gpu

@@ -48,32 +48,19 @@ TEST(SimulationSensorsTest, EncodesDxDySentinelsAndFoodDensity) {
   simulation.initialize(state);
 
   EvolutionManager evolution(config);
-  evolution.initialize(state, SensorSoA::INPUT_COUNT, SensorSoA::OUTPUT_COUNT);
+  evolution.initialize(state, AgentSoA::INPUT_COUNT, AgentSoA::OUTPUT_COUNT);
   evolution.seed_initial_population(state);
 
-  ASSERT_EQ(state.registry.size(), 2u);
-  ASSERT_EQ(SensorSoA::INPUT_COUNT, 12);
+  ASSERT_EQ(state.predators.size(), 1u);
+  ASSERT_EQ(state.prey.size(), 1u);
+  ASSERT_EQ(AgentSoA::INPUT_COUNT, 12);
 
-  uint32_t predator = INVALID_ENTITY;
-  uint32_t prey = INVALID_ENTITY;
-  for (std::size_t idx = 0; idx < state.registry.size(); ++idx) {
-    const uint32_t entity{static_cast<uint32_t>(idx)};
-    if (state.registry.identity.type[idx] == IdentitySoA::TYPE_PREDATOR) {
-      predator = entity;
-    } else if (state.registry.identity.type[idx] == IdentitySoA::TYPE_PREY) {
-      prey = entity;
-    }
-  }
-
-  ASSERT_NE(predator, INVALID_ENTITY);
-  ASSERT_NE(prey, INVALID_ENTITY);
-
-  const std::size_t predator_idx = predator;
-  const std::size_t prey_idx = prey;
-  state.registry.positions.x[predator_idx] = 10.0f;
-  state.registry.positions.y[predator_idx] = 10.0f;
-  state.registry.positions.x[prey_idx] = 22.0f;
-  state.registry.positions.y[prey_idx] = 16.0f;
+  const std::size_t predator_idx = 0;
+  const std::size_t prey_idx = 0;
+  state.predators.positions.x[predator_idx] = 10.0f;
+  state.predators.positions.y[predator_idx] = 10.0f;
+  state.prey.positions.x[prey_idx] = 22.0f;
+  state.prey.positions.y[prey_idx] = 16.0f;
 
   simulation.step(state, evolution);
 
@@ -98,10 +85,10 @@ TEST(SimulationSensorsTest, EncodesDxDySentinelsAndFoodDensity) {
     return best;
   };
 
-  const Vec2 predator_pos{state.registry.positions.x[predator_idx],
-                          state.registry.positions.y[predator_idx]};
-  const Vec2 prey_pos{state.registry.positions.x[prey_idx],
-                      state.registry.positions.y[prey_idx]};
+  const Vec2 predator_pos{state.predators.positions.x[predator_idx],
+                          state.predators.positions.y[predator_idx]};
+  const Vec2 prey_pos{state.prey.positions.x[prey_idx],
+                      state.prey.positions.y[prey_idx]};
   const Vec2 predator_to_prey =
       wrap_diff({prey_pos.x - predator_pos.x, prey_pos.y - predator_pos.y},
                 static_cast<float>(config.grid_size));
@@ -112,7 +99,7 @@ TEST(SimulationSensorsTest, EncodesDxDySentinelsAndFoodDensity) {
   const Vec2 prey_to_food = nearest_food_delta(prey_pos);
 
   const float *predator_sensors =
-      state.registry.sensors.input_ptr(predator_idx);
+      state.predators.agents.input_ptr(predator_idx);
   EXPECT_FLOAT_EQ(predator_sensors[0], kMissingTargetSentinel);
   EXPECT_FLOAT_EQ(predator_sensors[1], kMissingTargetSentinel);
   EXPECT_NEAR(predator_sensors[2], predator_to_prey.x / config.vision_range,
@@ -130,7 +117,7 @@ TEST(SimulationSensorsTest, EncodesDxDySentinelsAndFoodDensity) {
   EXPECT_FLOAT_EQ(predator_sensors[10], 1.0f / kMaxDensity);
   EXPECT_FLOAT_EQ(predator_sensors[11], 2.0f / kMaxDensity);
 
-  const float *prey_sensors = state.registry.sensors.input_ptr(prey_idx);
+  const float *prey_sensors = state.prey.agents.input_ptr(prey_idx);
   EXPECT_NEAR(prey_sensors[0], prey_to_predator.x / config.vision_range,
               kEpsilon);
   EXPECT_NEAR(prey_sensors[1], prey_to_predator.y / config.vision_range,

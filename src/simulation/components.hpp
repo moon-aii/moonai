@@ -1,4 +1,6 @@
 #pragma once
+
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
@@ -8,105 +10,84 @@ struct PositionSoA {
   std::vector<float> x;
   std::vector<float> y;
 
-  void resize(size_t n) {
+  void resize(std::size_t n) {
     x.resize(n);
     y.resize(n);
   }
-  size_t size() const {
+
+  std::size_t size() const {
     return x.size();
   }
 };
 
-struct MotionSoA {
-  std::vector<float> vel_x;
-  std::vector<float> vel_y;
-  std::vector<float> speed;
-
-  void resize(size_t n) {
-    vel_x.resize(n);
-    vel_y.resize(n);
-    speed.resize(n);
-  }
-  size_t size() const {
-    return vel_x.size();
-  }
-};
-
-struct VitalsSoA {
-  std::vector<float> energy;
-  std::vector<int> age;
-  std::vector<uint8_t> alive;
-
-  void resize(size_t n) {
-    energy.resize(n);
-    age.resize(n);
-    alive.resize(n);
-  }
-  size_t size() const {
-    return energy.size();
-  }
-};
-
-struct IdentitySoA {
-  static constexpr uint8_t TYPE_PREDATOR = 0;
-  static constexpr uint8_t TYPE_PREY = 1;
-
-  std::vector<uint8_t> type;
-  std::vector<uint32_t> species_id;
-  std::vector<uint32_t> entity_id;
-
-  void resize(size_t n) {
-    type.resize(n);
-    species_id.resize(n);
-    entity_id.resize(n);
-  }
-  size_t size() const {
-    return type.size();
-  }
-};
-
-struct SensorSoA {
+struct AgentSoA {
   static constexpr int INPUT_COUNT = 12;
   static constexpr int OUTPUT_COUNT = 2;
 
-  std::vector<float> inputs;
-
-  void resize(size_t n) {
-    inputs.resize(n * INPUT_COUNT);
-  }
-
-  float *input_ptr(size_t entity) {
-    return &inputs[entity * INPUT_COUNT];
-  }
-  const float *input_ptr(size_t entity) const {
-    return &inputs[entity * INPUT_COUNT];
-  }
-};
-
-struct StatsSoA {
-  std::vector<int> kills;
-  std::vector<int> food_eaten;
+  std::vector<float> vel_x;
+  std::vector<float> vel_y;
+  std::vector<float> speed;
+  std::vector<float> energy;
+  std::vector<int> age;
+  std::vector<uint8_t> alive;
+  std::vector<uint32_t> species_id;
+  std::vector<uint32_t> entity_id;
+  std::vector<float> sensors;
+  std::vector<float> decision_x;
+  std::vector<float> decision_y;
   std::vector<float> distance_traveled;
   std::vector<int> offspring_count;
 
-  void resize(size_t n) {
-    kills.resize(n);
-    food_eaten.resize(n);
+  void resize(std::size_t n) {
+    vel_x.resize(n);
+    vel_y.resize(n);
+    speed.resize(n);
+    energy.resize(n);
+    age.resize(n);
+    alive.resize(n);
+    species_id.resize(n);
+    entity_id.resize(n);
+    sensors.resize(n * INPUT_COUNT);
+    decision_x.resize(n);
+    decision_y.resize(n);
     distance_traveled.resize(n);
     offspring_count.resize(n);
   }
-  size_t size() const {
+
+  std::size_t size() const {
+    return vel_x.size();
+  }
+
+  float *input_ptr(std::size_t entity) {
+    return &sensors[entity * INPUT_COUNT];
+  }
+
+  const float *input_ptr(std::size_t entity) const {
+    return &sensors[entity * INPUT_COUNT];
+  }
+};
+
+struct PredatorSoA {
+  std::vector<int> kills;
+
+  void resize(std::size_t n) {
+    kills.resize(n);
+  }
+
+  std::size_t size() const {
     return kills.size();
   }
 };
 
-struct BrainSoA {
-  std::vector<float> decision_x;
-  std::vector<float> decision_y;
+struct PreySoA {
+  std::vector<int> food_eaten;
 
-  void resize(size_t n) {
-    decision_x.resize(n);
-    decision_y.resize(n);
+  void resize(std::size_t n) {
+    food_eaten.resize(n);
+  }
+
+  std::size_t size() const {
+    return food_eaten.size();
   }
 };
 

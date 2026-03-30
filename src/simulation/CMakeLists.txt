@@ -1,5 +1,4 @@
 set(MOONAI_SIMULATION_SOURCES
-    food_store.cpp
     simulation_manager.cpp
     simulation_manager_cpu.cpp
     simulation_manager_gpu.cpp
