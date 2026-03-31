@@ -1,10 +1,10 @@
 #pragma once
 
+#include "core/app_state.hpp"
 #include "core/config.hpp"
 #include "core/random.hpp"
 #include "core/types.hpp"
 #include "evolution/genome.hpp"
-#include "simulation/registry.hpp"
 
 #include <memory>
 #include <vector>

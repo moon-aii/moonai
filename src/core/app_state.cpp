@@ -1,4 +1,4 @@
-#include "simulation/registry.hpp"
+#include "core/app_state.hpp"
 
 #include "core/deterministic_respawn.hpp"
 

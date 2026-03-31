@@ -3,7 +3,6 @@ set(MOONAI_SIMULATION_SOURCES
     simulation_manager_cpu.cpp
     simulation_manager_gpu.cpp
     simulation_step_systems.cpp
-    registry.cpp
 )
 
 add_library(moonai_simulation STATIC ${MOONAI_SIMULATION_SOURCES})

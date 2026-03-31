@@ -1,7 +1,6 @@
 #include "core/app_state.hpp"
 #include "core/random.hpp"
 #include "evolution/evolution_manager.hpp"
-#include "simulation/registry.hpp"
 #include "simulation/simulation_manager.hpp"
 #include "simulation/simulation_step_systems.hpp"
 
@@ -57,8 +56,8 @@ TEST(SimulationSensorsTest, EncodesDxDySentinelsAndFoodDensity) {
   std::vector<float> predator_sensors;
   std::vector<float> prey_sensors;
   simulation_detail::build_sensors(state.predator, state.predator, state.prey,
-                                   state.food, config,
-                                   config.predator_speed, predator_sensors);
+                                   state.food, config, config.predator_speed,
+                                   predator_sensors);
   simulation_detail::build_sensors(state.prey, state.predator, state.prey,
                                    state.food, config, config.prey_speed,
                                    prey_sensors);
