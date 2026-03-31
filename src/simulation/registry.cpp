@@ -18,9 +18,6 @@ void resize_registry(AgentRegistry &registry, std::size_t new_size) {
   registry.alive.resize(new_size);
   registry.species_id.resize(new_size);
   registry.entity_id.resize(new_size);
-  registry.sensors.resize(new_size * AgentRegistry::INPUT_COUNT);
-  registry.decision_x.resize(new_size);
-  registry.decision_y.resize(new_size);
   registry.consumption.resize(new_size);
 }
 
@@ -40,12 +37,6 @@ void swap_agent_fields(AgentRegistry &registry, std::size_t a, std::size_t b) {
   swap(registry.alive[a], registry.alive[b]);
   swap(registry.species_id[a], registry.species_id[b]);
   swap(registry.entity_id[a], registry.entity_id[b]);
-  for (int i = 0; i < AgentRegistry::INPUT_COUNT; ++i) {
-    swap(registry.sensors[a * AgentRegistry::INPUT_COUNT + i],
-         registry.sensors[b * AgentRegistry::INPUT_COUNT + i]);
-  }
-  swap(registry.decision_x[a], registry.decision_x[b]);
-  swap(registry.decision_y[a], registry.decision_y[b]);
   swap(registry.consumption[a], registry.consumption[b]);
 }
 
@@ -59,9 +50,6 @@ void pop_back_agent_fields(AgentRegistry &registry, std::size_t new_size) {
   registry.alive.pop_back();
   registry.species_id.pop_back();
   registry.entity_id.pop_back();
-  registry.sensors.resize(new_size * AgentRegistry::INPUT_COUNT);
-  registry.decision_x.pop_back();
-  registry.decision_y.pop_back();
   registry.consumption.pop_back();
 }
 

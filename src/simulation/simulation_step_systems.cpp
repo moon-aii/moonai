@@ -31,7 +31,7 @@ void build_sensors(AgentRegistry &self_agents,
                    const AgentRegistry &predator_agents,
                    const AgentRegistry &prey_agents,
                    const FoodStore &food_store, const SimulationConfig &config,
-                   float agent_speed) {
+                   float agent_speed, std::vector<float> &sensors_out) {
   const float world_size = static_cast<float>(config.grid_size);
   const float vision = config.vision_range;
   const float vision_sq = vision * vision;
@@ -39,8 +39,10 @@ void build_sensors(AgentRegistry &self_agents,
   const bool predators_are_self = &self_agents == &predator_agents;
   const bool prey_are_self = &self_agents == &prey_agents;
 
+  sensors_out.resize(self_count * SENSOR_COUNT);
+
   for (uint32_t i = 0; i < self_count; ++i) {
-    float *sensor_ptr = self_agents.input_ptr(i);
+    float *sensor_ptr = &sensors_out[i * SENSOR_COUNT];
     sensor_ptr[0] = kMissingTargetSentinel;
     sensor_ptr[1] = kMissingTargetSentinel;
     sensor_ptr[2] = kMissingTargetSentinel;
@@ -53,6 +55,8 @@ void build_sensors(AgentRegistry &self_agents,
     sensor_ptr[9] = 0.0f;
     sensor_ptr[10] = 0.0f;
     sensor_ptr[11] = 0.0f;
+    sensor_ptr[12] = 0.0f; // bound_x
+    sensor_ptr[13] = 0.0f; // bound_y
 
     if (!self_agents.alive[i]) {
       continue;
@@ -158,6 +162,27 @@ void build_sensors(AgentRegistry &self_agents,
         std::clamp(static_cast<float>(local_prey) / kMaxDensity, 0.0f, 1.0f);
     sensor_ptr[11] =
         std::clamp(static_cast<float>(local_food) / kMaxDensity, 0.0f, 1.0f);
+
+    // Boundary sensors: bound_x and bound_y
+    // Sensor 12 (bound_x): negative = approaching right wall, positive =
+    // approaching left wall
+    const float dist_left = pos.x;
+    const float dist_right = world_size - pos.x;
+    if (dist_left < vision) {
+      sensor_ptr[12] = 1.0f - (dist_left / vision);
+    } else if (dist_right < vision) {
+      sensor_ptr[12] = -(1.0f - (dist_right / vision));
+    }
+
+    // Sensor 13 (bound_y): negative = approaching bottom wall, positive =
+    // approaching top wall
+    const float dist_top = pos.y;
+    const float dist_bottom = world_size - pos.y;
+    if (dist_top < vision) {
+      sensor_ptr[13] = 1.0f - (dist_top / vision);
+    } else if (dist_bottom < vision) {
+      sensor_ptr[13] = -(1.0f - (dist_bottom / vision));
+    }
   }
 }
 
@@ -294,7 +319,7 @@ void process_combat(AgentRegistry &predator_registry,
 }
 
 void apply_movement(AgentRegistry &agents, const SimulationConfig &config,
-                    float agent_speed) {
+                    float agent_speed, const std::vector<float> &decisions) {
   const float world_size = static_cast<float>(config.grid_size);
   const uint32_t entity_count = static_cast<uint32_t>(agents.size());
 
@@ -303,8 +328,8 @@ void apply_movement(AgentRegistry &agents, const SimulationConfig &config,
       continue;
     }
 
-    float dx = agents.decision_x[i];
-    float dy = agents.decision_y[i];
+    float dx = decisions[i * OUTPUT_COUNT];
+    float dy = decisions[i * OUTPUT_COUNT + 1];
     const float len = std::sqrt(dx * dx + dy * dy);
     if (len > 1e-6f) {
       dx /= len;

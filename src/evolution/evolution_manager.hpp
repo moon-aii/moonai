@@ -34,7 +34,11 @@ public:
 
   void refresh_species(AppState &state);
 
-  void compute_actions(AppState &state);
+  void compute_actions(AppState &state,
+                       const std::vector<float> &predator_sensors,
+                       const std::vector<float> &prey_sensors,
+                       std::vector<float> &predator_decisions,
+                       std::vector<float> &prey_decisions);
 
   void on_predator_destroyed(AppState &state, uint32_t e);
   void on_predator_moved(AppState &state, uint32_t from, uint32_t to);
@@ -57,7 +61,9 @@ private:
                              const Genome &parent_b) const;
   void initialize_population(PopulationEvolutionState &population) const;
   void compute_actions_for_population(PopulationEvolutionState &population,
-                                      AgentRegistry &agents) const;
+                                      AgentRegistry &agents,
+                                      const std::vector<float> &sensors,
+                                      std::vector<float> &decisions_out) const;
   void refresh_population_species(PopulationEvolutionState &population,
                                   AgentRegistry &agents) const;
   void on_population_destroyed(PopulationEvolutionState &population,

@@ -37,9 +37,6 @@ struct FoodStore {
 };
 
 struct AgentRegistry {
-  static constexpr int INPUT_COUNT = 12;
-  static constexpr int OUTPUT_COUNT = 2;
-
   std::vector<float> pos_x;
   std::vector<float> pos_y;
   std::vector<float> vel_x;
@@ -49,9 +46,6 @@ struct AgentRegistry {
   std::vector<uint8_t> alive;
   std::vector<uint32_t> species_id;
   std::vector<uint32_t> entity_id;
-  std::vector<float> sensors;
-  std::vector<float> decision_x;
-  std::vector<float> decision_y;
   std::vector<int> consumption;
 
   uint32_t create();
@@ -63,14 +57,6 @@ struct AgentRegistry {
   void clear();
   RegistryCompactionResult compact_dead();
   uint32_t find_by_agent_id(uint32_t agent_id) const;
-
-  float *input_ptr(std::size_t entity) {
-    return &sensors[entity * INPUT_COUNT];
-  }
-
-  const float *input_ptr(std::size_t entity) const {
-    return &sensors[entity * INPUT_COUNT];
-  }
 
 private:
   void resize(std::size_t size);

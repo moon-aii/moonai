@@ -70,11 +70,6 @@ void EvolutionManager::seed_initial_population(AppState &state) {
     state.predators.alive[idx] = 1;
     state.predators.species_id[idx] = 0;
     state.predators.entity_id[idx] = state.runtime.next_agent_id++;
-    std::fill(state.predators.input_ptr(idx),
-              state.predators.input_ptr(idx) + AgentRegistry::INPUT_COUNT,
-              0.0f);
-    state.predators.decision_x[idx] = 0.0f;
-    state.predators.decision_y[idx] = 0.0f;
     state.predators.consumption[idx] = 0;
   };
 
@@ -98,10 +93,6 @@ void EvolutionManager::seed_initial_population(AppState &state) {
     state.prey.alive[idx] = 1;
     state.prey.species_id[idx] = 0;
     state.prey.entity_id[idx] = state.runtime.next_agent_id++;
-    std::fill(state.prey.input_ptr(idx),
-              state.prey.input_ptr(idx) + AgentRegistry::INPUT_COUNT, 0.0f);
-    state.prey.decision_x[idx] = 0.0f;
-    state.prey.decision_y[idx] = 0.0f;
     state.prey.consumption[idx] = 0;
   };
 
@@ -146,10 +137,6 @@ uint32_t EvolutionManager::create_predator_offspring(AppState &state,
   state.predators.alive[idx] = 1;
   state.predators.species_id[idx] = state.predators.species_id[parent_a];
   state.predators.entity_id[idx] = state.runtime.next_agent_id++;
-  std::fill(state.predators.input_ptr(idx),
-            state.predators.input_ptr(idx) + AgentRegistry::INPUT_COUNT, 0.0f);
-  state.predators.decision_x[idx] = 0.0f;
-  state.predators.decision_y[idx] = 0.0f;
   state.predators.consumption[idx] = 0;
 
   if (idx >= state.evolution.predators.genomes.size()) {
@@ -195,10 +182,6 @@ uint32_t EvolutionManager::create_prey_offspring(AppState &state,
   state.prey.alive[idx] = 1;
   state.prey.species_id[idx] = state.prey.species_id[parent_a];
   state.prey.entity_id[idx] = state.runtime.next_agent_id++;
-  std::fill(state.prey.input_ptr(idx),
-            state.prey.input_ptr(idx) + AgentRegistry::INPUT_COUNT, 0.0f);
-  state.prey.decision_x[idx] = 0.0f;
-  state.prey.decision_y[idx] = 0.0f;
   state.prey.consumption[idx] = 0;
 
   if (idx >= state.evolution.prey.genomes.size()) {

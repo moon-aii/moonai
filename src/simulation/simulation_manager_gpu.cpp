@@ -333,16 +333,10 @@ void SimulationManager::step_gpu(AppState &state, EvolutionManager &evolution) {
                   predator_count * sizeof(float));
       std::memcpy(state.predators.age.data(), predator_buffer.host_age(),
                   predator_count * sizeof(int));
-      // Sensor inputs are device-only, not copied back to CPU
+      // Sensor inputs and brain outputs are device-only, not copied back to CPU
       for (uint32_t i = 0; i < static_cast<uint32_t>(predator_count); ++i) {
         state.predators.alive[i] =
             static_cast<uint8_t>(predator_buffer.host_alive()[i]);
-        state.predators.decision_x[i] =
-            predator_buffer
-                .host_brain_outputs()[i * AgentRegistry::OUTPUT_COUNT];
-        state.predators.decision_y[i] =
-            predator_buffer
-                .host_brain_outputs()[i * AgentRegistry::OUTPUT_COUNT + 1];
       }
     }
 
@@ -359,14 +353,9 @@ void SimulationManager::step_gpu(AppState &state, EvolutionManager &evolution) {
                   prey_count * sizeof(float));
       std::memcpy(state.prey.age.data(), prey_buffer.host_age(),
                   prey_count * sizeof(int));
-      // Sensor inputs are device-only, not copied back to CPU
+      // Sensor inputs and brain outputs are device-only, not copied back to CPU
       for (uint32_t i = 0; i < static_cast<uint32_t>(prey_count); ++i) {
         state.prey.alive[i] = static_cast<uint8_t>(prey_buffer.host_alive()[i]);
-        state.prey.decision_x[i] =
-            prey_buffer.host_brain_outputs()[i * AgentRegistry::OUTPUT_COUNT];
-        state.prey.decision_y[i] =
-            prey_buffer
-                .host_brain_outputs()[i * AgentRegistry::OUTPUT_COUNT + 1];
       }
     }
 

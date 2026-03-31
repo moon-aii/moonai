@@ -2,6 +2,7 @@
 
 #include "core/profiler_macros.hpp"
 #include "data/metrics.hpp"
+#include "simulation/simulation_step_systems.hpp"
 #include "visualization/frame_snapshot.hpp"
 
 #include <algorithm>
@@ -54,8 +55,8 @@ App::App(AppConfig cfg)
   state_.ui.speed_multiplier = cfg_.speed_multiplier;
 
   simulation_.initialize(state_);
-  evolution_.initialize(state_, AgentRegistry::INPUT_COUNT,
-                        AgentRegistry::OUTPUT_COUNT);
+  evolution_.initialize(state_, simulation_detail::SENSOR_COUNT,
+                        simulation_detail::OUTPUT_COUNT);
   evolution_.seed_initial_population(state_);
   metrics::refresh_live(state_);
 
@@ -92,9 +93,9 @@ void App::step() {
     const uint32_t child = evolution_.create_predator_offspring(
         state_, pair.parent_a, pair.parent_b, pair.spawn_position);
     if (child != INVALID_ENTITY) {
-      state_.runtime.last_step_events.push_back(SimEvent{
-          SimEvent::Birth, state_.predators.entity_id[child],
-          state_.predators.entity_id[child], pair.spawn_position});
+      state_.runtime.last_step_events.push_back(
+          SimEvent{SimEvent::Birth, state_.predators.entity_id[child],
+                   state_.predators.entity_id[child], pair.spawn_position});
       ++state_.runtime.step_events.births;
     }
   }

@@ -131,7 +131,7 @@ __global__ void kernel_build_sensors(
     return;
   }
 
-  float *out = sensor_inputs + idx * 12;
+  float *out = sensor_inputs + idx * 14;
   out[0] = kMissingTargetSentinel;
   out[1] = kMissingTargetSentinel;
   out[2] = kMissingTargetSentinel;
@@ -144,6 +144,8 @@ __global__ void kernel_build_sensors(
   out[9] = 0.0f;
   out[10] = 0.0f;
   out[11] = 0.0f;
+  out[12] = 0.0f;  // bound_x
+  out[13] = 0.0f;  // bound_y
 
   if (self_alive[idx] == 0) {
     return;
@@ -269,6 +271,25 @@ __global__ void kernel_build_sensors(
   out[9] = clampf(static_cast<float>(local_predators) / kMaxDensity, 0.0f, 1.0f);
   out[10] = clampf(static_cast<float>(local_prey) / kMaxDensity, 0.0f, 1.0f);
   out[11] = clampf(static_cast<float>(local_food) / kMaxDensity, 0.0f, 1.0f);
+
+  // Boundary sensors: bound_x and bound_y
+  // Sensor 12 (bound_x): negative = approaching right wall, positive = approaching left wall
+  const float dist_left = px;
+  const float dist_right = world_width - px;
+  if (dist_left < vision_range) {
+    out[12] = 1.0f - (dist_left / vision_range);
+  } else if (dist_right < vision_range) {
+    out[12] = -(1.0f - (dist_right / vision_range));
+  }
+
+  // Sensor 13 (bound_y): negative = approaching bottom wall, positive = approaching top wall
+  const float dist_top = py;
+  const float dist_bottom = world_height - py;
+  if (dist_top < vision_range) {
+    out[13] = 1.0f - (dist_top / vision_range);
+  } else if (dist_bottom < vision_range) {
+    out[13] = -(1.0f - (dist_bottom / vision_range));
+  }
 }
 
 __global__ void kernel_update_vitals(float *__restrict__ energy,

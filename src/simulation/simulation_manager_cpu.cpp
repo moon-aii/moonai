@@ -206,13 +206,20 @@ void SimulationManager::step(AppState &state, EvolutionManager &evolution) {
   std::vector<int> killed_by(state.prey.size(), -1);
   std::vector<uint32_t> kill_counts(state.predators.size(), 0U);
 
+  std::vector<float> predator_sensors;
+  std::vector<float> prey_sensors;
   simulation_detail::build_sensors(state.predators, state.predators, state.prey,
                                    state.food_store, config_,
-                                   config_.predator_speed);
+                                   config_.predator_speed, predator_sensors);
   simulation_detail::build_sensors(state.prey, state.predators, state.prey,
                                    state.food_store, config_,
-                                   config_.prey_speed);
-  evolution.compute_actions(state);
+                                   config_.prey_speed, prey_sensors);
+
+  std::vector<float> predator_decisions;
+  std::vector<float> prey_decisions;
+  evolution.compute_actions(state, predator_sensors, prey_sensors,
+                            predator_decisions, prey_decisions);
+
   simulation_detail::update_vitals(state.predators, config_);
   simulation_detail::update_vitals(state.prey, config_);
   simulation_detail::process_food(state.prey, state.food_store, config_,
@@ -220,8 +227,9 @@ void SimulationManager::step(AppState &state, EvolutionManager &evolution) {
   simulation_detail::process_combat(state.predators, state.prey, config_,
                                     killed_by, kill_counts);
   simulation_detail::apply_movement(state.predators, config_,
-                                    config_.predator_speed);
-  simulation_detail::apply_movement(state.prey, config_, config_.prey_speed);
+                                    config_.predator_speed, predator_decisions);
+  simulation_detail::apply_movement(state.prey, config_, config_.prey_speed,
+                                    prey_decisions);
 
   simulation_detail::collect_food_events(state.prey, state.food_store,
                                          was_food_active, food_consumed_by,
