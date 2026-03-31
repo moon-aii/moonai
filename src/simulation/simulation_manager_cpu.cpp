@@ -194,7 +194,6 @@ void SimulationManager::refresh_world_state_after_step(AppState &state) {
 void SimulationManager::step(AppState &state, EvolutionManager &evolution) {
   MOONAI_PROFILE_SCOPE("simulation_step_cpu");
 
-  state.runtime.last_step_events.clear();
   state.runtime.pending_predator_offspring.clear();
   state.runtime.pending_prey_offspring.clear();
   state.runtime.step_events.clear();
@@ -233,14 +232,14 @@ void SimulationManager::step(AppState &state, EvolutionManager &evolution) {
 
   simulation_detail::collect_food_events(state.prey, state.food_store,
                                          was_food_active, food_consumed_by,
-                                         state.runtime.last_step_events);
+                                         state.runtime.step_events);
   simulation_detail::collect_combat_events(state.predators, state.prey,
                                            killed_by, kill_counts,
-                                           state.runtime.last_step_events);
+                                           state.runtime.step_events);
   simulation_detail::collect_death_events(state.predators, was_predator_alive,
-                                          state.runtime.last_step_events);
+                                          state.runtime.step_events);
   simulation_detail::collect_death_events(state.prey, was_prey_alive,
-                                          state.runtime.last_step_events);
+                                          state.runtime.step_events);
 
   compact_predators(state, evolution);
   compact_prey(state, evolution);
@@ -248,8 +247,6 @@ void SimulationManager::step(AppState &state, EvolutionManager &evolution) {
   state.runtime.pending_predator_offspring =
       find_predator_reproduction_pairs(state);
   state.runtime.pending_prey_offspring = find_prey_reproduction_pairs(state);
-  simulation_detail::accumulate_events(state.runtime.step_events,
-                                       state.runtime.last_step_events);
 }
 
 std::vector<PendingOffspring>

@@ -14,14 +14,6 @@
 
 namespace moonai {
 
-struct SimEvent {
-  enum Type : uint8_t { Kill, Food, Birth, Death };
-  Type type;
-  uint32_t agent_id = 0;
-  uint32_t target_id = 0;
-  Vec2 position;
-};
-
 struct PendingOffspring {
   uint32_t parent_a = INVALID_ENTITY;
   uint32_t parent_b = INVALID_ENTITY;
@@ -76,7 +68,6 @@ struct RuntimeState {
   Random rng;
   uint32_t next_agent_id = 1;
   int step = 0;
-  std::vector<SimEvent> last_step_events;
   std::vector<PendingOffspring> pending_predator_offspring;
   std::vector<PendingOffspring> pending_prey_offspring;
   EventCounters step_events;

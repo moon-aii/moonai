@@ -29,16 +29,14 @@ void collect_food_events(AgentRegistry &prey_registry,
                          const FoodStore &food_store,
                          const std::vector<uint8_t> &was_food_active,
                          const std::vector<int> &food_consumed_by,
-                         std::vector<SimEvent> &events);
+                         EventCounters &counters);
 void collect_combat_events(AgentRegistry &predator_registry,
                            const AgentRegistry &prey_registry,
                            const std::vector<int> &killed_by,
                            const std::vector<uint32_t> &kill_counts,
-                           std::vector<SimEvent> &events);
+                           EventCounters &counters);
 void collect_death_events(const AgentRegistry &registry,
                           const std::vector<uint8_t> &was_alive,
-                          std::vector<SimEvent> &events);
-void accumulate_events(EventCounters &counters,
-                       const std::vector<SimEvent> &events);
+                          EventCounters &counters);
 
 } // namespace moonai::simulation_detail

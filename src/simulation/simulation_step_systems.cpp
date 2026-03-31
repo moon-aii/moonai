@@ -366,7 +366,7 @@ void collect_food_events(AgentRegistry &prey_registry,
                          const FoodStore &food_store,
                          const std::vector<uint8_t> &was_food_active,
                          const std::vector<int> &food_consumed_by,
-                         std::vector<SimEvent> &events) {
+                         EventCounters &counters) {
   for (std::size_t food_idx = 0; food_idx < food_store.size(); ++food_idx) {
     const int prey_idx = food_consumed_by[food_idx];
     if (!was_food_active[food_idx] || food_store.active[food_idx] ||
@@ -376,9 +376,7 @@ void collect_food_events(AgentRegistry &prey_registry,
     }
 
     prey_registry.consumption[prey_idx] += 1;
-    events.push_back(SimEvent{
-        SimEvent::Food, prey_registry.entity_id[prey_idx], 0,
-        Vec2{prey_registry.pos_x[prey_idx], prey_registry.pos_y[prey_idx]}});
+    ++counters.food_eaten;
   }
 }
 
@@ -386,7 +384,7 @@ void collect_combat_events(AgentRegistry &predator_registry,
                            const AgentRegistry &prey_registry,
                            const std::vector<int> &killed_by,
                            const std::vector<uint32_t> &kill_counts,
-                           std::vector<SimEvent> &events) {
+                           EventCounters &counters) {
   const uint32_t predator_count =
       static_cast<uint32_t>(predator_registry.size());
   for (uint32_t predator_idx = 0; predator_idx < predator_count;
@@ -405,41 +403,15 @@ void collect_combat_events(AgentRegistry &predator_registry,
       continue;
     }
 
-    events.push_back(SimEvent{
-        SimEvent::Kill, predator_registry.entity_id[killer_idx],
-        prey_registry.entity_id[prey_idx],
-        Vec2{prey_registry.pos_x[prey_idx], prey_registry.pos_y[prey_idx]}});
+    ++counters.kills;
   }
 }
 
 void collect_death_events(const AgentRegistry &registry,
                           const std::vector<uint8_t> &was_alive,
-                          std::vector<SimEvent> &events) {
-  collect_death_events_impl(registry, was_alive, [&](uint32_t idx) {
-    events.push_back(SimEvent{SimEvent::Death, registry.entity_id[idx],
-                              registry.entity_id[idx],
-                              Vec2{registry.pos_x[idx], registry.pos_y[idx]}});
-  });
-}
-
-void accumulate_events(EventCounters &counters,
-                       const std::vector<SimEvent> &events) {
-  for (const auto &event : events) {
-    switch (event.type) {
-      case SimEvent::Kill:
-        ++counters.kills;
-        break;
-      case SimEvent::Food:
-        ++counters.food_eaten;
-        break;
-      case SimEvent::Birth:
-        ++counters.births;
-        break;
-      case SimEvent::Death:
-        ++counters.deaths;
-        break;
-    }
-  }
+                          EventCounters &counters) {
+  collect_death_events_impl(registry, was_alive,
+                            [&](uint32_t idx) { ++counters.deaths; });
 }
 
 } // namespace moonai::simulation_detail

@@ -45,9 +45,7 @@ void SimulationManager::collect_gpu_step_events(
     }
 
     state.prey.consumption[prey_idx] += 1;
-    state.runtime.last_step_events.push_back(
-        SimEvent{SimEvent::Food, state.prey.entity_id[prey_idx], 0,
-                 Vec2{state.prey.pos_x[prey_idx], state.prey.pos_y[prey_idx]}});
+    ++state.runtime.step_events.food_eaten;
   }
 
   const uint32_t predator_count = static_cast<uint32_t>(state.predators.size());
@@ -64,10 +62,7 @@ void SimulationManager::collect_gpu_step_events(
     const int killer_idx = prey_buffer.host_claimed_by()[prey_idx];
     if (killer_idx >= 0 &&
         static_cast<uint32_t>(killer_idx) < state.predators.size()) {
-      state.runtime.last_step_events.push_back(SimEvent{
-          SimEvent::Kill, state.predators.entity_id[killer_idx],
-          state.prey.entity_id[prey_idx],
-          Vec2{state.prey.pos_x[prey_idx], state.prey.pos_y[prey_idx]}});
+      ++state.runtime.step_events.kills;
     }
   }
 
@@ -75,20 +70,13 @@ void SimulationManager::collect_gpu_step_events(
        ++predator_idx) {
     if (was_predator_alive[predator_idx] &&
         state.predators.alive[predator_idx] == 0) {
-      state.runtime.last_step_events.push_back(
-          SimEvent{SimEvent::Death, state.predators.entity_id[predator_idx],
-                   state.predators.entity_id[predator_idx],
-                   Vec2{state.predators.pos_x[predator_idx],
-                        state.predators.pos_y[predator_idx]}});
+      ++state.runtime.step_events.deaths;
     }
   }
 
   for (uint32_t prey_idx = 0; prey_idx < prey_count; ++prey_idx) {
     if (was_prey_alive[prey_idx] && state.prey.alive[prey_idx] == 0) {
-      state.runtime.last_step_events.push_back(SimEvent{
-          SimEvent::Death, state.prey.entity_id[prey_idx],
-          state.prey.entity_id[prey_idx],
-          Vec2{state.prey.pos_x[prey_idx], state.prey.pos_y[prey_idx]}});
+      ++state.runtime.step_events.deaths;
     }
   }
 }
@@ -163,7 +151,6 @@ void SimulationManager::enable_gpu(bool enable) {
 void SimulationManager::step_gpu(AppState &state, EvolutionManager &evolution) {
   MOONAI_PROFILE_SCOPE("simulation_step_gpu");
 
-  state.runtime.last_step_events.clear();
   state.runtime.pending_predator_offspring.clear();
   state.runtime.pending_prey_offspring.clear();
   state.runtime.step_events.clear();
@@ -379,8 +366,6 @@ void SimulationManager::step_gpu(AppState &state, EvolutionManager &evolution) {
   state.runtime.pending_predator_offspring =
       find_predator_reproduction_pairs(state);
   state.runtime.pending_prey_offspring = find_prey_reproduction_pairs(state);
-  simulation_detail::accumulate_events(state.runtime.step_events,
-                                       state.runtime.last_step_events);
 }
 
 } // namespace moonai

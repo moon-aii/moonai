@@ -93,9 +93,6 @@ void App::step() {
     const uint32_t child = evolution_.create_predator_offspring(
         state_, pair.parent_a, pair.parent_b, pair.spawn_position);
     if (child != INVALID_ENTITY) {
-      state_.runtime.last_step_events.push_back(
-          SimEvent{SimEvent::Birth, state_.predators.entity_id[child],
-                   state_.predators.entity_id[child], pair.spawn_position});
       ++state_.runtime.step_events.births;
     }
   }
@@ -104,9 +101,6 @@ void App::step() {
     const uint32_t child = evolution_.create_prey_offspring(
         state_, pair.parent_a, pair.parent_b, pair.spawn_position);
     if (child != INVALID_ENTITY) {
-      state_.runtime.last_step_events.push_back(
-          SimEvent{SimEvent::Birth, state_.prey.entity_id[child],
-                   state_.prey.entity_id[child], pair.spawn_position});
       ++state_.runtime.step_events.births;
     }
   }
