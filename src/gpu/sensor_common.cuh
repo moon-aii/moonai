@@ -35,7 +35,6 @@ struct SensorBuildView {
   float world_width;
   float world_height;
   float max_energy;
-  bool has_walls;
 };
 
 __device__ __forceinline__ float sensor_clampf(float value, float min_value,
@@ -43,51 +42,18 @@ __device__ __forceinline__ float sensor_clampf(float value, float min_value,
   return fminf(fmaxf(value, min_value), max_value);
 }
 
-template <bool HasWalls>
-__device__ __forceinline__ void
-sensor_apply_wrap(float &dx, float &dy, float world_width, float world_height) {
-  if constexpr (HasWalls) {
-    (void)world_width;
-    (void)world_height;
-    return;
-  }
-
-  const float half_width = world_width * 0.5f;
-  const float half_height = world_height * 0.5f;
-  if (fabsf(dx) > half_width) {
-    dx = dx > 0.0f ? dx - world_width : dx + world_width;
-  }
-  if (fabsf(dy) > half_height) {
-    dy = dy > 0.0f ? dy - world_height : dy + world_height;
-  }
-}
-
-__device__ __forceinline__ void sensor_apply_wrap(float &dx, float &dy,
-                                                  float world_width,
-                                                  float world_height,
-                                                  bool has_walls) {
-  if (has_walls) {
-    sensor_apply_wrap<true>(dx, dy, world_width, world_height);
-  } else {
-    sensor_apply_wrap<false>(dx, dy, world_width, world_height);
-  }
-}
-
 __device__ __forceinline__ int sensor_clamp_index(int value, int min_value,
                                                   int max_value) {
   return max(min_value, min(value, max_value));
 }
 
-template <bool HasWalls>
 __device__ __forceinline__ bool
 cell_may_intersect_radius(int cx, int cy, float cell_size, float origin_x,
-                          float origin_y, float radius, float world_width,
-                          float world_height) {
+                          float origin_y, float radius) {
   const float center_x = (static_cast<float>(cx) + 0.5f) * cell_size;
   const float center_y = (static_cast<float>(cy) + 0.5f) * cell_size;
   float dx = center_x - origin_x;
   float dy = center_y - origin_y;
-  sensor_apply_wrap<HasWalls>(dx, dy, world_width, world_height);
 
   const float half_size = cell_size * 0.5f;
   const float nearest_x = fmaxf(fabsf(dx) - half_size, 0.0f);
@@ -95,7 +61,6 @@ cell_may_intersect_radius(int cx, int cy, float cell_size, float origin_x,
   return nearest_x * nearest_x + nearest_y * nearest_y <= radius * radius;
 }
 
-template <bool HasWalls>
 __device__ __forceinline__ void
 build_sensor_inputs_for_agent(const SensorBuildView &view, int agent_idx) {
   float *out = view.inputs + static_cast<size_t>(agent_idx) * view.num_inputs;
@@ -176,9 +141,8 @@ build_sensor_inputs_for_agent(const SensorBuildView &view, int agent_idx) {
       if (nx < 0 || nx >= agent_cols) {
         continue;
       }
-      if (!cell_may_intersect_radius<HasWalls>(nx, ny, agent_cell_size, self_x,
-                                               self_y, self_vision, world_width,
-                                               world_height)) {
+      if (!cell_may_intersect_radius(nx, ny, agent_cell_size, self_x,
+                                               self_y, self_vision)) {
         continue;
       }
       const int cell = row_base + nx;
@@ -191,7 +155,6 @@ build_sensor_inputs_for_agent(const SensorBuildView &view, int agent_idx) {
         }
         float dx = entry.pos_x - self_x;
         float dy = entry.pos_y - self_y;
-        sensor_apply_wrap<HasWalls>(dx, dy, world_width, world_height);
         const float dist_sq = dx * dx + dy * dy;
         if (dist_sq > vision_sq) {
           continue;
@@ -228,9 +191,8 @@ build_sensor_inputs_for_agent(const SensorBuildView &view, int agent_idx) {
       if (nx < 0 || nx >= food_cols) {
         continue;
       }
-      if (!cell_may_intersect_radius<HasWalls>(nx, ny, food_cell_size, self_x,
-                                               self_y, self_vision, world_width,
-                                               world_height)) {
+      if (!cell_may_intersect_radius(nx, ny, food_cell_size, self_x,
+                                               self_y, self_vision)) {
         continue;
       }
       const int cell = row_base + nx;
@@ -240,7 +202,6 @@ build_sensor_inputs_for_agent(const SensorBuildView &view, int agent_idx) {
         const GpuSensorFoodEntry entry = food_entries[slot];
         float dx = entry.pos_x - self_x;
         float dy = entry.pos_y - self_y;
-        sensor_apply_wrap<HasWalls>(dx, dy, world_width, world_height);
         const float dist_sq = dx * dx + dy * dy;
         if (dist_sq > vision_sq) {
           continue;
@@ -278,14 +239,10 @@ build_sensor_inputs_for_agent(const SensorBuildView &view, int agent_idx) {
   out[9] =
       sensor_clampf(static_cast<float>(local_predators) * 0.1f, 0.0f, 1.0f);
   out[10] = sensor_clampf(static_cast<float>(local_prey) * 0.1f, 0.0f, 1.0f);
-  if constexpr (HasWalls) {
-    out[11] = sensor_clampf(self_x / self_vision, 0.0f, 1.0f);
-    out[12] =
-        sensor_clampf((view.world_width - self_x) / self_vision, 0.0f, 1.0f);
-    out[13] = sensor_clampf(self_y / self_vision, 0.0f, 1.0f);
-    out[14] =
-        sensor_clampf((view.world_height - self_y) / self_vision, 0.0f, 1.0f);
-  }
+  out[11] = sensor_clampf(self_x / self_vision, 0.0f, 1.0f);
+  out[12] = sensor_clampf((view.world_width - self_x) / self_vision, 0.0f, 1.0f);
+  out[13] = sensor_clampf(self_y / self_vision, 0.0f, 1.0f);
+  out[14] = sensor_clampf((view.world_height - self_y) / self_vision, 0.0f, 1.0f);
 }
 
 } // namespace moonai::gpu

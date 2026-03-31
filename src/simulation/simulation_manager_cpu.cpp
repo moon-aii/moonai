@@ -12,26 +12,6 @@ namespace moonai {
 
 namespace {
 
-Vec2 wrap_diff(Vec2 diff, float world_width, float world_height) {
-  if (std::abs(diff.x) > world_width * 0.5f) {
-    diff.x = diff.x > 0.0f ? diff.x - world_width : diff.x + world_width;
-  }
-  if (std::abs(diff.y) > world_height * 0.5f) {
-    diff.y = diff.y > 0.0f ? diff.y - world_height : diff.y + world_height;
-  }
-  return diff;
-}
-
-float wrap_coord(float value, float limit) {
-  while (value < 0.0f) {
-    value += limit;
-  }
-  while (value >= limit) {
-    value -= limit;
-  }
-  return value;
-}
-
 class DenseReproductionGrid {
 public:
   DenseReproductionGrid(float world_width, float world_height, float cell_size,
@@ -78,8 +58,8 @@ public:
 
     for (int dy = -cells_to_check; dy <= cells_to_check; ++dy) {
       for (int dx = -cells_to_check; dx <= cells_to_check; ++dx) {
-        const int cell = flat_index(wrap_cell(base_x + dx, cols_),
-                                    wrap_cell(base_y + dy, rows_));
+        const int cell = flat_index(clamp_cell(base_x + dx, cols_),
+                                    clamp_cell(base_y + dy, rows_));
         for (int slot = offsets_[static_cast<std::size_t>(cell)];
              slot < offsets_[static_cast<std::size_t>(cell) + 1]; ++slot) {
           callback(entries_[static_cast<std::size_t>(slot)]);
@@ -100,10 +80,12 @@ private:
     return coord;
   }
 
-  int wrap_cell(int coord, int limit) const {
-    coord %= limit;
+  int clamp_cell(int coord, int limit) const {
     if (coord < 0) {
-      coord += limit;
+      return 0;
+    }
+    if (coord >= limit) {
+      return limit - 1;
     }
     return coord;
   }
@@ -156,7 +138,7 @@ find_reproduction_pairs_impl(const RegistryT &registry,
       }
 
       const Vec2 mate_pos{registry.pos_x[mate_id], registry.pos_y[mate_id]};
-      const Vec2 diff = wrap_diff(mate_pos - pos, world_size, world_size);
+      const Vec2 diff{mate_pos.x - pos.x, mate_pos.y - pos.y};
       const float dist_sq = diff.x * diff.x + diff.y * diff.y;
       if (dist_sq < best_dist_sq) {
         best_dist_sq = dist_sq;
@@ -166,12 +148,11 @@ find_reproduction_pairs_impl(const RegistryT &registry,
 
     if (best_mate != INVALID_ENTITY) {
       const Vec2 mate_pos{registry.pos_x[best_mate], registry.pos_y[best_mate]};
-      const Vec2 diff = wrap_diff(mate_pos - pos, world_size, world_size);
-      pairs.push_back(
-          PendingOffspring{idx,
-                           best_mate,
-                           {wrap_coord(pos.x + diff.x * 0.5f, world_size),
-                            wrap_coord(pos.y + diff.y * 0.5f, world_size)}});
+      const Vec2 mid_pos{(pos.x + mate_pos.x) * 0.5f,
+                         (pos.y + mate_pos.y) * 0.5f};
+      const float clamped_x = std::clamp(mid_pos.x, 0.0f, world_size);
+      const float clamped_y = std::clamp(mid_pos.y, 0.0f, world_size);
+      pairs.push_back(PendingOffspring{idx, best_mate, {clamped_x, clamped_y}});
       used[idx] = 1;
       used[best_mate] = 1;
     }

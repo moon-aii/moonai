@@ -16,16 +16,6 @@ constexpr float kEpsilon = 1e-5f;
 constexpr float kMissingTargetSentinel = 2.0f;
 constexpr float kMaxDensity = 10.0f;
 
-Vec2 wrap_diff(Vec2 diff, float world_size) {
-  if (std::abs(diff.x) > world_size * 0.5f) {
-    diff.x = diff.x > 0.0f ? diff.x - world_size : diff.x + world_size;
-  }
-  if (std::abs(diff.y) > world_size * 0.5f) {
-    diff.y = diff.y > 0.0f ? diff.y - world_size : diff.y + world_size;
-  }
-  return diff;
-}
-
 float distance_sq(Vec2 diff) {
   return diff.x * diff.x + diff.y * diff.y;
 }
@@ -74,9 +64,7 @@ TEST(SimulationSensorsTest, EncodesDxDySentinelsAndFoodDensity) {
     Vec2 best{0.0f, 0.0f};
     float best_dist = std::numeric_limits<float>::max();
     for (std::size_t i = 0; i < food_store.size(); ++i) {
-      Vec2 diff = wrap_diff({food_store.pos_x[i] - origin.x,
-                             food_store.pos_y[i] - origin.y},
-                            static_cast<float>(config.grid_size));
+      Vec2 diff{food_store.pos_x[i] - origin.x, food_store.pos_y[i] - origin.y};
       const float dist = distance_sq(diff);
       if (dist < best_dist) {
         best_dist = dist;
@@ -88,14 +76,11 @@ TEST(SimulationSensorsTest, EncodesDxDySentinelsAndFoodDensity) {
 
   const Vec2 predator_pos{state.predators.pos_x[predator_idx],
                           state.predators.pos_y[predator_idx]};
-  const Vec2 prey_pos{state.prey.pos_x[prey_idx],
-                      state.prey.pos_y[prey_idx]};
-  const Vec2 predator_to_prey =
-      wrap_diff({prey_pos.x - predator_pos.x, prey_pos.y - predator_pos.y},
-                static_cast<float>(config.grid_size));
-  const Vec2 prey_to_predator =
-      wrap_diff({predator_pos.x - prey_pos.x, predator_pos.y - prey_pos.y},
-                static_cast<float>(config.grid_size));
+  const Vec2 prey_pos{state.prey.pos_x[prey_idx], state.prey.pos_y[prey_idx]};
+  const Vec2 predator_to_prey{prey_pos.x - predator_pos.x,
+                              prey_pos.y - predator_pos.y};
+  const Vec2 prey_to_predator{predator_pos.x - prey_pos.x,
+                              predator_pos.y - prey_pos.y};
   const Vec2 predator_to_food = nearest_food_delta(predator_pos);
   const Vec2 prey_to_food = nearest_food_delta(prey_pos);
 
@@ -115,7 +100,10 @@ TEST(SimulationSensorsTest, EncodesDxDySentinelsAndFoodDensity) {
   EXPECT_FLOAT_EQ(predator_sensors[8], 0.0f);
   EXPECT_FLOAT_EQ(predator_sensors[9], 0.0f);
   EXPECT_FLOAT_EQ(predator_sensors[10], 1.0f / kMaxDensity);
-  EXPECT_FLOAT_EQ(predator_sensors[11], 2.0f / kMaxDensity);
+  // With bounded world (no wrapping), food visibility depends on actual
+  // distance Prior value assumed wrapping behavior:
+  // EXPECT_FLOAT_EQ(predator_sensors[11], 2.0f / kMaxDensity);
+  EXPECT_FLOAT_EQ(predator_sensors[11], 1.0f / kMaxDensity);
 
   const float *prey_sensors = state.prey.input_ptr(prey_idx);
   EXPECT_NEAR(prey_sensors[0], prey_to_predator.x / config.vision_range,
@@ -131,6 +119,8 @@ TEST(SimulationSensorsTest, EncodesDxDySentinelsAndFoodDensity) {
   EXPECT_FLOAT_EQ(prey_sensors[8], 0.0f);
   EXPECT_FLOAT_EQ(prey_sensors[9], 1.0f / kMaxDensity);
   EXPECT_FLOAT_EQ(prey_sensors[10], 0.0f);
+  // With bounded world (no wrapping), food visibility depends on actual
+  // positions Prey at (22, 16) can see both food items within vision_range=100
   EXPECT_FLOAT_EQ(prey_sensors[11], 2.0f / kMaxDensity);
 }
 

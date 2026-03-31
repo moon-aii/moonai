@@ -7,20 +7,6 @@
 
 namespace moonai {
 
-namespace {
-
-Vec2 wrap_diff(Vec2 diff, float world_width, float world_height) {
-  if (std::abs(diff.x) > world_width * 0.5f) {
-    diff.x = diff.x > 0.0f ? diff.x - world_width : diff.x + world_width;
-  }
-  if (std::abs(diff.y) > world_height * 0.5f) {
-    diff.y = diff.y > 0.0f ? diff.y - world_height : diff.y + world_height;
-  }
-  return diff;
-}
-
-} // namespace
-
 void update_selected_activations(AppState &state) {
   // Structure-only visualization: no activation computation needed
   // Activations map remains empty, overlay will use type-based colors
@@ -132,10 +118,8 @@ FrameSnapshot build_frame_snapshot(const AppState &state,
         }
         const Vec2 other_pos{state.predators.pos_x[idx],
                              state.predators.pos_y[idx]};
-        const Vec2 diff =
-            wrap_diff(other_pos - selected_pos,
-                      static_cast<float>(config.sim_config.grid_size),
-                      static_cast<float>(config.sim_config.grid_size));
+        const Vec2 diff{other_pos.x - selected_pos.x,
+                        other_pos.y - selected_pos.y};
         if (diff.length() > config.sim_config.vision_range) {
           continue;
         }
@@ -147,10 +131,8 @@ FrameSnapshot build_frame_snapshot(const AppState &state,
       }
       for (uint32_t idx = 0; idx < state.prey.size(); ++idx) {
         const Vec2 other_pos{state.prey.pos_x[idx], state.prey.pos_y[idx]};
-        const Vec2 diff =
-            wrap_diff(other_pos - selected_pos,
-                      static_cast<float>(config.sim_config.grid_size),
-                      static_cast<float>(config.sim_config.grid_size));
+        const Vec2 diff{other_pos.x - selected_pos.x,
+                        other_pos.y - selected_pos.y};
         if (diff.length() > config.sim_config.vision_range) {
           continue;
         }
@@ -161,10 +143,8 @@ FrameSnapshot build_frame_snapshot(const AppState &state,
                                  chart_colors::PREY_B, visual::SENSOR_ALPHA)});
       }
       for (const auto &food : frame.foods) {
-        const Vec2 diff =
-            wrap_diff(food.position - selected_pos,
-                      static_cast<float>(config.sim_config.grid_size),
-                      static_cast<float>(config.sim_config.grid_size));
+        const Vec2 diff{food.position.x - selected_pos.x,
+                        food.position.y - selected_pos.y};
         if (diff.length() > config.sim_config.vision_range) {
           continue;
         }
@@ -203,10 +183,8 @@ FrameSnapshot build_frame_snapshot(const AppState &state,
       for (uint32_t idx = 0; idx < state.predators.size(); ++idx) {
         const Vec2 other_pos{state.predators.pos_x[idx],
                              state.predators.pos_y[idx]};
-        const Vec2 diff =
-            wrap_diff(other_pos - selected_pos,
-                      static_cast<float>(config.sim_config.grid_size),
-                      static_cast<float>(config.sim_config.grid_size));
+        const Vec2 diff{other_pos.x - selected_pos.x,
+                        other_pos.y - selected_pos.y};
         if (diff.length() > config.sim_config.vision_range) {
           continue;
         }
@@ -221,10 +199,8 @@ FrameSnapshot build_frame_snapshot(const AppState &state,
           continue;
         }
         const Vec2 other_pos{state.prey.pos_x[idx], state.prey.pos_y[idx]};
-        const Vec2 diff =
-            wrap_diff(other_pos - selected_pos,
-                      static_cast<float>(config.sim_config.grid_size),
-                      static_cast<float>(config.sim_config.grid_size));
+        const Vec2 diff{other_pos.x - selected_pos.x,
+                        other_pos.y - selected_pos.y};
         if (diff.length() > config.sim_config.vision_range) {
           continue;
         }
@@ -235,10 +211,8 @@ FrameSnapshot build_frame_snapshot(const AppState &state,
                                  chart_colors::PREY_B, visual::SENSOR_ALPHA)});
       }
       for (const auto &food : frame.foods) {
-        const Vec2 diff =
-            wrap_diff(food.position - selected_pos,
-                      static_cast<float>(config.sim_config.grid_size),
-                      static_cast<float>(config.sim_config.grid_size));
+        const Vec2 diff{food.position.x - selected_pos.x,
+                        food.position.y - selected_pos.y};
         if (diff.length() > config.sim_config.vision_range) {
           continue;
         }

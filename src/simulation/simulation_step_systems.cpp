@@ -11,16 +11,6 @@ namespace {
 constexpr float kMaxDensity = 10.0f;
 constexpr float kMissingTargetSentinel = 2.0f;
 
-Vec2 wrap_diff(Vec2 diff, float world_width, float world_height) {
-  if (std::abs(diff.x) > world_width * 0.5f) {
-    diff.x = diff.x > 0.0f ? diff.x - world_width : diff.x + world_width;
-  }
-  if (std::abs(diff.y) > world_height * 0.5f) {
-    diff.y = diff.y > 0.0f ? diff.y - world_height : diff.y + world_height;
-  }
-  return diff;
-}
-
 template <typename RegistryT, typename Callback>
 void collect_death_events_impl(const RegistryT &registry,
                                const std::vector<uint8_t> &was_alive,
@@ -86,9 +76,8 @@ void build_sensors(AgentRegistry &self_agents,
         continue;
       }
 
-      Vec2 diff = wrap_diff({predator_agents.pos_x[other] - pos.x,
-                             predator_agents.pos_y[other] - pos.y},
-                            world_size, world_size);
+      Vec2 diff{predator_agents.pos_x[other] - pos.x,
+                predator_agents.pos_y[other] - pos.y};
       const float dist_sq = diff.x * diff.x + diff.y * diff.y;
       if (dist_sq > vision_sq || dist_sq <= 0.0f) {
         continue;
@@ -107,9 +96,8 @@ void build_sensors(AgentRegistry &self_agents,
         continue;
       }
 
-      Vec2 diff = wrap_diff(
-          {prey_agents.pos_x[other] - pos.x, prey_agents.pos_y[other] - pos.y},
-          world_size, world_size);
+      Vec2 diff{prey_agents.pos_x[other] - pos.x,
+                prey_agents.pos_y[other] - pos.y};
       const float dist_sq = diff.x * diff.x + diff.y * diff.y;
       if (dist_sq > vision_sq || dist_sq <= 0.0f) {
         continue;
@@ -127,9 +115,8 @@ void build_sensors(AgentRegistry &self_agents,
         continue;
       }
 
-      Vec2 diff = wrap_diff({food_store.pos_x[food_idx] - pos.x,
-                             food_store.pos_y[food_idx] - pos.y},
-                            world_size, world_size);
+      Vec2 diff{food_store.pos_x[food_idx] - pos.x,
+                food_store.pos_y[food_idx] - pos.y};
       const float dist_sq = diff.x * diff.x + diff.y * diff.y;
       if (dist_sq > vision_sq) {
         continue;
@@ -217,9 +204,8 @@ void process_food(AgentRegistry &prey_registry, FoodStore &food_store,
         continue;
       }
 
-      Vec2 diff = wrap_diff({food_store.pos_x[food_idx] - prey_pos.x,
-                             food_store.pos_y[food_idx] - prey_pos.y},
-                            world_size, world_size);
+      Vec2 diff{food_store.pos_x[food_idx] - prey_pos.x,
+                food_store.pos_y[food_idx] - prey_pos.y};
       const float dist_sq = diff.x * diff.x + diff.y * diff.y;
       if (dist_sq <= best_dist_sq) {
         best_dist_sq = dist_sq;
@@ -276,9 +262,8 @@ void process_combat(AgentRegistry &predator_registry,
         continue;
       }
 
-      Vec2 diff = wrap_diff({prey_registry.pos_x[prey_idx] - predator_pos.x,
-                             prey_registry.pos_y[prey_idx] - predator_pos.y},
-                            world_size, world_size);
+      Vec2 diff{prey_registry.pos_x[prey_idx] - predator_pos.x,
+                prey_registry.pos_y[prey_idx] - predator_pos.y};
       const float dist_sq = diff.x * diff.x + diff.y * diff.y;
       if (dist_sq <= best_dist_sq) {
         best_dist_sq = dist_sq;
@@ -335,14 +320,20 @@ void apply_movement(AgentRegistry &agents, const SimulationConfig &config,
     agents.pos_x[i] += agents.vel_x[i];
     agents.pos_y[i] += agents.vel_y[i];
 
-    while (agents.pos_x[i] < 0.0f)
-      agents.pos_x[i] += world_size;
-    while (agents.pos_x[i] >= world_size)
-      agents.pos_x[i] -= world_size;
-    while (agents.pos_y[i] < 0.0f)
-      agents.pos_y[i] += world_size;
-    while (agents.pos_y[i] >= world_size)
-      agents.pos_y[i] -= world_size;
+    if (agents.pos_x[i] < 0.0f) {
+      agents.pos_x[i] = 0.0f;
+      agents.vel_x[i] = 0.0f;
+    } else if (agents.pos_x[i] >= world_size) {
+      agents.pos_x[i] = world_size;
+      agents.vel_x[i] = 0.0f;
+    }
+    if (agents.pos_y[i] < 0.0f) {
+      agents.pos_y[i] = 0.0f;
+      agents.vel_y[i] = 0.0f;
+    } else if (agents.pos_y[i] >= world_size) {
+      agents.pos_y[i] = world_size;
+      agents.vel_y[i] = 0.0f;
+    }
   }
 }
 

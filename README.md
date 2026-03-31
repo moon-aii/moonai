@@ -208,7 +208,7 @@ CUDA is enabled at runtime when available. The GPU path executes sensing, neural
 | Right-click drag | Pan camera |
 | Scroll wheel | Zoom |
 
-When an agent is selected, its **vision range** (semi-transparent circle), **sensor lines** (connections to nearby agents and food), and **stats panel** (bottom-left) are automatically displayed. The agent controller currently receives 12 inputs: nearest predator/prey/food as wrapped normalized `dx, dy`, energy, velocity `x/y`, and local predator/prey/food density. The **Network panel** (top-right) shows its topology with nodes colored by live activation value: blue (inactive, −1) → gray (zero) → orange (active, +1).
+When an agent is selected, its **vision range** (semi-transparent circle), **sensor lines** (connections to nearby agents and food), and **stats panel** (bottom-left) are automatically displayed. The agent controller currently receives 12 inputs: nearest predator/prey/food as normalized `dx, dy`, energy, velocity `x/y`, and local predator/prey/food density. The **Network panel** (top-right) shows its topology with nodes colored by live activation value: blue (inactive, −1) → gray (zero) → orange (active, +1).
 
 ## Configuration
 

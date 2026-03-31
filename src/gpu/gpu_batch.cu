@@ -23,29 +23,6 @@ __device__ float clampf(float value, float min_value, float max_value) {
   return fminf(fmaxf(value, min_value), max_value);
 }
 
-__device__ void apply_wrap(float &dx, float &dy, float world_width,
-                           float world_height) {
-  const float half_width = world_width * 0.5f;
-  const float half_height = world_height * 0.5f;
-  if (fabsf(dx) > half_width) {
-    dx = dx > 0.0f ? dx - world_width : dx + world_width;
-  }
-  if (fabsf(dy) > half_height) {
-    dy = dy > 0.0f ? dy - world_height : dy + world_height;
-  }
-}
-
-__device__ int wrap_cell_coord(int coord, int limit) {
-  if (limit <= 0) {
-    return 0;
-  }
-  coord %= limit;
-  if (coord < 0) {
-    coord += limit;
-  }
-  return coord;
-}
-
 __device__ int cell_coord(float pos, float cell_size, int limit) {
   int coord = static_cast<int>(pos / cell_size);
   if (coord < 0) {
@@ -59,13 +36,11 @@ __device__ int cell_coord(float pos, float cell_size, int limit) {
 
 __device__ bool cell_may_intersect_radius(int cx, int cy, float cell_size,
                                           float origin_x, float origin_y,
-                                          float radius, float world_width,
-                                          float world_height) {
+                                          float radius) {
   const float center_x = (static_cast<float>(cx) + 0.5f) * cell_size;
   const float center_y = (static_cast<float>(cy) + 0.5f) * cell_size;
   float dx = center_x - origin_x;
   float dy = center_y - origin_y;
-  apply_wrap(dx, dy, world_width, world_height);
 
   const float half_size = cell_size * 0.5f;
   const float nearest_x = fmaxf(fabsf(dx) - half_size, 0.0f);
@@ -195,11 +170,17 @@ __global__ void kernel_build_sensors(
   int local_food = 0;
 
   for (int dy_cell = -cells_to_check; dy_cell <= cells_to_check; ++dy_cell) {
+    const int cy = base_cy + dy_cell;
+    if (cy < 0 || cy >= grid_rows) {
+      continue;
+    }
     for (int dx_cell = -cells_to_check; dx_cell <= cells_to_check; ++dx_cell) {
-      const int cx = wrap_cell_coord(base_cx + dx_cell, grid_cols);
-      const int cy = wrap_cell_coord(base_cy + dy_cell, grid_rows);
+      const int cx = base_cx + dx_cell;
+      if (cx < 0 || cx >= grid_cols) {
+        continue;
+      }
       if (!cell_may_intersect_radius(cx, cy, grid_cell_size, px, py,
-                                     vision_range, world_width, world_height)) {
+                                     vision_range)) {
         continue;
       }
 
@@ -213,7 +194,6 @@ __global__ void kernel_build_sensors(
 
         float dx = entry.pos_x - px;
         float dy = entry.pos_y - py;
-        apply_wrap(dx, dy, world_width, world_height);
         const float dist_sq = dx * dx + dy * dy;
         if (dist_sq > vision_sq || dist_sq <= 0.0f) {
           continue;
@@ -236,7 +216,6 @@ __global__ void kernel_build_sensors(
 
         float dx = entry.pos_x - px;
         float dy = entry.pos_y - py;
-        apply_wrap(dx, dy, world_width, world_height);
         const float dist_sq = dx * dx + dy * dy;
         if (dist_sq > vision_sq || dist_sq <= 0.0f) {
           continue;
@@ -254,7 +233,6 @@ __global__ void kernel_build_sensors(
            ++slot) {
         float dx = food_entries[slot].pos_x - px;
         float dy = food_entries[slot].pos_y - py;
-        apply_wrap(dx, dy, world_width, world_height);
         const float dist_sq = dx * dx + dy * dy;
         if (dist_sq > vision_sq) {
           continue;
@@ -335,11 +313,17 @@ __global__ void kernel_claim_food(
   float best_dist_sq = range_sq;
 
   for (int dy_cell = -cells_to_check; dy_cell <= cells_to_check; ++dy_cell) {
+    const int cy = base_cy + dy_cell;
+    if (cy < 0 || cy >= grid_rows) {
+      continue;
+    }
     for (int dx_cell = -cells_to_check; dx_cell <= cells_to_check; ++dx_cell) {
-      const int cx = wrap_cell_coord(base_cx + dx_cell, grid_cols);
-      const int cy = wrap_cell_coord(base_cy + dy_cell, grid_rows);
+      const int cx = base_cx + dx_cell;
+      if (cx < 0 || cx >= grid_cols) {
+        continue;
+      }
       if (!cell_may_intersect_radius(cx, cy, grid_cell_size, px, py,
-                                     pickup_range, world_width, world_height)) {
+                                     pickup_range)) {
         continue;
       }
 
@@ -348,7 +332,6 @@ __global__ void kernel_claim_food(
            ++slot) {
         float dx = food_entries[slot].pos_x - px;
         float dy = food_entries[slot].pos_y - py;
-        apply_wrap(dx, dy, world_width, world_height);
         const float dist_sq = dx * dx + dy * dy;
         if (dist_sq <= best_dist_sq) {
           best_dist_sq = dist_sq;
@@ -407,12 +390,17 @@ __global__ void kernel_claim_combat(
   float best_dist_sq = range_sq;
 
   for (int dy_cell = -cells_to_check; dy_cell <= cells_to_check; ++dy_cell) {
+    const int cy = base_cy + dy_cell;
+    if (cy < 0 || cy >= grid_rows) {
+      continue;
+    }
     for (int dx_cell = -cells_to_check; dx_cell <= cells_to_check; ++dx_cell) {
-      const int cx = wrap_cell_coord(base_cx + dx_cell, grid_cols);
-      const int cy = wrap_cell_coord(base_cy + dy_cell, grid_rows);
+      const int cx = base_cx + dx_cell;
+      if (cx < 0 || cx >= grid_cols) {
+        continue;
+      }
       if (!cell_may_intersect_radius(cx, cy, grid_cell_size, px, py,
-                                     interaction_range, world_width,
-                                     world_height)) {
+                                     interaction_range)) {
         continue;
       }
 
@@ -422,7 +410,6 @@ __global__ void kernel_claim_combat(
         const GpuPopulationEntry entry = prey_entries[slot];
         float dx = entry.pos_x - px;
         float dy = entry.pos_y - py;
-        apply_wrap(dx, dy, world_width, world_height);
         const float dist_sq = dx * dx + dy * dy;
         if (dist_sq <= best_dist_sq) {
           best_dist_sq = dist_sq;
@@ -484,14 +471,20 @@ __global__ void kernel_apply_movement(
   pos_x[idx] += vel_x[idx];
   pos_y[idx] += vel_y[idx];
 
-  while (pos_x[idx] < 0.0f)
-    pos_x[idx] += world_width;
-  while (pos_x[idx] >= world_width)
-    pos_x[idx] -= world_width;
-  while (pos_y[idx] < 0.0f)
-    pos_y[idx] += world_height;
-  while (pos_y[idx] >= world_height)
-    pos_y[idx] -= world_height;
+  if (pos_x[idx] < 0.0f) {
+    pos_x[idx] = 0.0f;
+    vel_x[idx] = 0.0f;
+  } else if (pos_x[idx] >= world_width) {
+    pos_x[idx] = world_width;
+    vel_x[idx] = 0.0f;
+  }
+  if (pos_y[idx] < 0.0f) {
+    pos_y[idx] = 0.0f;
+    vel_y[idx] = 0.0f;
+  } else if (pos_y[idx] >= world_height) {
+    pos_y[idx] = world_height;
+    vel_y[idx] = 0.0f;
+  }
 }
 
 } // namespace
