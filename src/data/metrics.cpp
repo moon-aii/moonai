@@ -20,10 +20,8 @@ void refresh_live(AppState &state) {
   state.metrics.live.alive_predator = static_cast<int>(state.predator.size());
   state.metrics.live.alive_prey = static_cast<int>(state.prey.size());
   state.metrics.live.active_food = count_active_food(state.food);
-  state.metrics.live.predator_species =
-      static_cast<int>(state.evolution.predators.species.size());
-  state.metrics.live.prey_species =
-      static_cast<int>(state.evolution.prey.species.size());
+  state.metrics.live.predator_species = static_cast<int>(state.evolution.predators.species.size());
+  state.metrics.live.prey_species = static_cast<int>(state.evolution.prey.species.size());
 }
 
 void record_report(AppState &state) {
@@ -56,28 +54,23 @@ void record_report(AppState &state) {
   }
 
   for (const auto &genome : state.evolution.predators.genomes) {
-    complexity_sum +=
-        static_cast<float>(genome.nodes().size() + genome.connections().size());
+    complexity_sum += static_cast<float>(genome.nodes().size() + genome.connections().size());
     ++genome_count;
   }
 
   for (const auto &genome : state.evolution.prey.genomes) {
-    complexity_sum +=
-        static_cast<float>(genome.nodes().size() + genome.connections().size());
+    complexity_sum += static_cast<float>(genome.nodes().size() + genome.connections().size());
     ++genome_count;
   }
 
   if (predator_energy_count > 0) {
-    report.avg_predator_energy =
-        predator_energy_sum / static_cast<float>(predator_energy_count);
+    report.avg_predator_energy = predator_energy_sum / static_cast<float>(predator_energy_count);
   }
   if (prey_energy_count > 0) {
-    report.avg_prey_energy =
-        prey_energy_sum / static_cast<float>(prey_energy_count);
+    report.avg_prey_energy = prey_energy_sum / static_cast<float>(prey_energy_count);
   }
   if (genome_count > 0) {
-    report.avg_genome_complexity =
-        complexity_sum / static_cast<float>(genome_count);
+    report.avg_genome_complexity = complexity_sum / static_cast<float>(genome_count);
   }
 
   state.metrics.last_report = report;

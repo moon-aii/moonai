@@ -14,8 +14,7 @@
 
 namespace moonai {
 
-Logger::Logger(const std::string &output_dir, std::uint64_t seed,
-               const std::string &name)
+Logger::Logger(const std::string &output_dir, std::uint64_t seed, const std::string &name)
     : base_dir_(output_dir), name_(name), seed_(seed) {}
 
 Logger::~Logger() {
@@ -53,8 +52,7 @@ bool Logger::initialize(const SimulationConfig &config) {
 
   if (std::filesystem::exists(run_dir_)) {
     for (int suffix = 2; suffix < 1000; ++suffix) {
-      std::string candidate =
-          base_dir_ + "/" + dir_name + "_" + std::to_string(suffix);
+      std::string candidate = base_dir_ + "/" + dir_name + "_" + std::to_string(suffix);
       if (!std::filesystem::exists(candidate)) {
         run_dir_ = candidate;
         break;
@@ -70,10 +68,9 @@ bool Logger::initialize(const SimulationConfig &config) {
     return false;
   }
   stats_file_ << "# master_seed=" << seed_ << "\n";
-  stats_file_
-      << "step,predator_count,prey_count,births,deaths,"
-         "predator_species,prey_species,avg_complexity,avg_predator_energy,"
-         "avg_prey_energy\n";
+  stats_file_ << "step,predator_count,prey_count,births,deaths,"
+                 "predator_species,prey_species,avg_complexity,avg_predator_energy,"
+                 "avg_prey_energy\n";
 
   species_file_.open(run_dir_ + "/species.csv");
   if (species_file_.is_open()) {
@@ -94,12 +91,10 @@ void Logger::log_report(const ReportMetrics &metrics) {
   if (!stats_file_.is_open()) {
     return;
   }
-  stats_file_ << metrics.step << ',' << metrics.predator_count << ','
-              << metrics.prey_count << ',' << metrics.births << ','
-              << metrics.deaths << ',' << metrics.predator_species << ','
-              << metrics.prey_species << ',' << metrics.avg_genome_complexity
-              << ',' << metrics.avg_predator_energy << ','
-              << metrics.avg_prey_energy << '\n';
+  stats_file_ << metrics.step << ',' << metrics.predator_count << ',' << metrics.prey_count << ',' << metrics.births
+              << ',' << metrics.deaths << ',' << metrics.predator_species << ',' << metrics.prey_species << ','
+              << metrics.avg_genome_complexity << ',' << metrics.avg_predator_energy << ',' << metrics.avg_prey_energy
+              << '\n';
 }
 
 void Logger::log_best_genome(int step, const Genome &genome) {
@@ -120,15 +115,13 @@ void Logger::log_best_genome(int step, const Genome &genome) {
   genomes_first_entry_ = false;
 }
 
-void Logger::log_species(int step, const std::vector<Species> &species,
-                         const std::string &population_name) {
+void Logger::log_species(int step, const std::vector<Species> &species, const std::string &population_name) {
   if (!species_file_.is_open()) {
     return;
   }
   for (const auto &entry : species) {
-    species_file_ << step << ',' << population_name << ',' << entry.id() << ','
-                  << entry.members().size() << ',' << entry.average_complexity()
-                  << '\n';
+    species_file_ << step << ',' << population_name << ',' << entry.id() << ',' << entry.members().size() << ','
+                  << entry.average_complexity() << '\n';
   }
 }
 

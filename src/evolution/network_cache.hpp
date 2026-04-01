@@ -26,13 +26,10 @@ public:
 
   bool has(uint32_t e) const;
 
-  std::vector<float> activate(uint32_t e,
-                              const std::vector<float> &inputs) const;
+  std::vector<float> activate(uint32_t e, const std::vector<float> &inputs) const;
 
-  void activate_batch(std::size_t entity_count,
-                      const std::vector<float> &all_inputs,
-                      std::vector<float> &all_outputs, int inputs_per_network,
-                      int outputs_per_network);
+  void activate_batch(std::size_t entity_count, const std::vector<float> &all_inputs, std::vector<float> &all_outputs,
+                      int inputs_per_network, int outputs_per_network);
 
   void clear();
 

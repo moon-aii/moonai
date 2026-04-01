@@ -48,15 +48,12 @@ public:
 
   // Build GPU cache from CPU NetworkCache for given entities
   // entities_with_indices: pairs of (uint32_t, gpu_buffer_index)
-  void build_from(
-      const NetworkCache &cpu_cache,
-      const std::vector<std::pair<uint32_t, int>> &entities_with_indices);
+  void build_from(const NetworkCache &cpu_cache, const std::vector<std::pair<uint32_t, int>> &entities_with_indices);
 
   // Launch neural inference kernel
   // d_sensor_inputs: [entity_count][14] floats
   // d_brain_outputs: [entity_count][2] floats
-  bool launch_inference_async(const float *d_sensor_inputs,
-                              float *d_brain_outputs, std::size_t count,
+  bool launch_inference_async(const float *d_sensor_inputs, float *d_brain_outputs, std::size_t count,
                               cudaStream_t stream);
 
   // Invalidate cache (call when networks change)
@@ -145,12 +142,9 @@ private:
   std::size_t output_capacity_ = 0;
 
   // CUDA resource management
-  void allocate_device_memory(std::size_t node_capacity,
-                              std::size_t eval_capacity,
-                              std::size_t conn_capacity,
+  void allocate_device_memory(std::size_t node_capacity, std::size_t eval_capacity, std::size_t conn_capacity,
                               std::size_t entity_capacity);
-  bool needs_reallocation(std::size_t node_capacity, std::size_t eval_capacity,
-                          std::size_t conn_capacity,
+  bool needs_reallocation(std::size_t node_capacity, std::size_t eval_capacity, std::size_t conn_capacity,
                           std::size_t entity_capacity) const;
   void free_device_memory();
 };

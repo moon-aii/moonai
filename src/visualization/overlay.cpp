@@ -27,8 +27,7 @@ bool UIOverlay::initialize(const std::string &font_path) {
   paths.push_back("/usr/share/fonts/dejavu-sans-mono-fonts/DejaVuSansMono.ttf");
   paths.push_back("/usr/share/fonts/TTF/DejaVuSans.ttf");
   paths.push_back("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf");
-  paths.push_back(
-      "/usr/share/fonts/liberation-mono/LiberationMono-Regular.ttf");
+  paths.push_back("/usr/share/fonts/liberation-mono/LiberationMono-Regular.ttf");
   paths.push_back("/usr/share/fonts/liberation/LiberationMono-Regular.ttf");
   paths.push_back("/usr/share/fonts/noto/NotoSansMono-Regular.ttf");
   paths.push_back("/usr/share/fonts/noto-cjk/NotoSansMono-Regular.ttf");
@@ -36,10 +35,7 @@ bool UIOverlay::initialize(const std::string &font_path) {
   paths.push_back("C:\\Windows\\Fonts\\cour.ttf");
 
   if (auto it = std::find_if(paths.begin(), paths.end(),
-                             [this](const auto &p) {
-                               return std::filesystem::exists(p) &&
-                                      font_.openFromFile(p);
-                             });
+                             [this](const auto &p) { return std::filesystem::exists(p) && font_.openFromFile(p); });
       it != paths.end()) {
     font_loaded_ = true;
     spdlog::debug("Loaded font: {}", *it);
@@ -51,8 +47,7 @@ bool UIOverlay::initialize(const std::string &font_path) {
   return false;
 }
 
-void UIOverlay::draw(sf::RenderTarget &target, const OverlayStats &stats,
-                     const Genome *selected_genome) {
+void UIOverlay::draw(sf::RenderTarget &target, const OverlayStats &stats, const Genome *selected_genome) {
   if (!font_loaded_)
     return;
 
@@ -81,24 +76,19 @@ void UIOverlay::draw(sf::RenderTarget &target, const OverlayStats &stats,
     float sy = sel_y + 6.0f;
 
     std::snprintf(buf, sizeof(buf), "Agent #%d", stats.selected_agent);
-    draw_text(target, buf, sx, sy, 14,
-              sf::Color(ui::TITLE_R, ui::TITLE_G, ui::TITLE_B));
+    draw_text(target, buf, sx, sy, 14, sf::Color(ui::TITLE_R, ui::TITLE_G, ui::TITLE_B));
     sy += line_h;
 
-    std::snprintf(buf, sizeof(buf), "Energy: %.1f  Age: %d",
-                  stats.selected_energy, stats.selected_age);
+    std::snprintf(buf, sizeof(buf), "Energy: %.1f  Age: %d", stats.selected_energy, stats.selected_age);
     draw_text(target, buf, sx, sy, 13);
     sy += line_h;
 
-    std::snprintf(buf, sizeof(buf), "Kills: %d  Food: %d", stats.selected_kills,
-                  stats.selected_food_eaten);
+    std::snprintf(buf, sizeof(buf), "Kills: %d  Food: %d", stats.selected_kills, stats.selected_food_eaten);
     draw_text(target, buf, sx, sy, 13);
     sy += line_h;
 
-    std::snprintf(buf, sizeof(buf), "Complexity: %d",
-                  stats.selected_genome_complexity);
-    draw_text(target, buf, sx, sy, 13,
-              sf::Color(ui::MUTED_R, ui::MUTED_G, ui::MUTED_B));
+    std::snprintf(buf, sizeof(buf), "Complexity: %d", stats.selected_genome_complexity);
+    draw_text(target, buf, sx, sy, 13, sf::Color(ui::MUTED_R, ui::MUTED_G, ui::MUTED_B));
   }
 
   // NN topology panel (bottom-right, anchored to right edge)
@@ -110,21 +100,17 @@ void UIOverlay::draw(sf::RenderTarget &target, const OverlayStats &stats,
   target.setView(current_view);
 }
 
-void UIOverlay::draw_panel(sf::RenderTarget &target, float x, float y, float w,
-                           float h) {
+void UIOverlay::draw_panel(sf::RenderTarget &target, float x, float y, float w, float h) {
   panel_bg_.setSize({w, h});
   panel_bg_.setPosition({x, y});
-  panel_bg_.setFillColor(sf::Color(visual::PANEL_BG_R, visual::PANEL_BG_G,
-                                   visual::PANEL_BG_B, visual::PANEL_ALPHA));
+  panel_bg_.setFillColor(sf::Color(visual::PANEL_BG_R, visual::PANEL_BG_G, visual::PANEL_BG_B, visual::PANEL_ALPHA));
   panel_bg_.setOutlineColor(
-      sf::Color(visual::PANEL_OUTLINE_R, visual::PANEL_OUTLINE_G,
-                visual::PANEL_OUTLINE_B, visual::PANEL_ALPHA));
+      sf::Color(visual::PANEL_OUTLINE_R, visual::PANEL_OUTLINE_G, visual::PANEL_OUTLINE_B, visual::PANEL_ALPHA));
   panel_bg_.setOutlineThickness(1.0f);
   target.draw(panel_bg_);
 }
 
-void UIOverlay::draw_text(sf::RenderTarget &target, const std::string &str,
-                          float x, float y, unsigned int size,
+void UIOverlay::draw_text(sf::RenderTarget &target, const std::string &str, float x, float y, unsigned int size,
                           sf::Color color) {
   sf::Text text(font_, str, size);
   text.setPosition({x, y});
@@ -137,8 +123,7 @@ void UIOverlay::push_population(int predators, int prey, int food) {
   // No limit - unlimited growth as requested
 }
 
-void UIOverlay::draw_left_column(sf::RenderTarget &target,
-                                 const OverlayStats &stats) {
+void UIOverlay::draw_left_column(sf::RenderTarget &target, const OverlayStats &stats) {
   constexpr float PANEL_WIDTH = 300.0f;
   constexpr float MARGIN = 25.0f;
 
@@ -149,8 +134,7 @@ void UIOverlay::draw_left_column(sf::RenderTarget &target,
   draw_stats_panel(target, stats, x, y, PANEL_WIDTH);
 }
 
-void UIOverlay::draw_right_column(sf::RenderTarget &target,
-                                  const OverlayStats &stats) {
+void UIOverlay::draw_right_column(sf::RenderTarget &target, const OverlayStats &stats) {
   constexpr float PANEL_WIDTH = 300.0f;
   constexpr float MARGIN = 25.0f;
 
@@ -170,9 +154,7 @@ void UIOverlay::draw_right_column(sf::RenderTarget &target,
   draw_energy_distribution(target, stats, x, y, PANEL_WIDTH, 55.0f);
 }
 
-void UIOverlay::draw_stats_panel(sf::RenderTarget &target,
-                                 const OverlayStats &stats, float x, float y,
-                                 float w) {
+void UIOverlay::draw_stats_panel(sf::RenderTarget &target, const OverlayStats &stats, float x, float y, float w) {
   constexpr float PANEL_H = 90.0f;
   float line_h = 18.0f;
 
@@ -183,11 +165,9 @@ void UIOverlay::draw_stats_panel(sf::RenderTarget &target,
   char buf[128];
 
   if (!stats.experiment_name.empty()) {
-    draw_text(target, stats.experiment_name, tx, ty, 16,
-              sf::Color(ui::TITLE_R, ui::TITLE_G, ui::TITLE_B));
+    draw_text(target, stats.experiment_name, tx, ty, 16, sf::Color(ui::TITLE_R, ui::TITLE_G, ui::TITLE_B));
   } else {
-    draw_text(target, "MoonAI", tx, ty, 16,
-              sf::Color(ui::TITLE_R, ui::TITLE_G, ui::TITLE_B));
+    draw_text(target, "MoonAI", tx, ty, 16, sf::Color(ui::TITLE_R, ui::TITLE_G, ui::TITLE_B));
   }
   ty += line_h + 4;
 
@@ -196,26 +176,22 @@ void UIOverlay::draw_stats_panel(sf::RenderTarget &target,
   ty += line_h;
 
   std::snprintf(buf, sizeof(buf), "FPS: %.0f", stats.fps);
-  draw_text(target, buf, tx, ty, 13,
-            sf::Color(ui::MUTED_R, ui::MUTED_G, ui::MUTED_B));
+  draw_text(target, buf, tx, ty, 13, sf::Color(ui::MUTED_R, ui::MUTED_G, ui::MUTED_B));
   ty += line_h;
 
-  std::snprintf(buf, sizeof(buf), "Speed: %dx%s", stats.speed_multiplier,
-                stats.paused ? " [PAUSED]" : "");
+  std::snprintf(buf, sizeof(buf), "Speed: %dx%s", stats.speed_multiplier, stats.paused ? " [PAUSED]" : "");
   draw_text(target, buf, tx, ty, 13,
             stats.paused ? sf::Color(ui::PAUSE_R, ui::PAUSE_G, ui::PAUSE_B)
                          : sf::Color(ui::MUTED_R, ui::MUTED_G, ui::MUTED_B));
 }
 
-void UIOverlay::draw_stats_widget(sf::RenderTarget &target,
-                                  const OverlayStats &stats, float x, float y,
-                                  float w, float h) {
+void UIOverlay::draw_stats_widget(sf::RenderTarget &target, const OverlayStats &stats, float x, float y, float w,
+                                  float h) {
   if (!font_loaded_)
     return;
 
   draw_panel(target, x, y, w, h);
-  draw_text(target, "Stats", x + 4.0f, y + 2.0f, 11,
-            sf::Color(ui::TITLE_R, ui::TITLE_G, ui::TITLE_B));
+  draw_text(target, "Stats", x + 4.0f, y + 2.0f, 11, sf::Color(ui::TITLE_R, ui::TITLE_G, ui::TITLE_B));
 
   float tx = x + 8.0f;
   float ty = y + 22.0f;
@@ -225,20 +201,15 @@ void UIOverlay::draw_stats_widget(sf::RenderTarget &target,
   // Single column: Population counts and events
   std::snprintf(buf, sizeof(buf), "Predators: %d", stats.alive_predator);
   draw_text(target, buf, tx, ty, 13,
-            sf::Color(chart_colors::PREDATOR_R, chart_colors::PREDATOR_G,
-                      chart_colors::PREDATOR_B));
+            sf::Color(chart_colors::PREDATOR_R, chart_colors::PREDATOR_G, chart_colors::PREDATOR_B));
   ty += line_h;
 
   std::snprintf(buf, sizeof(buf), "Prey: %d", stats.alive_prey);
-  draw_text(target, buf, tx, ty, 13,
-            sf::Color(chart_colors::PREY_R, chart_colors::PREY_G,
-                      chart_colors::PREY_B));
+  draw_text(target, buf, tx, ty, 13, sf::Color(chart_colors::PREY_R, chart_colors::PREY_G, chart_colors::PREY_B));
   ty += line_h;
 
   std::snprintf(buf, sizeof(buf), "Food: %d", stats.active_food);
-  draw_text(target, buf, tx, ty, 13,
-            sf::Color(chart_colors::FOOD_R, chart_colors::FOOD_G,
-                      chart_colors::FOOD_B));
+  draw_text(target, buf, tx, ty, 13, sf::Color(chart_colors::FOOD_R, chart_colors::FOOD_G, chart_colors::FOOD_B));
   ty += line_h;
 
   std::snprintf(buf, sizeof(buf), "Pred Species: %d", stats.predator_species);
@@ -250,33 +221,27 @@ void UIOverlay::draw_stats_widget(sf::RenderTarget &target,
   ty += line_h;
 
   std::snprintf(buf, sizeof(buf), "Kills: %d", stats.total_kills);
-  draw_text(target, buf, tx, ty, 13,
-            sf::Color(ui::EVENT_KILL_R, ui::EVENT_KILL_G, ui::EVENT_KILL_B));
+  draw_text(target, buf, tx, ty, 13, sf::Color(ui::EVENT_KILL_R, ui::EVENT_KILL_G, ui::EVENT_KILL_B));
   ty += line_h;
 
   std::snprintf(buf, sizeof(buf), "Eaten: %d", stats.total_food_eaten);
-  draw_text(target, buf, tx, ty, 13,
-            sf::Color(ui::EVENT_FOOD_R, ui::EVENT_FOOD_G, ui::EVENT_FOOD_B));
+  draw_text(target, buf, tx, ty, 13, sf::Color(ui::EVENT_FOOD_R, ui::EVENT_FOOD_G, ui::EVENT_FOOD_B));
   ty += line_h;
 
   std::snprintf(buf, sizeof(buf), "Births: %d", stats.total_births);
-  draw_text(target, buf, tx, ty, 13,
-            sf::Color(ui::EVENT_BIRTH_R, ui::EVENT_BIRTH_G, ui::EVENT_BIRTH_B));
+  draw_text(target, buf, tx, ty, 13, sf::Color(ui::EVENT_BIRTH_R, ui::EVENT_BIRTH_G, ui::EVENT_BIRTH_B));
   ty += line_h;
 
   std::snprintf(buf, sizeof(buf), "Deaths: %d", stats.total_deaths);
-  draw_text(target, buf, tx, ty, 13,
-            sf::Color(ui::EVENT_DEATH_R, ui::EVENT_DEATH_G, ui::EVENT_DEATH_B));
+  draw_text(target, buf, tx, ty, 13, sf::Color(ui::EVENT_DEATH_R, ui::EVENT_DEATH_G, ui::EVENT_DEATH_B));
 }
 
-void UIOverlay::draw_population_chart(sf::RenderTarget &target, float x,
-                                      float y, float w, float h) {
+void UIOverlay::draw_population_chart(sf::RenderTarget &target, float x, float y, float w, float h) {
   if (!font_loaded_ || population_history_.size() < 2)
     return;
 
   draw_panel(target, x, y, w, h);
-  draw_text(target, "Population", x + 4.0f, y + 2.0f, 11,
-            sf::Color(180, 180, 200));
+  draw_text(target, "Population", x + 4.0f, y + 2.0f, 11, sf::Color(180, 180, 200));
 
   // Chart area inside panel
   float inner_x = x + 4.0f;
@@ -287,8 +252,7 @@ void UIOverlay::draw_population_chart(sf::RenderTarget &target, float x,
   // Find max population for scaling
   int max_pop = 10;
   for (const auto &t : population_history_) {
-    max_pop = std::max(
-        max_pop, std::max({std::get<0>(t), std::get<1>(t), std::get<2>(t)}));
+    max_pop = std::max(max_pop, std::max({std::get<0>(t), std::get<1>(t), std::get<2>(t)}));
   }
 
   // Show ALL points - unlimited history, compressed X-axis
@@ -296,8 +260,7 @@ void UIOverlay::draw_population_chart(sf::RenderTarget &target, float x,
 
   // Map all points across the entire chart width
   auto map_point = [&](size_t idx, int val) -> sf::Vector2f {
-    float px =
-        inner_x + (static_cast<float>(idx) / (total_points - 1)) * inner_w;
+    float px = inner_x + (static_cast<float>(idx) / (total_points - 1)) * inner_w;
     float py = inner_y + inner_h * (1.0f - static_cast<float>(val) / max_pop);
     return {px, py};
   };
@@ -305,55 +268,44 @@ void UIOverlay::draw_population_chart(sf::RenderTarget &target, float x,
   // Draw predator line (orange) - ALL points
   sf::VertexArray pred_line(sf::PrimitiveType::LineStrip, total_points);
   for (size_t i = 0; i < total_points; ++i) {
-    pred_line[static_cast<int>(i)].position =
-        map_point(i, std::get<0>(population_history_[i]));
+    pred_line[static_cast<int>(i)].position = map_point(i, std::get<0>(population_history_[i]));
     pred_line[static_cast<int>(i)].color =
-        sf::Color(chart_colors::PREDATOR_R, chart_colors::PREDATOR_G,
-                  chart_colors::PREDATOR_B);
+        sf::Color(chart_colors::PREDATOR_R, chart_colors::PREDATOR_G, chart_colors::PREDATOR_B);
   }
   target.draw(pred_line);
 
   // Draw prey line (cyan) - ALL points
   sf::VertexArray prey_line(sf::PrimitiveType::LineStrip, total_points);
   for (size_t i = 0; i < total_points; ++i) {
-    prey_line[static_cast<int>(i)].position =
-        map_point(i, std::get<1>(population_history_[i]));
-    prey_line[static_cast<int>(i)].color = sf::Color(
-        chart_colors::PREY_R, chart_colors::PREY_G, chart_colors::PREY_B);
+    prey_line[static_cast<int>(i)].position = map_point(i, std::get<1>(population_history_[i]));
+    prey_line[static_cast<int>(i)].color = sf::Color(chart_colors::PREY_R, chart_colors::PREY_G, chart_colors::PREY_B);
   }
   target.draw(prey_line);
 
   // Draw food line (yellow) - ALL points
   sf::VertexArray food_line(sf::PrimitiveType::LineStrip, total_points);
   for (size_t i = 0; i < total_points; ++i) {
-    food_line[static_cast<int>(i)].position =
-        map_point(i, std::get<2>(population_history_[i]));
-    food_line[static_cast<int>(i)].color = sf::Color(
-        chart_colors::FOOD_R, chart_colors::FOOD_G, chart_colors::FOOD_B);
+    food_line[static_cast<int>(i)].position = map_point(i, std::get<2>(population_history_[i]));
+    food_line[static_cast<int>(i)].color = sf::Color(chart_colors::FOOD_R, chart_colors::FOOD_G, chart_colors::FOOD_B);
   }
   target.draw(food_line);
 
   // Legend
   draw_text(target, "Pred", x + w - 110.0f, y + 4.0f, 10,
-            sf::Color(chart_colors::PREDATOR_R, chart_colors::PREDATOR_G,
-                      chart_colors::PREDATOR_B));
+            sf::Color(chart_colors::PREDATOR_R, chart_colors::PREDATOR_G, chart_colors::PREDATOR_B));
   draw_text(target, "Prey", x + w - 70.0f, y + 4.0f, 10,
-            sf::Color(chart_colors::PREY_R, chart_colors::PREY_G,
-                      chart_colors::PREY_B));
+            sf::Color(chart_colors::PREY_R, chart_colors::PREY_G, chart_colors::PREY_B));
   draw_text(target, "Food", x + w - 30.0f, y + 4.0f, 10,
-            sf::Color(chart_colors::FOOD_R, chart_colors::FOOD_G,
-                      chart_colors::FOOD_B));
+            sf::Color(chart_colors::FOOD_R, chart_colors::FOOD_G, chart_colors::FOOD_B));
 }
 
-void UIOverlay::draw_energy_distribution(sf::RenderTarget &target,
-                                         const OverlayStats &stats, float x,
-                                         float y, float w, float h) {
+void UIOverlay::draw_energy_distribution(sf::RenderTarget &target, const OverlayStats &stats, float x, float y, float w,
+                                         float h) {
   if (!font_loaded_)
     return;
 
   draw_panel(target, x, y, w, h);
-  draw_text(target, "Energy Distribution", x + 4.0f, y + 2.0f, 11,
-            sf::Color(ui::TITLE_R, ui::TITLE_G, ui::TITLE_B));
+  draw_text(target, "Energy Distribution", x + 4.0f, y + 2.0f, 11, sf::Color(ui::TITLE_R, ui::TITLE_G, ui::TITLE_B));
 
   float bar_y = y + 22.0f;
   float bar_h = 10.0f;
@@ -392,8 +344,7 @@ void UIOverlay::draw_energy_distribution(sf::RenderTarget &target,
   // Labels inside panel, left of bars (at predator bar position)
   float label_x = x + 10.0f;
   draw_text(target, "P", label_x, bar_y, 10,
-            sf::Color(chart_colors::PREDATOR_R, chart_colors::PREDATOR_G,
-                      chart_colors::PREDATOR_B));
+            sf::Color(chart_colors::PREDATOR_R, chart_colors::PREDATOR_G, chart_colors::PREDATOR_B));
 
   // Prey energy bar (below)
   bar_y += bar_h + 4.0f;
@@ -411,12 +362,10 @@ void UIOverlay::draw_energy_distribution(sf::RenderTarget &target,
 
   // Label for prey bar
   draw_text(target, "Y", label_x, bar_y, 10,
-            sf::Color(chart_colors::PREY_R, chart_colors::PREY_G,
-                      chart_colors::PREY_B));
+            sf::Color(chart_colors::PREY_R, chart_colors::PREY_G, chart_colors::PREY_B));
 }
 
-void UIOverlay::set_activations(
-    const std::unordered_map<std::uint32_t, float> &vals) {
+void UIOverlay::set_activations(const std::unordered_map<std::uint32_t, float> &vals) {
   node_activations_ = vals;
 }
 
@@ -432,8 +381,7 @@ void UIOverlay::draw_nn_panel(sf::RenderTarget &target, const Genome &genome) {
   float cy = view_size.y - PANEL_H - MARGIN;
 
   draw_panel(target, cx, cy, PANEL_W, PANEL_H);
-  draw_text(target, "Network", cx + 4.0f, cy + 2.0f, 11,
-            sf::Color(ui::TITLE_R, ui::TITLE_G, ui::TITLE_B));
+  draw_text(target, "Network", cx + 4.0f, cy + 2.0f, 11, sf::Color(ui::TITLE_R, ui::TITLE_G, ui::TITLE_B));
 
   const auto &nodes = genome.nodes();
   const auto &conns = genome.connections();
@@ -448,8 +396,7 @@ void UIOverlay::draw_nn_panel(sf::RenderTarget &target, const Genome &genome) {
       depth[n.id] = 0;
       bfs_queue.push(n.id);
     } else if (n.type == NodeType::Output) {
-      depth[n.id] =
-          2; // outputs start at depth 2; will be pushed by hidden if deeper
+      depth[n.id] = 2; // outputs start at depth 2; will be pushed by hidden if deeper
     }
   }
   while (!bfs_queue.empty()) {
@@ -488,14 +435,10 @@ void UIOverlay::draw_nn_panel(sf::RenderTarget &target, const Genome &genome) {
 
   std::unordered_map<std::uint32_t, sf::Vector2f> pos;
   for (auto &[layer, layer_nodes] : layers) {
-    float lx = inner_x + (num_layers <= 1 ? inner_w / 2.0f
-                                          : static_cast<float>(layer) /
-                                                (num_layers - 1) * inner_w);
+    float lx = inner_x + (num_layers <= 1 ? inner_w / 2.0f : static_cast<float>(layer) / (num_layers - 1) * inner_w);
     int cnt = static_cast<int>(layer_nodes.size());
     for (int k = 0; k < cnt; ++k) {
-      float ly =
-          inner_y + (cnt <= 1 ? inner_h / 2.0f
-                              : static_cast<float>(k) / (cnt - 1) * inner_h);
+      float ly = inner_y + (cnt <= 1 ? inner_h / 2.0f : static_cast<float>(k) / (cnt - 1) * inner_h);
       pos[layer_nodes[k]] = {lx, ly};
     }
   }
@@ -511,8 +454,7 @@ void UIOverlay::draw_nn_panel(sf::RenderTarget &target, const Genome &genome) {
     if (it_f == pos.end() || it_t == pos.end())
       continue;
     sf::VertexArray line(sf::PrimitiveType::Lines, 2);
-    sf::Color col =
-        c.enabled ? sf::Color(200, 200, 200, 80) : sf::Color(80, 80, 80, 40);
+    sf::Color col = c.enabled ? sf::Color(200, 200, 200, 80) : sf::Color(80, 80, 80, 40);
     line[0].position = it_f->second;
     line[0].color = col;
     line[1].position = it_t->second;
@@ -527,8 +469,7 @@ void UIOverlay::draw_nn_panel(sf::RenderTarget &target, const Genome &genome) {
     if (val < 0.0f) {
       // Interpolate blue → gray
       float t = val + 1.0f; // [0, 1]
-      return sf::Color(static_cast<std::uint8_t>(30 + t * (180 - 30)),
-                       static_cast<std::uint8_t>(30 + t * (180 - 30)),
+      return sf::Color(static_cast<std::uint8_t>(30 + t * (180 - 30)), static_cast<std::uint8_t>(30 + t * (180 - 30)),
                        static_cast<std::uint8_t>(200 + t * (180 - 200)));
     } else {
       // Interpolate gray → orange
@@ -542,9 +483,8 @@ void UIOverlay::draw_nn_panel(sf::RenderTarget &target, const Genome &genome) {
   // Draw nodes
   sf::CircleShape circle(NODE_R);
   circle.setOutlineThickness(1.0f);
-  circle.setOutlineColor(sf::Color(ui::NN_NODE_OUTLINE_R, ui::NN_NODE_OUTLINE_G,
-                                   ui::NN_NODE_OUTLINE_B,
-                                   ui::NN_NODE_OUTLINE_A));
+  circle.setOutlineColor(
+      sf::Color(ui::NN_NODE_OUTLINE_R, ui::NN_NODE_OUTLINE_G, ui::NN_NODE_OUTLINE_B, ui::NN_NODE_OUTLINE_A));
   for (const auto &n : nodes) {
     auto it = pos.find(n.id);
     if (it == pos.end())
@@ -558,20 +498,16 @@ void UIOverlay::draw_nn_panel(sf::RenderTarget &target, const Genome &genome) {
     } else {
       switch (n.type) {
         case NodeType::Input:
-          circle.setFillColor(
-              sf::Color(ui::NN_INPUT_R, ui::NN_INPUT_G, ui::NN_INPUT_B));
+          circle.setFillColor(sf::Color(ui::NN_INPUT_R, ui::NN_INPUT_G, ui::NN_INPUT_B));
           break;
         case NodeType::Bias:
-          circle.setFillColor(
-              sf::Color(ui::NN_BIAS_R, ui::NN_BIAS_G, ui::NN_BIAS_B));
+          circle.setFillColor(sf::Color(ui::NN_BIAS_R, ui::NN_BIAS_G, ui::NN_BIAS_B));
           break;
         case NodeType::Hidden:
-          circle.setFillColor(
-              sf::Color(ui::NN_HIDDEN_R, ui::NN_HIDDEN_G, ui::NN_HIDDEN_B));
+          circle.setFillColor(sf::Color(ui::NN_HIDDEN_R, ui::NN_HIDDEN_G, ui::NN_HIDDEN_B));
           break;
         case NodeType::Output:
-          circle.setFillColor(
-              sf::Color(ui::NN_OUTPUT_R, ui::NN_OUTPUT_G, ui::NN_OUTPUT_B));
+          circle.setFillColor(sf::Color(ui::NN_OUTPUT_R, ui::NN_OUTPUT_G, ui::NN_OUTPUT_B));
           break;
       }
     }
@@ -580,8 +516,7 @@ void UIOverlay::draw_nn_panel(sf::RenderTarget &target, const Genome &genome) {
   }
 }
 
-int UIOverlay::draw_experiment_selector(sf::RenderTarget &target,
-                                        const std::vector<std::string> &names,
+int UIOverlay::draw_experiment_selector(sf::RenderTarget &target, const std::vector<std::string> &names,
                                         int hover_index, int scroll_offset) {
   if (!font_loaded_ || names.empty())
     return -1;
@@ -610,8 +545,7 @@ int UIOverlay::draw_experiment_selector(sf::RenderTarget &target,
   // Title
   draw_text(target, "Select Experiment", panel_x + 12.0f, panel_y + 10.0f, 18,
             sf::Color(ui::TITLE_R, ui::TITLE_G, ui::TITLE_B));
-  draw_text(target, "Click to select, Scroll to navigate, ESC to cancel",
-            panel_x + 12.0f, panel_y + 34.0f, 11,
+  draw_text(target, "Click to select, Scroll to navigate, ESC to cancel", panel_x + 12.0f, panel_y + 34.0f, 11,
             sf::Color(ui::HINT_R, ui::HINT_G, ui::HINT_B));
 
   // List area
@@ -633,15 +567,12 @@ int UIOverlay::draw_experiment_selector(sf::RenderTarget &target,
       highlight.setSize({panel_w - 16.0f, item_h - 2.0f});
       highlight.setPosition({panel_x + 8.0f, iy});
       highlight.setFillColor(
-          sf::Color(ui::HOVER_HIGHLIGHT_R, ui::HOVER_HIGHLIGHT_G,
-                    ui::HOVER_HIGHLIGHT_B, ui::HOVER_HIGHLIGHT_A));
+          sf::Color(ui::HOVER_HIGHLIGHT_R, ui::HOVER_HIGHLIGHT_G, ui::HOVER_HIGHLIGHT_B, ui::HOVER_HIGHLIGHT_A));
       target.draw(highlight);
     }
 
-    sf::Color text_color =
-        (idx == hover_index)
-            ? sf::Color(ui::FITNESS_R, ui::FITNESS_G, ui::FITNESS_B)
-            : sf::Color(ui::TITLE_R, ui::TITLE_G, ui::TITLE_B);
+    sf::Color text_color = (idx == hover_index) ? sf::Color(ui::FITNESS_R, ui::FITNESS_G, ui::FITNESS_B)
+                                                : sf::Color(ui::TITLE_R, ui::TITLE_G, ui::TITLE_B);
 
     draw_text(target, names[idx], panel_x + 16.0f, iy + 4.0f, 14, text_color);
   }
@@ -649,11 +580,10 @@ int UIOverlay::draw_experiment_selector(sf::RenderTarget &target,
   // Scroll indicator
   if (total > visible_count) {
     char scroll_buf[64];
-    std::snprintf(scroll_buf, sizeof(scroll_buf), "[%d-%d of %d]",
-                  scroll_offset + 1,
+    std::snprintf(scroll_buf, sizeof(scroll_buf), "[%d-%d of %d]", scroll_offset + 1,
                   std::min(scroll_offset + visible_count, total), total);
-    draw_text(target, scroll_buf, panel_x + panel_w - 120.0f, panel_y + 10.0f,
-              11, sf::Color(ui::HINT_R, ui::HINT_G, ui::HINT_B));
+    draw_text(target, scroll_buf, panel_x + panel_w - 120.0f, panel_y + 10.0f, 11,
+              sf::Color(ui::HINT_R, ui::HINT_G, ui::HINT_B));
   }
 
   target.setView(current_view);

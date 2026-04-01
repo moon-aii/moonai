@@ -53,10 +53,8 @@ void pop_back_agent_fields(AgentRegistry &registry, std::size_t new_size) {
   registry.consumption.pop_back();
 }
 
-uint32_t find_by_agent_id_impl(const AgentRegistry &registry,
-                               uint32_t agent_id) {
-  const auto it =
-      std::find(registry.entity_id.begin(), registry.entity_id.end(), agent_id);
+uint32_t find_by_agent_id_impl(const AgentRegistry &registry, uint32_t agent_id) {
+  const auto it = std::find(registry.entity_id.begin(), registry.entity_id.end(), agent_id);
   if (it == registry.entity_id.end()) {
     return INVALID_ENTITY;
   }
@@ -79,8 +77,7 @@ void Food::initialize(const SimulationConfig &config, Random &rng) {
   }
 }
 
-void Food::respawn_step(const SimulationConfig &config, int step_index,
-                        std::uint64_t seed) {
+void Food::respawn_step(const SimulationConfig &config, int step_index, std::uint64_t seed) {
   const float world_size = static_cast<float>(config.grid_size);
 
   for (std::size_t i = 0; i < active.size(); ++i) {
@@ -89,8 +86,7 @@ void Food::respawn_step(const SimulationConfig &config, int step_index,
     }
 
     const uint32_t slot = static_cast<uint32_t>(i);
-    if (!respawn::should_respawn(seed, step_index, slot,
-                                 config.food_respawn_rate)) {
+    if (!respawn::should_respawn(seed, step_index, slot, config.food_respawn_rate)) {
       continue;
     }
 
@@ -128,7 +124,6 @@ RegistryCompactionResult AgentRegistry::compact_dead() {
       continue;
     }
 
-    const uint32_t removed = static_cast<uint32_t>(i);
     const std::size_t last = size() - 1;
     if (i != last) {
       const uint32_t moved_from = static_cast<uint32_t>(last);

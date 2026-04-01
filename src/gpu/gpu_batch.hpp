@@ -27,8 +27,7 @@ struct GpuStepParams {
 
 class GpuBatch {
 public:
-  GpuBatch(std::size_t max_predators, std::size_t max_prey,
-           std::size_t max_food);
+  GpuBatch(std::size_t max_predators, std::size_t max_prey, std::size_t max_food);
   ~GpuBatch();
 
   GpuBatch(const GpuBatch &) = delete;
@@ -55,19 +54,13 @@ public:
     return food_buffer_;
   }
 
-  void launch_build_sensors_async(const GpuStepParams &params,
-                                  std::size_t predator_count,
-                                  std::size_t prey_count,
+  void launch_build_sensors_async(const GpuStepParams &params, std::size_t predator_count, std::size_t prey_count,
                                   std::size_t food_count);
-  void launch_post_inference_async(const GpuStepParams &params,
-                                   std::size_t predator_count,
-                                   std::size_t prey_count,
+  void launch_post_inference_async(const GpuStepParams &params, std::size_t predator_count, std::size_t prey_count,
                                    std::size_t food_count);
 
-  void upload_async(std::size_t predator_count, std::size_t prey_count,
-                    std::size_t food_count);
-  void download_async(std::size_t predator_count, std::size_t prey_count,
-                      std::size_t food_count);
+  void upload_async(std::size_t predator_count, std::size_t prey_count, std::size_t food_count);
+  void download_async(std::size_t predator_count, std::size_t prey_count, std::size_t food_count);
   void synchronize();
   void mark_error();
 

@@ -29,8 +29,7 @@ void App::register_signal_handlers() {
 }
 
 std::uint64_t App::generate_seed() {
-  return static_cast<std::uint64_t>(
-      std::chrono::steady_clock::now().time_since_epoch().count());
+  return static_cast<std::uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count());
 }
 
 App::App(AppConfig cfg)
@@ -40,10 +39,8 @@ App::App(AppConfig cfg)
         }
         return std::move(cfg);
       }()),
-      state_(cfg_.sim_config.seed), simulation_(cfg_.sim_config),
-      evolution_(cfg_.sim_config),
-      logger_(cfg_.sim_config.output_dir, cfg_.sim_config.seed,
-              cfg_.run_name_override.value_or(cfg_.experiment_name)) {
+      state_(cfg_.sim_config.seed), simulation_(cfg_.sim_config), evolution_(cfg_.sim_config),
+      logger_(cfg_.sim_config.output_dir, cfg_.sim_config.seed, cfg_.run_name_override.value_or(cfg_.experiment_name)) {
   const auto errors = validate_config(cfg_.sim_config);
   if (!errors.empty()) {
     for (const auto &error : errors) {
@@ -55,16 +52,14 @@ App::App(AppConfig cfg)
   state_.ui.speed_multiplier = cfg_.speed_multiplier;
 
   simulation_.initialize(state_);
-  evolution_.initialize(state_, simulation_detail::SENSOR_COUNT,
-                        simulation_detail::OUTPUT_COUNT);
+  evolution_.initialize(state_, simulation_detail::SENSOR_COUNT, simulation_detail::OUTPUT_COUNT);
   evolution_.seed_initial_population(state_);
   metrics::refresh_live(state_);
 
   logger_.initialize(cfg_.sim_config);
 
   if (!cfg_.headless) {
-    visualization_ =
-        std::make_unique<VisualizationManager>(cfg_.sim_config, state_.ui);
+    visualization_ = std::make_unique<VisualizationManager>(cfg_.sim_config, state_.ui);
     if (!visualization_->initialize()) {
       spdlog::error("Failed to initialize visualization");
       visualization_.reset();
@@ -90,16 +85,15 @@ void App::step() {
   }
 
   for (const auto &pair : state_.runtime.pending_predator_offspring) {
-    const uint32_t child = evolution_.create_predator_offspring(
-        state_, pair.parent_a, pair.parent_b, pair.spawn_position);
+    const uint32_t child =
+        evolution_.create_predator_offspring(state_, pair.parent_a, pair.parent_b, pair.spawn_position);
     if (child != INVALID_ENTITY) {
       ++state_.runtime.step_events.births;
     }
   }
 
   for (const auto &pair : state_.runtime.pending_prey_offspring) {
-    const uint32_t child = evolution_.create_prey_offspring(
-        state_, pair.parent_a, pair.parent_b, pair.spawn_position);
+    const uint32_t child = evolution_.create_prey_offspring(state_, pair.parent_a, pair.parent_b, pair.spawn_position);
     if (child != INVALID_ENTITY) {
       ++state_.runtime.step_events.births;
     }
@@ -110,8 +104,7 @@ void App::step() {
   accumulate_step_events(state_);
 
   if (cfg_.sim_config.species_update_interval_steps > 0 &&
-      (state_.runtime.step % cfg_.sim_config.species_update_interval_steps) ==
-          0) {
+      (state_.runtime.step % cfg_.sim_config.species_update_interval_steps) == 0) {
     evolution_.refresh_species(state_);
   }
 
@@ -128,16 +121,14 @@ ReportMetrics App::record_and_log() {
   const Genome *best_genome = nullptr;
   std::size_t best_complexity = 0;
   for (const auto &genome : state_.evolution.predators.genomes) {
-    const std::size_t complexity =
-        genome.nodes().size() + genome.connections().size();
+    const std::size_t complexity = genome.nodes().size() + genome.connections().size();
     if (!best_genome || complexity > best_complexity) {
       best_genome = &genome;
       best_complexity = complexity;
     }
   }
   for (const auto &genome : state_.evolution.prey.genomes) {
-    const std::size_t complexity =
-        genome.nodes().size() + genome.connections().size();
+    const std::size_t complexity = genome.nodes().size() + genome.connections().size();
     if (!best_genome || complexity > best_complexity) {
       best_genome = &genome;
       best_complexity = complexity;
@@ -148,10 +139,8 @@ ReportMetrics App::record_and_log() {
     logger_.log_best_genome(state_.runtime.step, *best_genome);
   }
 
-  logger_.log_species(state_.runtime.step, state_.evolution.predators.species,
-                      "predator");
-  logger_.log_species(state_.runtime.step, state_.evolution.prey.species,
-                      "prey");
+  logger_.log_species(state_.runtime.step, state_.evolution.predators.species, "predator");
+  logger_.log_species(state_.runtime.step, state_.evolution.prey.species, "prey");
   logger_.flush();
   state_.runtime.report_events.clear();
 
@@ -159,28 +148,23 @@ ReportMetrics App::record_and_log() {
 }
 
 bool App::should_continue() const {
-  return !(g_running_ == 0) &&
-         !(cfg_.sim_config.max_steps > 0 &&
-           state_.runtime.step >= cfg_.sim_config.max_steps);
+  return !(g_running_ == 0) && !(cfg_.sim_config.max_steps > 0 && state_.runtime.step >= cfg_.sim_config.max_steps);
 }
 
 void App::log_report(const ReportMetrics &snapshot) const {
   spdlog::info("Step {:6d}: predators={} prey={} births={} deaths={} "
                "pred_species={} prey_species={}",
-               snapshot.step, snapshot.predator_count, snapshot.prey_count,
-               snapshot.births, snapshot.deaths, snapshot.predator_species,
-               snapshot.prey_species);
+               snapshot.step, snapshot.predator_count, snapshot.prey_count, snapshot.births, snapshot.deaths,
+               snapshot.predator_species, snapshot.prey_species);
 }
 
 bool App::run() {
-  if (!cfg_.headless && std::getenv("DISPLAY") == nullptr &&
-      std::getenv("WAYLAND_DISPLAY") == nullptr) {
+  if (!cfg_.headless && std::getenv("DISPLAY") == nullptr && std::getenv("WAYLAND_DISPLAY") == nullptr) {
     spdlog::error("No display server found. GUI mode requires a display.");
     return false;
   }
 
   bool completed = true;
-  bool user_quit = false;
 
   if (cfg_.headless) {
     while (should_continue()) {
@@ -191,8 +175,7 @@ bool App::run() {
       }
     }
 
-    if (state_.metrics.history.empty() ||
-        state_.metrics.history.back().step != state_.runtime.step) {
+    if (state_.metrics.history.empty() || state_.metrics.history.back().step != state_.runtime.step) {
       record_and_log();
     }
 
@@ -207,18 +190,9 @@ bool App::run() {
     while (should_continue()) {
       MOONAI_PROFILE_SCOPE("frame_total");
 
-      {
-        MOONAI_PROFILE_SCOPE("handle_events");
-        visualization_->handle_events();
-      }
+      visualization_->handle_events();
 
       if (visualization_->should_close()) {
-        completed = false;
-        user_quit = true;
-        break;
-      }
-
-      if (g_running_ == 0) {
         completed = false;
         break;
       }
@@ -226,10 +200,7 @@ bool App::run() {
       const bool step_requested = cfg_.interactive && state_.ui.step_requested;
       if (cfg_.interactive && state_.ui.paused && !step_requested) {
         update_selected_activations(state_);
-        {
-          MOONAI_PROFILE_SCOPE("render");
-          visualization_->render(build_frame_snapshot(state_, cfg_));
-        }
+        visualization_->render(build_frame_snapshot(state_, cfg_));
         continue;
       }
 
@@ -237,10 +208,7 @@ bool App::run() {
         state_.ui.step_requested = false;
       }
 
-      int steps_to_run = step_requested
-                             ? 1
-                             : (cfg_.interactive ? state_.ui.speed_multiplier
-                                                 : cfg_.speed_multiplier);
+      int steps_to_run = step_requested ? 1 : (cfg_.interactive ? state_.ui.speed_multiplier : cfg_.speed_multiplier);
       steps_to_run = std::max(1, steps_to_run);
 
       for (int i = 0; i < steps_to_run && should_continue(); ++i) {
@@ -251,19 +219,10 @@ bool App::run() {
         }
       }
 
-      if (cfg_.interactive) {
-        MOONAI_PROFILE_SCOPE("update_selected");
-        update_selected_activations(state_);
-      }
-
-      {
-        MOONAI_PROFILE_SCOPE("render");
-        visualization_->render(build_frame_snapshot(state_, cfg_));
-      }
+      visualization_->render(build_frame_snapshot(state_, cfg_));
     }
 
-    if (state_.metrics.history.empty() ||
-        state_.metrics.history.back().step != state_.runtime.step) {
+    if (state_.metrics.history.empty() || state_.metrics.history.back().step != state_.runtime.step) {
       record_and_log();
     }
 

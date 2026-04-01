@@ -35,9 +35,13 @@ configure:
 build:
     cmake --build {{build-dir}} --parallel
 
-# Build in release mode
+# Build in release mode (with LTO and native optimizations for local builds)
 [group('build')]
 release:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export CMAKE_CXX_FLAGS_RELEASE="-O3 -DNDEBUG -march=native -flto"
+    export CMAKE_CUDA_FLAGS_RELEASE="-O3 -DNDEBUG -march=native -flto"
     just build-type=release configure
     just build-type=release build
 
@@ -112,6 +116,7 @@ lint: configure
         --suppress=missingIncludeSystem \
         --suppress=*:*/vcpkg_installed/* \
         --project={{build-dir}}/compile_commands.json
+    run-clang-tidy -p {{build-dir}} src/
 
 # Generate compile_commands.json for IDE/LSP integration
 [group('dev')]

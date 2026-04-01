@@ -17,13 +17,12 @@ __device__ __forceinline__ float activate(float x) {
 }
 
 // CUDA error checking macro (logs error but doesn't throw for GPU cache)
-#define CUDA_CHECK(call)                                                       \
-  do {                                                                         \
-    cudaError_t err = call;                                                    \
-    if (err != cudaSuccess) {                                                  \
-      spdlog::error("CUDA error in {} at {}: {}", #call, __FILE__, __LINE__,   \
-                    cudaGetErrorString(err));                                  \
-    }                                                                          \
+#define CUDA_CHECK(call)                                                                                               \
+  do {                                                                                                                 \
+    cudaError_t err = call;                                                                                            \
+    if (err != cudaSuccess) {                                                                                          \
+      spdlog::error("CUDA error in {} at {}: {}", #call, __FILE__, __LINE__, cudaGetErrorString(err));                 \
+    }                                                                                                                  \
   } while (0)
 
 } // anonymous namespace
@@ -32,14 +31,12 @@ __device__ __forceinline__ float activate(float x) {
 // One thread per network (not per GPU buffer entity)
 // Uses network_to_gpu mapping to access correct sensor inputs and write to
 // correct outputs
-__global__ void kernel_neural_inference(
-    const GpuNetDescriptor *__restrict__ descriptors,
-    float *__restrict__ node_values, const int *__restrict__ eval_order,
-    const int *__restrict__ conn_from, const float *__restrict__ conn_weights,
-    const int *__restrict__ conn_ptr, const int *__restrict__ out_indices,
-    const int *__restrict__ network_to_gpu,
-    const float *__restrict__ sensor_inputs, float *__restrict__ brain_outputs,
-    int network_count) {
+__global__ void kernel_neural_inference(const GpuNetDescriptor *__restrict__ descriptors,
+                                        float *__restrict__ node_values, const int *__restrict__ eval_order,
+                                        const int *__restrict__ conn_from, const float *__restrict__ conn_weights,
+                                        const int *__restrict__ conn_ptr, const int *__restrict__ out_indices,
+                                        const int *__restrict__ network_to_gpu, const float *__restrict__ sensor_inputs,
+                                        float *__restrict__ brain_outputs, int network_count) {
   const int network_idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (network_idx >= network_count)
     return;
@@ -100,10 +97,8 @@ GpuNetworkCache::~GpuNetworkCache() {
   free_device_memory();
 }
 
-void GpuNetworkCache::allocate_device_memory(std::size_t node_capacity,
-                                             std::size_t eval_capacity,
-                                             std::size_t conn_capacity,
-                                             std::size_t entity_capacity) {
+void GpuNetworkCache::allocate_device_memory(std::size_t node_capacity, std::size_t eval_capacity,
+                                             std::size_t conn_capacity, std::size_t entity_capacity) {
   free_device_memory();
 
   const std::size_t ptr_capacity = eval_capacity + entity_capacity;
@@ -115,8 +110,7 @@ void GpuNetworkCache::allocate_device_memory(std::size_t node_capacity,
   CUDA_CHECK(cudaMalloc(&d_conn_weights_, conn_capacity * sizeof(float)));
   CUDA_CHECK(cudaMalloc(&d_conn_ptr_, ptr_capacity * sizeof(int)));
   CUDA_CHECK(cudaMalloc(&d_out_indices_, output_capacity * sizeof(int)));
-  CUDA_CHECK(
-      cudaMalloc(&d_descriptors_, entity_capacity * sizeof(GpuNetDescriptor)));
+  CUDA_CHECK(cudaMalloc(&d_descriptors_, entity_capacity * sizeof(GpuNetDescriptor)));
   CUDA_CHECK(cudaMalloc(&d_network_to_gpu_, entity_capacity * sizeof(int)));
 
   entity_capacity_ = entity_capacity;
@@ -127,13 +121,10 @@ void GpuNetworkCache::allocate_device_memory(std::size_t node_capacity,
   output_capacity_ = output_capacity;
 }
 
-bool GpuNetworkCache::needs_reallocation(std::size_t node_capacity,
-                                         std::size_t eval_capacity,
-                                         std::size_t conn_capacity,
-                                         std::size_t entity_capacity) const {
-  return entity_capacity > entity_capacity_ || node_capacity > node_capacity_ ||
-         eval_capacity > eval_capacity_ || conn_capacity > conn_capacity_ ||
-         (eval_capacity + entity_capacity) > ptr_capacity_ ||
+bool GpuNetworkCache::needs_reallocation(std::size_t node_capacity, std::size_t eval_capacity,
+                                         std::size_t conn_capacity, std::size_t entity_capacity) const {
+  return entity_capacity > entity_capacity_ || node_capacity > node_capacity_ || eval_capacity > eval_capacity_ ||
+         conn_capacity > conn_capacity_ || (eval_capacity + entity_capacity) > ptr_capacity_ ||
          (entity_capacity * 2) > output_capacity_;
 }
 
@@ -178,16 +169,14 @@ void GpuNetworkCache::free_device_memory() {
   output_capacity_ = 0;
 }
 
-void GpuNetworkCache::build_from(
-    const NetworkCache &cpu_cache,
-    const std::vector<std::pair<uint32_t, int>> &entities_with_indices) {
+void GpuNetworkCache::build_from(const NetworkCache &cpu_cache,
+                                 const std::vector<std::pair<uint32_t, int>> &entities_with_indices) {
   if (entities_with_indices.empty()) {
     dirty_ = false;
     return;
   }
 
-  spdlog::debug("Building GPU network cache for {} entities",
-                entities_with_indices.size());
+  spdlog::debug("Building GPU network cache for {} entities", entities_with_indices.size());
 
   // Clear host arrays
   h_node_values_.clear();
@@ -226,8 +215,7 @@ void GpuNetworkCache::build_from(
     desc.num_inputs = network->num_input_nodes();
     desc.num_outputs = network->num_output_nodes();
     desc.num_nodes = network->num_nodes();
-    desc.num_eval =
-        desc.num_nodes - desc.num_inputs - 1; // Exclude inputs and bias
+    desc.num_eval = desc.num_nodes - desc.num_inputs - 1; // Exclude inputs and bias
 
     // Offsets
     desc.node_off = current_node_off;
@@ -297,56 +285,43 @@ void GpuNetworkCache::build_from(
   h_node_values_.resize(current_node_off, 0.0f);
 
   // Allocate/resize device memory if needed
-  if (needs_reallocation(current_node_off, current_eval_off, current_conn_off,
-                         h_descriptors_.size())) {
-    allocate_device_memory(current_node_off, current_eval_off, current_conn_off,
-                           h_descriptors_.size());
+  if (needs_reallocation(current_node_off, current_eval_off, current_conn_off, h_descriptors_.size())) {
+    allocate_device_memory(current_node_off, current_eval_off, current_conn_off, h_descriptors_.size());
   }
 
   // Upload to device
   if (!h_descriptors_.empty()) {
-    CUDA_CHECK(cudaMemcpy(d_descriptors_, h_descriptors_.data(),
-                          h_descriptors_.size() * sizeof(GpuNetDescriptor),
+    CUDA_CHECK(cudaMemcpy(d_descriptors_, h_descriptors_.data(), h_descriptors_.size() * sizeof(GpuNetDescriptor),
                           cudaMemcpyHostToDevice));
   }
   if (!h_eval_order_.empty()) {
-    CUDA_CHECK(cudaMemcpy(d_eval_order_, h_eval_order_.data(),
-                          h_eval_order_.size() * sizeof(int),
-                          cudaMemcpyHostToDevice));
+    CUDA_CHECK(
+        cudaMemcpy(d_eval_order_, h_eval_order_.data(), h_eval_order_.size() * sizeof(int), cudaMemcpyHostToDevice));
   }
   if (!h_conn_from_.empty()) {
-    CUDA_CHECK(cudaMemcpy(d_conn_from_, h_conn_from_.data(),
-                          h_conn_from_.size() * sizeof(int),
-                          cudaMemcpyHostToDevice));
-    CUDA_CHECK(cudaMemcpy(d_conn_weights_, h_conn_weights_.data(),
-                          h_conn_weights_.size() * sizeof(float),
+    CUDA_CHECK(
+        cudaMemcpy(d_conn_from_, h_conn_from_.data(), h_conn_from_.size() * sizeof(int), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_conn_weights_, h_conn_weights_.data(), h_conn_weights_.size() * sizeof(float),
                           cudaMemcpyHostToDevice));
   }
   if (!h_conn_ptr_.empty()) {
-    CUDA_CHECK(cudaMemcpy(d_conn_ptr_, h_conn_ptr_.data(),
-                          h_conn_ptr_.size() * sizeof(int),
-                          cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_conn_ptr_, h_conn_ptr_.data(), h_conn_ptr_.size() * sizeof(int), cudaMemcpyHostToDevice));
   }
   if (!h_out_indices_.empty()) {
-    CUDA_CHECK(cudaMemcpy(d_out_indices_, h_out_indices_.data(),
-                          h_out_indices_.size() * sizeof(int),
-                          cudaMemcpyHostToDevice));
+    CUDA_CHECK(
+        cudaMemcpy(d_out_indices_, h_out_indices_.data(), h_out_indices_.size() * sizeof(int), cudaMemcpyHostToDevice));
   }
   if (!h_network_to_gpu_.empty()) {
-    CUDA_CHECK(cudaMemcpy(d_network_to_gpu_, h_network_to_gpu_.data(),
-                          h_network_to_gpu_.size() * sizeof(int),
+    CUDA_CHECK(cudaMemcpy(d_network_to_gpu_, h_network_to_gpu_.data(), h_network_to_gpu_.size() * sizeof(int),
                           cudaMemcpyHostToDevice));
   }
 
   dirty_ = false;
-  spdlog::debug(
-      "GPU network cache built: {} entities, {} nodes, {} connections",
-      h_descriptors_.size(), current_node_off, current_conn_off);
+  spdlog::debug("GPU network cache built: {} entities, {} nodes, {} connections", h_descriptors_.size(),
+                current_node_off, current_conn_off);
 }
 
-bool GpuNetworkCache::launch_inference_async(const float *d_sensor_inputs,
-                                             float *d_brain_outputs,
-                                             std::size_t count,
+bool GpuNetworkCache::launch_inference_async(const float *d_sensor_inputs, float *d_brain_outputs, std::size_t count,
                                              cudaStream_t stream) {
   if (count == 0 || !is_valid()) {
     return true;
@@ -359,24 +334,20 @@ bool GpuNetworkCache::launch_inference_async(const float *d_sensor_inputs,
 
   // Zero node values for this step
   int total_nodes = h_node_values_.size();
-  CUDA_CHECK(
-      cudaMemsetAsync(d_node_values_, 0, total_nodes * sizeof(float), stream));
+  CUDA_CHECK(cudaMemsetAsync(d_node_values_, 0, total_nodes * sizeof(float), stream));
 
   // Launch kernel
   const int block_size = 256;
-  const int num_blocks =
-      (static_cast<int>(count) + block_size - 1) / block_size;
+  const int num_blocks = (static_cast<int>(count) + block_size - 1) / block_size;
 
   kernel_neural_inference<<<num_blocks, block_size, 0, stream>>>(
-      d_descriptors_, d_node_values_, d_eval_order_, d_conn_from_,
-      d_conn_weights_, d_conn_ptr_, d_out_indices_, d_network_to_gpu_,
-      d_sensor_inputs, d_brain_outputs, static_cast<int>(count));
+      d_descriptors_, d_node_values_, d_eval_order_, d_conn_from_, d_conn_weights_, d_conn_ptr_, d_out_indices_,
+      d_network_to_gpu_, d_sensor_inputs, d_brain_outputs, static_cast<int>(count));
 
   // Check for launch errors
   cudaError_t err = cudaGetLastError();
   if (err != cudaSuccess) {
-    spdlog::error("Neural inference kernel launch failed: {}",
-                  cudaGetErrorString(err));
+    spdlog::error("Neural inference kernel launch failed: {}", cudaGetErrorString(err));
     return false;
   }
   return true;

@@ -24,8 +24,7 @@ struct RegistryCompactionResult {
 
 struct Food {
   void initialize(const SimulationConfig &config, Random &rng);
-  void respawn_step(const SimulationConfig &config, int step_index,
-                    std::uint64_t seed);
+  void respawn_step(const SimulationConfig &config, int step_index, std::uint64_t seed);
 
   std::size_t size() const {
     return pos_x.size();
@@ -147,7 +146,6 @@ struct UiState {
   bool reset_requested = false;
   int speed_multiplier = 1;
   uint32_t selected_agent_id = 0;
-  std::unordered_map<std::uint32_t, float> selected_node_activations;
 };
 
 struct AppState {
@@ -168,33 +166,28 @@ inline void accumulate_step_events(AppState &state) {
 }
 
 inline Genome *predator_genome_for(AppState &state, uint32_t entity) {
-  if (entity == INVALID_ENTITY ||
-      entity >= state.evolution.predators.genomes.size()) {
+  if (entity == INVALID_ENTITY || entity >= state.evolution.predators.genomes.size()) {
     return nullptr;
   }
   return &state.evolution.predators.genomes[entity];
 }
 
-inline const Genome *predator_genome_for(const AppState &state,
-                                         uint32_t entity) {
-  if (entity == INVALID_ENTITY ||
-      entity >= state.evolution.predators.genomes.size()) {
+inline const Genome *predator_genome_for(const AppState &state, uint32_t entity) {
+  if (entity == INVALID_ENTITY || entity >= state.evolution.predators.genomes.size()) {
     return nullptr;
   }
   return &state.evolution.predators.genomes[entity];
 }
 
 inline Genome *prey_genome_for(AppState &state, uint32_t entity) {
-  if (entity == INVALID_ENTITY ||
-      entity >= state.evolution.prey.genomes.size()) {
+  if (entity == INVALID_ENTITY || entity >= state.evolution.prey.genomes.size()) {
     return nullptr;
   }
   return &state.evolution.prey.genomes[entity];
 }
 
 inline const Genome *prey_genome_for(const AppState &state, uint32_t entity) {
-  if (entity == INVALID_ENTITY ||
-      entity >= state.evolution.prey.genomes.size()) {
+  if (entity == INVALID_ENTITY || entity >= state.evolution.prey.genomes.size()) {
     return nullptr;
   }
   return &state.evolution.prey.genomes[entity];

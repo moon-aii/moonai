@@ -38,22 +38,17 @@ public:
 private:
   std::uint32_t innovation_counter_ = 0;
   std::uint32_t node_counter_ = 0;
-  std::map<std::pair<std::uint32_t, std::uint32_t>, std::uint32_t>
-      innovation_cache_;
+  std::map<std::pair<std::uint32_t, std::uint32_t>, std::uint32_t> innovation_cache_;
 };
 
 class Mutation {
 public:
   static void mutate_weights(Genome &genome, Random &rng, float power);
-  static void add_connection(Genome &genome, Random &rng,
-                             InnovationTracker &tracker);
-  static void add_node(Genome &genome, Random &rng, InnovationTracker &tracker,
-                       int max_hidden_nodes = 0);
+  static void add_connection(Genome &genome, Random &rng, InnovationTracker &tracker);
+  static void add_node(Genome &genome, Random &rng, InnovationTracker &tracker, int max_hidden_nodes = 0);
   static void delete_connection(Genome &genome, Random &rng);
 
-  static void mutate(Genome &genome, Random &rng,
-                     const SimulationConfig &config,
-                     InnovationTracker &tracker);
+  static void mutate(Genome &genome, Random &rng, const SimulationConfig &config, InnovationTracker &tracker);
 };
 
 } // namespace moonai

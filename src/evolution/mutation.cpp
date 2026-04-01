@@ -6,8 +6,7 @@
 
 namespace moonai {
 
-void InnovationTracker::init_from_population(
-    const std::vector<Genome> &population) {
+void InnovationTracker::init_from_population(const std::vector<Genome> &population) {
   for (const auto &genome : population) {
     for (const auto &conn : genome.connections()) {
       if (conn.innovation >= innovation_counter_) {
@@ -22,8 +21,7 @@ void InnovationTracker::init_from_population(
   }
 }
 
-std::uint32_t InnovationTracker::get_innovation(std::uint32_t in_node,
-                                                std::uint32_t out_node) {
+std::uint32_t InnovationTracker::get_innovation(std::uint32_t in_node, std::uint32_t out_node) {
   auto key = std::make_pair(in_node, out_node);
   auto it = innovation_cache_.find(key);
   if (it != innovation_cache_.end()) {
@@ -53,14 +51,12 @@ void Mutation::mutate_weights(Genome &genome, Random &rng, float power) {
   }
 }
 
-void Mutation::add_connection(Genome &genome, Random &rng,
-                              InnovationTracker &tracker) {
+void Mutation::add_connection(Genome &genome, Random &rng, InnovationTracker &tracker) {
   const auto &nodes = genome.nodes();
   if (nodes.size() < 2)
     return;
 
-  auto would_create_cycle = [&](std::uint32_t from_id,
-                                std::uint32_t to_id) -> bool {
+  auto would_create_cycle = [&](std::uint32_t from_id, std::uint32_t to_id) -> bool {
     std::unordered_set<std::uint32_t> visited;
     std::stack<std::uint32_t> stack;
     stack.push(to_id);
@@ -100,18 +96,15 @@ void Mutation::add_connection(Genome &genome, Random &rng,
       continue;
 
     std::uint32_t innov = tracker.get_innovation(from.id, to.id);
-    genome.add_connection(
-        {from.id, to.id, rng.next_float(-1.0f, 1.0f), true, innov});
+    genome.add_connection({from.id, to.id, rng.next_float(-1.0f, 1.0f), true, innov});
     return;
   }
 }
 
-void Mutation::add_node(Genome &genome, Random &rng, InnovationTracker &tracker,
-                        int max_hidden_nodes) {
+void Mutation::add_node(Genome &genome, Random &rng, InnovationTracker &tracker, int max_hidden_nodes) {
   if (max_hidden_nodes > 0) {
-    int hidden_count = static_cast<int>(std::count_if(
-        genome.nodes().begin(), genome.nodes().end(),
-        [](const auto &n) { return n.type == NodeType::Hidden; }));
+    int hidden_count = static_cast<int>(std::count_if(genome.nodes().begin(), genome.nodes().end(),
+                                                      [](const auto &n) { return n.type == NodeType::Hidden; }));
     if (hidden_count >= max_hidden_nodes)
       return;
   }
@@ -124,14 +117,12 @@ void Mutation::add_node(Genome &genome, Random &rng, InnovationTracker &tracker,
   std::iota(indices.begin(), indices.end(), 0);
   std::vector<int> enabled_indices;
   enabled_indices.reserve(conns.size());
-  std::copy_if(indices.begin(), indices.end(),
-               std::back_inserter(enabled_indices),
+  std::copy_if(indices.begin(), indices.end(), std::back_inserter(enabled_indices),
                [&conns](int i) { return conns[i].enabled; });
   if (enabled_indices.empty())
     return;
 
-  int idx = enabled_indices[rng.next_int(
-      0, static_cast<int>(enabled_indices.size()) - 1)];
+  int idx = enabled_indices[rng.next_int(0, static_cast<int>(enabled_indices.size()) - 1)];
 
   std::uint32_t in_id = conns[idx].in_node;
   std::uint32_t out_id = conns[idx].out_node;
@@ -157,9 +148,7 @@ void Mutation::delete_connection(Genome &genome, Random &rng) {
   conns.erase(conns.begin() + idx);
 }
 
-void Mutation::mutate(Genome &genome, Random &rng,
-                      const SimulationConfig &config,
-                      InnovationTracker &tracker) {
+void Mutation::mutate(Genome &genome, Random &rng, const SimulationConfig &config, InnovationTracker &tracker) {
   if (rng.next_bool(config.mutation_rate)) {
     mutate_weights(genome, rng, config.weight_mutation_power);
   }
@@ -173,12 +162,10 @@ void Mutation::mutate(Genome &genome, Random &rng,
     delete_connection(genome, rng);
   }
 
-  bool any_enabled =
-      std::any_of(genome.connections().begin(), genome.connections().end(),
-                  [](const auto &conn) { return conn.enabled; });
+  bool any_enabled = std::any_of(genome.connections().begin(), genome.connections().end(),
+                                 [](const auto &conn) { return conn.enabled; });
   if (!any_enabled && !genome.connections().empty()) {
-    int idx =
-        rng.next_int(0, static_cast<int>(genome.connections().size()) - 1);
+    int idx = rng.next_int(0, static_cast<int>(genome.connections().size()) - 1);
     genome.connections()[idx].enabled = true;
   }
 }

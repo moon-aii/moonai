@@ -7,8 +7,7 @@
 
 namespace moonai {
 
-SimulationManager::SimulationManager(const SimulationConfig &config)
-    : config_(config) {}
+SimulationManager::SimulationManager(const SimulationConfig &config) : config_(config) {}
 
 SimulationManager::~SimulationManager() = default;
 
@@ -20,8 +19,7 @@ void SimulationManager::initialize(AppState &state, bool log_initialization) {
   state.food.initialize(config_, state.runtime.rng);
 
   if (log_initialization) {
-    spdlog::info("Simulation initialized: {} food pellets (seed: {})",
-                 config_.food_count, state.runtime.rng.seed());
+    spdlog::info("Simulation initialized: {} food pellets (seed: {})", config_.food_count, state.runtime.rng.seed());
   }
 }
 

@@ -3,8 +3,7 @@
 
 namespace moonai::gpu {
 
-GpuPopulationBuffer::GpuPopulationBuffer(std::size_t max_agents)
-    : capacity_(max_agents) {
+GpuPopulationBuffer::GpuPopulationBuffer(std::size_t max_agents) : capacity_(max_agents) {
   allocate_buffers();
 }
 
@@ -20,10 +19,8 @@ void GpuPopulationBuffer::allocate_buffers() {
   const std::size_t float_bytes = capacity_ * sizeof(float);
   const std::size_t int_bytes = capacity_ * sizeof(int);
   const std::size_t u32_bytes = capacity_ * sizeof(uint32_t);
-  const std::size_t sensor_bytes =
-      capacity_ * kSensorInputsPerEntity * sizeof(float);
-  const std::size_t brain_bytes =
-      capacity_ * kBrainOutputsPerEntity * sizeof(float);
+  const std::size_t sensor_bytes = capacity_ * kSensorInputsPerEntity * sizeof(float);
+  const std::size_t brain_bytes = capacity_ * kBrainOutputsPerEntity * sizeof(float);
 
   CUDA_CHECK(cudaMallocHost(&h_pos_x_, float_bytes));
   CUDA_CHECK(cudaMallocHost(&h_pos_y_, float_bytes));
@@ -104,24 +101,16 @@ void GpuPopulationBuffer::upload_async(std::size_t count, cudaStream_t stream) {
   const std::size_t int_bytes = count * sizeof(int);
   const std::size_t u32_bytes = count * sizeof(uint32_t);
 
-  CUDA_CHECK(cudaMemcpyAsync(d_pos_x_, h_pos_x_, float_bytes,
-                             cudaMemcpyHostToDevice, stream));
-  CUDA_CHECK(cudaMemcpyAsync(d_pos_y_, h_pos_y_, float_bytes,
-                             cudaMemcpyHostToDevice, stream));
-  CUDA_CHECK(cudaMemcpyAsync(d_vel_x_, h_vel_x_, float_bytes,
-                             cudaMemcpyHostToDevice, stream));
-  CUDA_CHECK(cudaMemcpyAsync(d_vel_y_, h_vel_y_, float_bytes,
-                             cudaMemcpyHostToDevice, stream));
-  CUDA_CHECK(cudaMemcpyAsync(d_energy_, h_energy_, float_bytes,
-                             cudaMemcpyHostToDevice, stream));
-  CUDA_CHECK(cudaMemcpyAsync(d_age_, h_age_, int_bytes,
-                             cudaMemcpyHostToDevice, stream));
-  CUDA_CHECK(cudaMemcpyAsync(d_alive_, h_alive_, u32_bytes,
-                             cudaMemcpyHostToDevice, stream));
+  CUDA_CHECK(cudaMemcpyAsync(d_pos_x_, h_pos_x_, float_bytes, cudaMemcpyHostToDevice, stream));
+  CUDA_CHECK(cudaMemcpyAsync(d_pos_y_, h_pos_y_, float_bytes, cudaMemcpyHostToDevice, stream));
+  CUDA_CHECK(cudaMemcpyAsync(d_vel_x_, h_vel_x_, float_bytes, cudaMemcpyHostToDevice, stream));
+  CUDA_CHECK(cudaMemcpyAsync(d_vel_y_, h_vel_y_, float_bytes, cudaMemcpyHostToDevice, stream));
+  CUDA_CHECK(cudaMemcpyAsync(d_energy_, h_energy_, float_bytes, cudaMemcpyHostToDevice, stream));
+  CUDA_CHECK(cudaMemcpyAsync(d_age_, h_age_, int_bytes, cudaMemcpyHostToDevice, stream));
+  CUDA_CHECK(cudaMemcpyAsync(d_alive_, h_alive_, u32_bytes, cudaMemcpyHostToDevice, stream));
 }
 
-void GpuPopulationBuffer::download_async(std::size_t count,
-                                         cudaStream_t stream) {
+void GpuPopulationBuffer::download_async(std::size_t count, cudaStream_t stream) {
   if (count == 0 || count > capacity_) {
     return;
   }
@@ -129,30 +118,19 @@ void GpuPopulationBuffer::download_async(std::size_t count,
   const std::size_t float_bytes = count * sizeof(float);
   const std::size_t int_bytes = count * sizeof(int);
   const std::size_t u32_bytes = count * sizeof(uint32_t);
-  const std::size_t brain_bytes =
-      count * kBrainOutputsPerEntity * sizeof(float);
+  const std::size_t brain_bytes = count * kBrainOutputsPerEntity * sizeof(float);
 
-  CUDA_CHECK(cudaMemcpyAsync(h_pos_x_, d_pos_x_, float_bytes,
-                             cudaMemcpyDeviceToHost, stream));
-  CUDA_CHECK(cudaMemcpyAsync(h_pos_y_, d_pos_y_, float_bytes,
-                             cudaMemcpyDeviceToHost, stream));
-  CUDA_CHECK(cudaMemcpyAsync(h_vel_x_, d_vel_x_, float_bytes,
-                             cudaMemcpyDeviceToHost, stream));
-  CUDA_CHECK(cudaMemcpyAsync(h_vel_y_, d_vel_y_, float_bytes,
-                             cudaMemcpyDeviceToHost, stream));
-  CUDA_CHECK(cudaMemcpyAsync(h_energy_, d_energy_, float_bytes,
-                             cudaMemcpyDeviceToHost, stream));
-  CUDA_CHECK(cudaMemcpyAsync(h_age_, d_age_, int_bytes,
-                             cudaMemcpyDeviceToHost, stream));
-  CUDA_CHECK(cudaMemcpyAsync(h_alive_, d_alive_, u32_bytes,
-                             cudaMemcpyDeviceToHost, stream));
-  CUDA_CHECK(cudaMemcpyAsync(h_kill_counts_, d_kill_counts_, u32_bytes,
-                             cudaMemcpyDeviceToHost, stream));
-  CUDA_CHECK(cudaMemcpyAsync(h_claimed_by_, d_claimed_by_, int_bytes,
-                             cudaMemcpyDeviceToHost, stream));
+  CUDA_CHECK(cudaMemcpyAsync(h_pos_x_, d_pos_x_, float_bytes, cudaMemcpyDeviceToHost, stream));
+  CUDA_CHECK(cudaMemcpyAsync(h_pos_y_, d_pos_y_, float_bytes, cudaMemcpyDeviceToHost, stream));
+  CUDA_CHECK(cudaMemcpyAsync(h_vel_x_, d_vel_x_, float_bytes, cudaMemcpyDeviceToHost, stream));
+  CUDA_CHECK(cudaMemcpyAsync(h_vel_y_, d_vel_y_, float_bytes, cudaMemcpyDeviceToHost, stream));
+  CUDA_CHECK(cudaMemcpyAsync(h_energy_, d_energy_, float_bytes, cudaMemcpyDeviceToHost, stream));
+  CUDA_CHECK(cudaMemcpyAsync(h_age_, d_age_, int_bytes, cudaMemcpyDeviceToHost, stream));
+  CUDA_CHECK(cudaMemcpyAsync(h_alive_, d_alive_, u32_bytes, cudaMemcpyDeviceToHost, stream));
+  CUDA_CHECK(cudaMemcpyAsync(h_kill_counts_, d_kill_counts_, u32_bytes, cudaMemcpyDeviceToHost, stream));
+  CUDA_CHECK(cudaMemcpyAsync(h_claimed_by_, d_claimed_by_, int_bytes, cudaMemcpyDeviceToHost, stream));
   // Sensor inputs are device-only, not downloaded
-  CUDA_CHECK(cudaMemcpyAsync(h_brain_outputs_, d_brain_outputs_, brain_bytes,
-                             cudaMemcpyDeviceToHost, stream));
+  CUDA_CHECK(cudaMemcpyAsync(h_brain_outputs_, d_brain_outputs_, brain_bytes, cudaMemcpyDeviceToHost, stream));
 }
 
 GpuFoodBuffer::GpuFoodBuffer(std::size_t max_food) : capacity_(max_food) {
@@ -212,14 +190,10 @@ void GpuFoodBuffer::upload_async(std::size_t count, cudaStream_t stream) {
   const std::size_t u32_bytes = count * sizeof(uint32_t);
   const std::size_t int_bytes = count * sizeof(int);
 
-  CUDA_CHECK(cudaMemcpyAsync(d_pos_x_, h_pos_x_, float_bytes,
-                             cudaMemcpyHostToDevice, stream));
-  CUDA_CHECK(cudaMemcpyAsync(d_pos_y_, h_pos_y_, float_bytes,
-                             cudaMemcpyHostToDevice, stream));
-  CUDA_CHECK(cudaMemcpyAsync(d_active_, h_active_, u32_bytes,
-                             cudaMemcpyHostToDevice, stream));
-  CUDA_CHECK(cudaMemcpyAsync(d_consumed_by_, h_consumed_by_, int_bytes,
-                             cudaMemcpyHostToDevice, stream));
+  CUDA_CHECK(cudaMemcpyAsync(d_pos_x_, h_pos_x_, float_bytes, cudaMemcpyHostToDevice, stream));
+  CUDA_CHECK(cudaMemcpyAsync(d_pos_y_, h_pos_y_, float_bytes, cudaMemcpyHostToDevice, stream));
+  CUDA_CHECK(cudaMemcpyAsync(d_active_, h_active_, u32_bytes, cudaMemcpyHostToDevice, stream));
+  CUDA_CHECK(cudaMemcpyAsync(d_consumed_by_, h_consumed_by_, int_bytes, cudaMemcpyHostToDevice, stream));
 }
 
 void GpuFoodBuffer::download_async(std::size_t count, cudaStream_t stream) {
@@ -231,14 +205,10 @@ void GpuFoodBuffer::download_async(std::size_t count, cudaStream_t stream) {
   const std::size_t u32_bytes = count * sizeof(uint32_t);
   const std::size_t int_bytes = count * sizeof(int);
 
-  CUDA_CHECK(cudaMemcpyAsync(h_pos_x_, d_pos_x_, float_bytes,
-                             cudaMemcpyDeviceToHost, stream));
-  CUDA_CHECK(cudaMemcpyAsync(h_pos_y_, d_pos_y_, float_bytes,
-                             cudaMemcpyDeviceToHost, stream));
-  CUDA_CHECK(cudaMemcpyAsync(h_active_, d_active_, u32_bytes,
-                             cudaMemcpyDeviceToHost, stream));
-  CUDA_CHECK(cudaMemcpyAsync(h_consumed_by_, d_consumed_by_, int_bytes,
-                             cudaMemcpyDeviceToHost, stream));
+  CUDA_CHECK(cudaMemcpyAsync(h_pos_x_, d_pos_x_, float_bytes, cudaMemcpyDeviceToHost, stream));
+  CUDA_CHECK(cudaMemcpyAsync(h_pos_y_, d_pos_y_, float_bytes, cudaMemcpyDeviceToHost, stream));
+  CUDA_CHECK(cudaMemcpyAsync(h_active_, d_active_, u32_bytes, cudaMemcpyDeviceToHost, stream));
+  CUDA_CHECK(cudaMemcpyAsync(h_consumed_by_, d_consumed_by_, int_bytes, cudaMemcpyDeviceToHost, stream));
 }
 
 } // namespace moonai::gpu

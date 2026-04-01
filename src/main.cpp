@@ -9,8 +9,7 @@
 
 namespace {
 
-bool prepare_config(moonai::SimulationConfig &config,
-                    const moonai::CLIArgs &args) {
+bool prepare_config(moonai::SimulationConfig &config, const moonai::CLIArgs &args) {
   const auto override_errors = moonai::apply_overrides(config, args.overrides);
   if (!override_errors.empty()) {
     for (const auto &error : override_errors) {
@@ -30,8 +29,7 @@ bool prepare_config(moonai::SimulationConfig &config,
   return true;
 }
 
-int run_experiment(const std::string &name, moonai::SimulationConfig config,
-                   const moonai::CLIArgs &args) {
+int run_experiment(const std::string &name, const moonai::SimulationConfig &config, const moonai::CLIArgs &args) {
   moonai::AppConfig app_cfg;
   app_cfg.sim_config = config;
   if (args.seed_override != 0) {
@@ -40,8 +38,7 @@ int run_experiment(const std::string &name, moonai::SimulationConfig config,
   app_cfg.experiment_name = name;
   app_cfg.headless = args.headless;
   app_cfg.enable_gpu = !args.no_gpu;
-  app_cfg.run_name_override =
-      args.run_name.empty() ? std::nullopt : std::optional(args.run_name);
+  app_cfg.run_name_override = args.run_name.empty() ? std::nullopt : std::optional(args.run_name);
   app_cfg.interactive = true;
   app_cfg.speed_multiplier = 64;
 
@@ -96,12 +93,10 @@ int main(int argc, const char *argv[]) {
       config.max_steps = args.max_steps_override;
     }
 
-    const auto override_errors =
-        moonai::apply_overrides(config, args.overrides);
+    const auto override_errors = moonai::apply_overrides(config, args.overrides);
     if (!override_errors.empty()) {
       for (const auto &error : override_errors) {
-        std::fprintf(stderr, "ERROR [%s]: %s\n", error.field.c_str(),
-                     error.message.c_str());
+        std::fprintf(stderr, "ERROR [%s]: %s\n", error.field.c_str(), error.message.c_str());
       }
       return 1;
     }
@@ -112,8 +107,7 @@ int main(int argc, const char *argv[]) {
       return 0;
     }
     for (const auto &error : validation_errors) {
-      std::fprintf(stderr, "ERROR [%s]: %s\n", error.field.c_str(),
-                   error.message.c_str());
+      std::fprintf(stderr, "ERROR [%s]: %s\n", error.field.c_str(), error.message.c_str());
     }
     return 1;
   }

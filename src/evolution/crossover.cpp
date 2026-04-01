@@ -5,8 +5,7 @@
 
 namespace moonai {
 
-Genome Crossover::crossover(const Genome &parent_a, const Genome &parent_b,
-                            Random &rng) {
+Genome Crossover::crossover(const Genome &parent_a, const Genome &parent_b, Random &rng) {
   Genome child(parent_a.num_inputs(), parent_a.num_outputs());
 
   std::map<std::uint32_t, const ConnectionGene *> map_a, map_b;
@@ -47,18 +46,15 @@ Genome Crossover::crossover(const Genome &parent_a, const Genome &parent_b,
       continue;
     }
 
-    const ConnectionGene &gene =
-        (it_a != map_a.end()) ? *it_a->second : *it_b->second;
+    const ConnectionGene &gene = (it_a != map_a.end()) ? *it_a->second : *it_b->second;
     inherit_gene(gene);
   }
 
   if (inherited_connections.empty() && !all_innovations.empty()) {
     auto innov_it = all_innovations.begin();
-    std::advance(innov_it,
-                 rng.next_int(0, static_cast<int>(all_innovations.size()) - 1));
+    std::advance(innov_it, rng.next_int(0, static_cast<int>(all_innovations.size()) - 1));
     const auto it_a = map_a.find(*innov_it);
-    const ConnectionGene &gene =
-        (it_a != map_a.end()) ? *it_a->second : *map_b.at(*innov_it);
+    const ConnectionGene &gene = (it_a != map_a.end()) ? *it_a->second : *map_b.at(*innov_it);
     inherit_gene(gene);
   }
 
@@ -71,8 +67,7 @@ Genome Crossover::crossover(const Genome &parent_a, const Genome &parent_b,
     }
   }
   for (const auto &node : parent_b.nodes()) {
-    if (node.type == NodeType::Hidden && needed_nodes.count(node.id) &&
-        !child.has_node(node.id)) {
+    if (node.type == NodeType::Hidden && needed_nodes.count(node.id) && !child.has_node(node.id)) {
       child.add_node(node);
     }
   }

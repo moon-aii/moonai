@@ -14,13 +14,10 @@ void Species::reset_id_counter() {
   species_id_counter_ = 0;
 }
 
-Species::Species(const Genome &representative)
-    : id_(next_species_id()), representative_(representative) {}
+Species::Species(const Genome &representative) : id_(next_species_id()), representative_(representative) {}
 
-bool Species::is_compatible(const Genome &genome, float threshold, float c1,
-                            float c2, float c3) const {
-  return Genome::compatibility_distance(representative_, genome, c1, c2, c3) <
-         threshold;
+bool Species::is_compatible(const Genome &genome, float threshold, float c1, float c2, float c3) const {
+  return Genome::compatibility_distance(representative_, genome, c1, c2, c3) < threshold;
 }
 
 void Species::add_member(uint32_t entity, const Genome &genome) {
@@ -44,9 +41,7 @@ void Species::refresh_summary() {
   const float size = static_cast<float>(members_.size());
   const float total_complexity =
       std::accumulate(members_.begin(), members_.end(), 0.0f,
-                      [](float sum, const Member &member) {
-                        return sum + static_cast<float>(member.complexity);
-                      });
+                      [](float sum, const Member &member) { return sum + static_cast<float>(member.complexity); });
   average_complexity_ = total_complexity / size;
 }
 

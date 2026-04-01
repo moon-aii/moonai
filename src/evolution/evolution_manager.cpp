@@ -5,23 +5,19 @@
 
 namespace moonai {
 
-EvolutionManager::EvolutionManager(const SimulationConfig &config)
-    : config_(config) {}
+EvolutionManager::EvolutionManager(const SimulationConfig &config) : config_(config) {}
 
 EvolutionManager::~EvolutionManager() = default;
 
-void EvolutionManager::initialize_population(
-    PopulationEvolutionState &population) const {
+void EvolutionManager::initialize_population(PopulationEvolutionState &population) const {
   population.innovation_tracker = InnovationTracker();
-  population.innovation_tracker.set_counters(
-      0, static_cast<std::uint32_t>(num_inputs_ + num_outputs_ + 1));
+  population.innovation_tracker.set_counters(0, static_cast<std::uint32_t>(num_inputs_ + num_outputs_ + 1));
   population.species.clear();
   population.genomes.clear();
   population.network_cache.clear();
 }
 
-void EvolutionManager::initialize(AppState &state, int num_inputs,
-                                  int num_outputs) {
+void EvolutionManager::initialize(AppState &state, int num_inputs, int num_outputs) {
   num_inputs_ = num_inputs;
   num_outputs_ = num_outputs;
 

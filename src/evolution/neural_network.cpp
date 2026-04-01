@@ -30,8 +30,7 @@ std::vector<float> NeuralNetwork::activate(const std::vector<float> &inputs) {
 
   int idx = 0;
   for (size_t i = 0; i < nodes_.size(); ++i) {
-    if (nodes_[i].type == NodeType::Input &&
-        idx < static_cast<int>(inputs.size())) {
+    if (nodes_[i].type == NodeType::Input && idx < static_cast<int>(inputs.size())) {
       values_[i] = inputs[idx++];
     } else if (nodes_[i].type == NodeType::Bias) {
       values_[i] = 1.0f;
@@ -57,8 +56,7 @@ std::vector<float> NeuralNetwork::activate(const std::vector<float> &inputs) {
   return outputs;
 }
 
-void NeuralNetwork::activate_into(const float *inputs, int n_in, float *outputs,
-                                  int n_out) {
+void NeuralNetwork::activate_into(const float *inputs, int n_in, float *outputs, int n_out) {
   std::fill(values_.begin(), values_.end(), 0.0f);
 
   int idx = 0;
@@ -135,15 +133,12 @@ void NeuralNetwork::build_evaluation_order() {
     }
   }
 
-  std::unordered_set<std::uint32_t> ordered_set(evaluation_order_.begin(),
-                                                evaluation_order_.end());
+  std::unordered_set<std::uint32_t> ordered_set(evaluation_order_.begin(), evaluation_order_.end());
   std::vector<std::uint32_t> cycle_nodes;
-  std::copy_if(eval_nodes.begin(), eval_nodes.end(),
-               std::back_inserter(cycle_nodes),
+  std::copy_if(eval_nodes.begin(), eval_nodes.end(), std::back_inserter(cycle_nodes),
                [&ordered_set](auto nid) { return !ordered_set.count(nid); });
   std::sort(cycle_nodes.begin(), cycle_nodes.end());
-  evaluation_order_.insert(evaluation_order_.end(), cycle_nodes.begin(),
-                           cycle_nodes.end());
+  evaluation_order_.insert(evaluation_order_.end(), cycle_nodes.begin(), cycle_nodes.end());
 
   incoming_.assign(nodes_.size(), {});
   for (const auto &conn : connections_) {
@@ -179,8 +174,7 @@ int NeuralNetwork::num_output_nodes() const {
   return count;
 }
 
-std::vector<NeuralNetwork::IncomingConnection>
-NeuralNetwork::get_incoming_connections(int node_idx) const {
+std::vector<NeuralNetwork::IncomingConnection> NeuralNetwork::get_incoming_connections(int node_idx) const {
   std::vector<IncomingConnection> result;
   if (node_idx >= 0 && node_idx < static_cast<int>(incoming_.size())) {
     for (const auto &[from_idx, weight] : incoming_[node_idx]) {

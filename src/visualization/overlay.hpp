@@ -55,8 +55,7 @@ class UIOverlay {
 public:
   bool initialize(const std::string &font_path = "");
 
-  void draw(sf::RenderTarget &target, const OverlayStats &stats,
-            const Genome *selected_genome = nullptr);
+  void draw(sf::RenderTarget &target, const OverlayStats &stats, const Genome *selected_genome = nullptr);
 
   bool has_font() const {
     return font_loaded_;
@@ -67,29 +66,23 @@ public:
 
   void push_population(int predators, int prey, int food);
 
-  int draw_experiment_selector(sf::RenderTarget &target,
-                               const std::vector<std::string> &names,
-                               int hover_index, int scroll_offset);
+  int draw_experiment_selector(sf::RenderTarget &target, const std::vector<std::string> &names, int hover_index,
+                               int scroll_offset);
 
 private:
   void draw_panel(sf::RenderTarget &target, float x, float y, float w, float h);
-  void draw_text(sf::RenderTarget &target, const std::string &str, float x,
-                 float y, unsigned int size = 14,
+  void draw_text(sf::RenderTarget &target, const std::string &str, float x, float y, unsigned int size = 14,
                  sf::Color color = sf::Color::White);
   void draw_nn_panel(sf::RenderTarget &target, const Genome &genome);
 
   // Left column panels
   void draw_left_column(sf::RenderTarget &target, const OverlayStats &stats);
   void draw_right_column(sf::RenderTarget &target, const OverlayStats &stats);
-  void draw_stats_panel(sf::RenderTarget &target, const OverlayStats &stats,
-                        float x, float y, float w);
-  void draw_population_chart(sf::RenderTarget &target, float x, float y,
-                             float w, float h);
-  void draw_energy_distribution(sf::RenderTarget &target,
-                                const OverlayStats &stats, float x, float y,
-                                float w, float h);
-  void draw_stats_widget(sf::RenderTarget &target, const OverlayStats &stats,
-                         float x, float y, float w, float h);
+  void draw_stats_panel(sf::RenderTarget &target, const OverlayStats &stats, float x, float y, float w);
+  void draw_population_chart(sf::RenderTarget &target, float x, float y, float w, float h);
+  void draw_energy_distribution(sf::RenderTarget &target, const OverlayStats &stats, float x, float y, float w,
+                                float h);
+  void draw_stats_widget(sf::RenderTarget &target, const OverlayStats &stats, float x, float y, float w, float h);
 
   // Population history: tuple of {predators, prey, food}
   std::deque<std::tuple<int, int, int>> population_history_;

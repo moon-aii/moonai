@@ -6,8 +6,7 @@
 
 namespace moonai {
 
-Genome::Genome(int num_inputs, int num_outputs)
-    : num_inputs_(num_inputs), num_outputs_(num_outputs) {
+Genome::Genome(int num_inputs, int num_outputs) : num_inputs_(num_inputs), num_outputs_(num_outputs) {
   std::uint32_t id = 0;
   for (int i = 0; i < num_inputs; ++i) {
     nodes_.push_back({id++, NodeType::Input});
@@ -30,14 +29,11 @@ void Genome::add_connection(const ConnectionGene &conn) {
 
 bool Genome::has_connection(std::uint32_t from, std::uint32_t to) const {
   return std::any_of(connections_.begin(), connections_.end(),
-                     [from, to](const auto &c) {
-                       return c.in_node == from && c.out_node == to;
-                     });
+                     [from, to](const auto &c) { return c.in_node == from && c.out_node == to; });
 }
 
 bool Genome::has_node(std::uint32_t id) const {
-  return std::any_of(nodes_.begin(), nodes_.end(),
-                     [id](const auto &n) { return n.id == id; });
+  return std::any_of(nodes_.begin(), nodes_.end(), [id](const auto &n) { return n.id == id; });
 }
 
 std::uint32_t Genome::max_node_id() const {
@@ -53,13 +49,11 @@ int Genome::complexity() const {
   return static_cast<int>(nodes_.size() + connections_.size());
 }
 
-float Genome::compatibility_distance(const Genome &a, const Genome &b, float c1,
-                                     float c2, float c3) {
+float Genome::compatibility_distance(const Genome &a, const Genome &b, float c1, float c2, float c3) {
   const auto &raw_conns_a = a.connections();
   const auto &raw_conns_b = b.connections();
 
-  auto by_innovation = [](const ConnectionGene &lhs,
-                          const ConnectionGene &rhs) {
+  auto by_innovation = [](const ConnectionGene &lhs, const ConnectionGene &rhs) {
     return lhs.innovation < rhs.innovation;
   };
   auto is_sorted_by_innovation = [](const std::vector<ConnectionGene> &conns) {
@@ -173,8 +167,7 @@ Genome Genome::from_json(const std::string &json_str) {
   }
 
   for (const auto &c : j["connections"]) {
-    g.connections_.push_back(
-        {c["in"], c["out"], c["weight"], c["enabled"], c["innovation"]});
+    g.connections_.push_back({c["in"], c["out"], c["weight"], c["enabled"], c["innovation"]});
   }
 
   return g;

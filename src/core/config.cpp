@@ -73,69 +73,51 @@ std::vector<ConfigError> validate_config(const SimulationConfig &config) {
   // Population
   check(config.predator_count >= 1, "predator_count", "must be >= 1");
   check(config.prey_count >= 1, "prey_count", "must be >= 1");
-  check(config.predator_count + config.prey_count <= 50000, "population",
-        "total population must be <= 50000");
+  check(config.predator_count + config.prey_count <= 50000, "population", "total population must be <= 50000");
 
   // Agent
   check(config.predator_speed > 0.0f, "predator_speed", "must be > 0");
   check(config.prey_speed > 0.0f, "prey_speed", "must be > 0");
   check(config.vision_range > 0.0f, "vision_range", "must be > 0");
   check(config.interaction_range > 0.0f, "interaction_range", "must be > 0");
-  check(config.interaction_range < config.vision_range, "interaction_range",
-        "must be less than vision_range");
+  check(config.interaction_range < config.vision_range, "interaction_range", "must be less than vision_range");
   check(config.initial_energy > 0.0f, "initial_energy", "must be > 0");
-  check(config.energy_drain_per_step >= 0.0f, "energy_drain_per_step",
-        "must be >= 0");
+  check(config.energy_drain_per_step >= 0.0f, "energy_drain_per_step", "must be >= 0");
 
   // Food
   check(config.food_count >= 0, "food_count", "must be >= 0");
-  check(config.food_respawn_rate >= 0.0f && config.food_respawn_rate <= 1.0f,
-        "food_respawn_rate", "must be in [0, 1]");
+  check(config.food_respawn_rate >= 0.0f && config.food_respawn_rate <= 1.0f, "food_respawn_rate", "must be in [0, 1]");
 
   // Evolution rates
-  check(config.mutation_rate >= 0.0f && config.mutation_rate <= 1.0f,
-        "mutation_rate", "must be in [0, 1]");
-  check(config.crossover_rate >= 0.0f && config.crossover_rate <= 1.0f,
-        "crossover_rate", "must be in [0, 1]");
-  check(config.add_node_rate >= 0.0f && config.add_node_rate <= 1.0f,
-        "add_node_rate", "must be in [0, 1]");
-  check(config.add_connection_rate >= 0.0f &&
-            config.add_connection_rate <= 1.0f,
-        "add_connection_rate", "must be in [0, 1]");
-  check(config.delete_connection_rate >= 0.0f &&
-            config.delete_connection_rate <= 1.0f,
-        "delete_connection_rate", "must be in [0, 1]");
-  check(config.weight_mutation_power > 0.0f, "weight_mutation_power",
-        "must be > 0");
+  check(config.mutation_rate >= 0.0f && config.mutation_rate <= 1.0f, "mutation_rate", "must be in [0, 1]");
+  check(config.crossover_rate >= 0.0f && config.crossover_rate <= 1.0f, "crossover_rate", "must be in [0, 1]");
+  check(config.add_node_rate >= 0.0f && config.add_node_rate <= 1.0f, "add_node_rate", "must be in [0, 1]");
+  check(config.add_connection_rate >= 0.0f && config.add_connection_rate <= 1.0f, "add_connection_rate",
+        "must be in [0, 1]");
+  check(config.delete_connection_rate >= 0.0f && config.delete_connection_rate <= 1.0f, "delete_connection_rate",
+        "must be in [0, 1]");
+  check(config.weight_mutation_power > 0.0f, "weight_mutation_power", "must be > 0");
   check(config.max_steps >= 0, "max_steps", "must be >= 0 (0 = infinite)");
 
   // Speciation
-  check(config.compatibility_threshold > 0.0f, "compatibility_threshold",
-        "must be > 0");
-  check(config.species_update_interval_steps >= 1,
-        "species_update_interval_steps", "must be >= 1");
+  check(config.compatibility_threshold > 0.0f, "compatibility_threshold", "must be > 0");
+  check(config.species_update_interval_steps >= 1, "species_update_interval_steps", "must be >= 1");
 
   // Simulation
-  check(config.report_interval_steps >= 1, "report_interval_steps",
-        "must be >= 1");
+  check(config.report_interval_steps >= 1, "report_interval_steps", "must be >= 1");
   check(config.mate_range > 0.0f, "mate_range", "must be > 0");
-  check(config.reproduction_energy_threshold > 0.0f,
-        "reproduction_energy_threshold", "must be > 0");
-  check(config.reproduction_energy_cost > 0.0f, "reproduction_energy_cost",
-        "must be > 0");
-  check(config.offspring_initial_energy > 0.0f, "offspring_initial_energy",
-        "must be > 0");
-  check(config.birth_spawn_radius >= 0.0f, "birth_spawn_radius",
-        "must be >= 0");
+  check(config.reproduction_energy_threshold > 0.0f, "reproduction_energy_threshold", "must be > 0");
+  check(config.reproduction_energy_cost > 0.0f, "reproduction_energy_cost", "must be > 0");
+  check(config.offspring_initial_energy > 0.0f, "offspring_initial_energy", "must be > 0");
+  check(config.birth_spawn_radius >= 0.0f, "birth_spawn_radius", "must be >= 0");
 
   return errors;
 }
 
 // ── CLI override ────────────────────────────────────────────────────────
 
-std::vector<ConfigError> apply_overrides(
-    SimulationConfig &config,
-    const std::vector<std::pair<std::string, std::string>> &overrides) {
+std::vector<ConfigError> apply_overrides(SimulationConfig &config,
+                                         const std::vector<std::pair<std::string, std::string>> &overrides) {
   std::vector<ConfigError> errors;
 
   for (const auto &[key, val] : overrides) {
@@ -217,8 +199,7 @@ std::vector<ConfigError> apply_overrides(
         errors.push_back({key, "unknown config key"});
       }
     } catch (const std::exception &e) {
-      errors.push_back(
-          {key, std::string("invalid value '") + val + "': " + e.what()});
+      errors.push_back({key, std::string("invalid value '") + val + "': " + e.what()});
     }
   }
 
@@ -272,8 +253,7 @@ CLIArgs parse_args(int argc, const char *argv[]) {
       std::string kv = argv[++i];
       auto eq = kv.find('=');
       if (eq == std::string::npos) {
-        std::fprintf(stderr, "Invalid --set format '%s' (expected key=value)\n",
-                     kv.c_str());
+        std::fprintf(stderr, "Invalid --set format '%s' (expected key=value)\n", kv.c_str());
         args.help = true;
       } else {
         args.overrides.emplace_back(kv.substr(0, eq), kv.substr(eq + 1));
@@ -291,42 +271,41 @@ CLIArgs parse_args(int argc, const char *argv[]) {
 }
 
 void print_usage(const char *program_name) {
-  fmt::print(
-      "MoonAI - Predator-Prey Evolutionary Simulation\n"
-      "\n"
-      "Usage: {} [OPTIONS] [config.lua]\n"
-      "\n"
-      "Options:\n"
-      "  -c, --config <path>       Path to Lua config (default: "
-      "config/default.lua)\n"
-      "  -s, --seed <number>       Override random seed\n"
-      "  -n, --steps <n>           Override max steps (0 = infinite)\n"
-      "      --headless            Run without visualization\n"
-      "  -v, --verbose             Enable debug logging\n"
-      "      --resume <path>       Resume from a checkpoint JSON file\n"
-      "      --checkpoint <n>      Save checkpoint every N steps (0 = "
-      "disabled)\n"
-      "      --compare <a> <b>     Print structural diff between two genome "
-      "JSON files\n"
-      "      --no-gpu              Disable CUDA GPU acceleration (use CPU path)"
+  fmt::print("MoonAI - Predator-Prey Evolutionary Simulation\n"
+             "\n"
+             "Usage: {} [OPTIONS] [config.lua]\n"
+             "\n"
+             "Options:\n"
+             "  -c, --config <path>       Path to Lua config (default: "
+             "config/default.lua)\n"
+             "  -s, --seed <number>       Override random seed\n"
+             "  -n, --steps <n>           Override max steps (0 = infinite)\n"
+             "      --headless            Run without visualization\n"
+             "  -v, --verbose             Enable debug logging\n"
+             "      --resume <path>       Resume from a checkpoint JSON file\n"
+             "      --checkpoint <n>      Save checkpoint every N steps (0 = "
+             "disabled)\n"
+             "      --compare <a> <b>     Print structural diff between two genome "
+             "JSON files\n"
+             "      --no-gpu              Disable CUDA GPU acceleration (use CPU path)"
 #ifdef MOONAI_ENABLE_CUDA
-      " (cuda compiled in)\n"
+             " (cuda compiled in)\n"
 #else
-      " (no-cuda build: always CPU)\n"
+             " (no-cuda build: always CPU)\n"
 #endif
-      "\n"
-      "Experiment orchestration:\n"
-      "      --experiment <name>   Select one experiment from a multi-config "
-      "Lua file\n"
-      "      --all                 Run all experiments sequentially (headless "
-      "only)\n"
-      "      --list                List experiment names and exit\n"
-      "      --name <name>         Override output directory name\n"
-      "      --set key=value       Override a config parameter (repeatable)\n"
-      "      --validate            Validate config and exit\n"
-      "\n"
-      "  -h, --help                Show this help message\n",
-      program_name);
+             "\n"
+             "Experiment orchestration:\n"
+             "      --experiment <name>   Select one experiment from a multi-config "
+             "Lua file\n"
+             "      --all                 Run all experiments sequentially (headless "
+             "only)\n"
+             "      --list                List experiment names and exit\n"
+             "      --name <name>         Override output directory name\n"
+             "      --set key=value       Override a config parameter (repeatable)\n"
+             "      --validate            Validate config and exit\n"
+             "\n"
+             "  -h, --help                Show this help message\n",
+             program_name);
 }
 
 } // namespace moonai

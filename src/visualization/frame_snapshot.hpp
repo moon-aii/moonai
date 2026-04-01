@@ -28,7 +28,6 @@ struct FrameSnapshot {
 };
 
 void update_selected_activations(AppState &state);
-FrameSnapshot build_frame_snapshot(const AppState &state,
-                                   const AppConfig &config);
+FrameSnapshot build_frame_snapshot(const AppState &state, const AppConfig &config);
 
 } // namespace moonai

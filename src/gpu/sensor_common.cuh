@@ -37,19 +37,16 @@ struct SensorBuildView {
   float max_energy;
 };
 
-__device__ __forceinline__ float sensor_clampf(float value, float min_value,
-                                               float max_value) {
+__device__ __forceinline__ float sensor_clampf(float value, float min_value, float max_value) {
   return fminf(fmaxf(value, min_value), max_value);
 }
 
-__device__ __forceinline__ int sensor_clamp_index(int value, int min_value,
-                                                  int max_value) {
+__device__ __forceinline__ int sensor_clamp_index(int value, int min_value, int max_value) {
   return max(min_value, min(value, max_value));
 }
 
-__device__ __forceinline__ bool
-cell_may_intersect_radius(int cx, int cy, float cell_size, float origin_x,
-                          float origin_y, float radius) {
+__device__ __forceinline__ bool cell_may_intersect_radius(int cx, int cy, float cell_size, float origin_x,
+                                                          float origin_y, float radius) {
   const float center_x = (static_cast<float>(cx) + 0.5f) * cell_size;
   const float center_y = (static_cast<float>(cy) + 0.5f) * cell_size;
   float dx = center_x - origin_x;
@@ -61,8 +58,7 @@ cell_may_intersect_radius(int cx, int cy, float cell_size, float origin_x,
   return nearest_x * nearest_x + nearest_y * nearest_y <= radius * radius;
 }
 
-__device__ __forceinline__ void
-build_sensor_inputs_for_agent(const SensorBuildView &view, int agent_idx) {
+__device__ __forceinline__ void build_sensor_inputs_for_agent(const SensorBuildView &view, int agent_idx) {
   float *out = view.inputs + static_cast<size_t>(agent_idx) * view.num_inputs;
   out[0] = 2.0f;
   out[1] = 2.0f;
@@ -103,18 +99,12 @@ build_sensor_inputs_for_agent(const SensorBuildView &view, int agent_idx) {
   const float self_vision = view.agent_vision[agent_idx];
   const float vision_sq = self_vision * self_vision;
   const float inv_vision = self_vision > 0.0f ? 1.0f / self_vision : 0.0f;
-  const int agent_cells_to_check =
-      static_cast<int>(self_vision / agent_cell_size) + 1;
-  const int food_cells_to_check =
-      static_cast<int>(self_vision / food_cell_size) + 1;
-  const int agent_cx = sensor_clamp_index(
-      static_cast<int>(self_x / agent_cell_size), 0, agent_cols - 1);
-  const int agent_cy = sensor_clamp_index(
-      static_cast<int>(self_y / agent_cell_size), 0, agent_rows - 1);
-  const int food_cx = sensor_clamp_index(
-      static_cast<int>(self_x / food_cell_size), 0, food_cols - 1);
-  const int food_cy = sensor_clamp_index(
-      static_cast<int>(self_y / food_cell_size), 0, food_rows - 1);
+  const int agent_cells_to_check = static_cast<int>(self_vision / agent_cell_size) + 1;
+  const int food_cells_to_check = static_cast<int>(self_vision / food_cell_size) + 1;
+  const int agent_cx = sensor_clamp_index(static_cast<int>(self_x / agent_cell_size), 0, agent_cols - 1);
+  const int agent_cy = sensor_clamp_index(static_cast<int>(self_y / agent_cell_size), 0, agent_rows - 1);
+  const int food_cx = sensor_clamp_index(static_cast<int>(self_x / food_cell_size), 0, food_cols - 1);
+  const int food_cy = sensor_clamp_index(static_cast<int>(self_y / food_cell_size), 0, food_rows - 1);
 
   float nearest_pred_dist_sq = INFINITY;
   float nearest_prey_dist_sq = INFINITY;
@@ -128,21 +118,18 @@ build_sensor_inputs_for_agent(const SensorBuildView &view, int agent_idx) {
   int local_predators = 0;
   int local_prey = 0;
 
-  for (int dy_cell = -agent_cells_to_check; dy_cell <= agent_cells_to_check;
-       ++dy_cell) {
+  for (int dy_cell = -agent_cells_to_check; dy_cell <= agent_cells_to_check; ++dy_cell) {
     const int ny = agent_cy + dy_cell;
     if (ny < 0 || ny >= agent_rows) {
       continue;
     }
     const int row_base = ny * agent_cols;
-    for (int dx_cell = -agent_cells_to_check; dx_cell <= agent_cells_to_check;
-         ++dx_cell) {
+    for (int dx_cell = -agent_cells_to_check; dx_cell <= agent_cells_to_check; ++dx_cell) {
       const int nx = agent_cx + dx_cell;
       if (nx < 0 || nx >= agent_cols) {
         continue;
       }
-      if (!cell_may_intersect_radius(nx, ny, agent_cell_size, self_x,
-                                               self_y, self_vision)) {
+      if (!cell_may_intersect_radius(nx, ny, agent_cell_size, self_x, self_y, self_vision)) {
         continue;
       }
       const int cell = row_base + nx;
@@ -178,21 +165,18 @@ build_sensor_inputs_for_agent(const SensorBuildView &view, int agent_idx) {
     }
   }
 
-  for (int dy_cell = -food_cells_to_check; dy_cell <= food_cells_to_check;
-       ++dy_cell) {
+  for (int dy_cell = -food_cells_to_check; dy_cell <= food_cells_to_check; ++dy_cell) {
     const int ny = food_cy + dy_cell;
     if (ny < 0 || ny >= food_rows) {
       continue;
     }
     const int row_base = ny * food_cols;
-    for (int dx_cell = -food_cells_to_check; dx_cell <= food_cells_to_check;
-         ++dx_cell) {
+    for (int dx_cell = -food_cells_to_check; dx_cell <= food_cells_to_check; ++dx_cell) {
       const int nx = food_cx + dx_cell;
       if (nx < 0 || nx >= food_cols) {
         continue;
       }
-      if (!cell_may_intersect_radius(nx, ny, food_cell_size, self_x,
-                                               self_y, self_vision)) {
+      if (!cell_may_intersect_radius(nx, ny, food_cell_size, self_x, self_y, self_vision)) {
         continue;
       }
       const int cell = row_base + nx;
@@ -227,17 +211,13 @@ build_sensor_inputs_for_agent(const SensorBuildView &view, int agent_idx) {
     out[4] = food_dx * inv_vision;
     out[5] = food_dy * inv_vision;
   }
-  out[6] = sensor_clampf(
-      view.agent_energy[agent_idx] / (view.max_energy * 2.0f), 0.0f, 1.0f);
+  out[6] = sensor_clampf(view.agent_energy[agent_idx] / (view.max_energy * 2.0f), 0.0f, 1.0f);
   if (view.agent_speed > 0.0f) {
     const float inv_speed = 1.0f / view.agent_speed;
-    out[7] =
-        sensor_clampf(view.agent_vel_x[agent_idx] * inv_speed, -1.0f, 1.0f);
-    out[8] =
-        sensor_clampf(view.agent_vel_y[agent_idx] * inv_speed, -1.0f, 1.0f);
+    out[7] = sensor_clampf(view.agent_vel_x[agent_idx] * inv_speed, -1.0f, 1.0f);
+    out[8] = sensor_clampf(view.agent_vel_y[agent_idx] * inv_speed, -1.0f, 1.0f);
   }
-  out[9] =
-      sensor_clampf(static_cast<float>(local_predators) * 0.1f, 0.0f, 1.0f);
+  out[9] = sensor_clampf(static_cast<float>(local_predators) * 0.1f, 0.0f, 1.0f);
   out[10] = sensor_clampf(static_cast<float>(local_prey) * 0.1f, 0.0f, 1.0f);
   out[11] = sensor_clampf(self_x / self_vision, 0.0f, 1.0f);
   out[12] = sensor_clampf((view.world_width - self_x) / self_vision, 0.0f, 1.0f);

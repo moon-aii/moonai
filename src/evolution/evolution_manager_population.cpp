@@ -10,9 +10,7 @@
 
 namespace moonai {
 
-Genome
-EvolutionManager::create_initial_genome(PopulationEvolutionState &population,
-                                        Random &rng) const {
+Genome EvolutionManager::create_initial_genome(PopulationEvolutionState &population, Random &rng) const {
   Genome genome(num_inputs_, num_outputs_);
   for (const auto &in_node : genome.nodes()) {
     if (in_node.type != NodeType::Input && in_node.type != NodeType::Bias) {
@@ -23,19 +21,15 @@ EvolutionManager::create_initial_genome(PopulationEvolutionState &population,
         continue;
       }
 
-      const std::uint32_t innovation =
-          population.innovation_tracker.get_innovation(in_node.id, out_node.id);
-      genome.add_connection({in_node.id, out_node.id,
-                             rng.next_float(-1.0f, 1.0f), true, innovation});
+      const std::uint32_t innovation = population.innovation_tracker.get_innovation(in_node.id, out_node.id);
+      genome.add_connection({in_node.id, out_node.id, rng.next_float(-1.0f, 1.0f), true, innovation});
     }
   }
   return genome;
 }
 
-Genome
-EvolutionManager::create_child_genome(PopulationEvolutionState &population,
-                                      Random &rng, const Genome &parent_a,
-                                      const Genome &parent_b) const {
+Genome EvolutionManager::create_child_genome(PopulationEvolutionState &population, Random &rng, const Genome &parent_a,
+                                             const Genome &parent_b) const {
   Genome child = Crossover::crossover(parent_a, parent_b, rng);
   Mutation::mutate(child, rng, config_, population.innovation_tracker);
   return child;
@@ -52,14 +46,12 @@ void EvolutionManager::seed_initial_population(AppState &state) {
 
   auto seed_predator = [&] {
     const uint32_t idx = state.predator.create();
-    Genome genome =
-        create_initial_genome(state.evolution.predators, state.runtime.rng);
+    Genome genome = create_initial_genome(state.evolution.predators, state.runtime.rng);
     if (idx >= state.evolution.predators.genomes.size()) {
       state.evolution.predators.genomes.resize(idx + 1);
     }
     state.evolution.predators.genomes[idx] = genome;
-    state.evolution.predators.network_cache.assign(
-        idx, state.evolution.predators.genomes[idx]);
+    state.evolution.predators.network_cache.assign(idx, state.evolution.predators.genomes[idx]);
 
     state.predator.pos_x[idx] = state.runtime.rng.next_float(0.0f, grid_size);
     state.predator.pos_y[idx] = state.runtime.rng.next_float(0.0f, grid_size);
@@ -75,14 +67,12 @@ void EvolutionManager::seed_initial_population(AppState &state) {
 
   auto seed_prey = [&] {
     const uint32_t idx = state.prey.create();
-    Genome genome =
-        create_initial_genome(state.evolution.prey, state.runtime.rng);
+    Genome genome = create_initial_genome(state.evolution.prey, state.runtime.rng);
     if (idx >= state.evolution.prey.genomes.size()) {
       state.evolution.prey.genomes.resize(idx + 1);
     }
     state.evolution.prey.genomes[idx] = genome;
-    state.evolution.prey.network_cache.assign(
-        idx, state.evolution.prey.genomes[idx]);
+    state.evolution.prey.network_cache.assign(idx, state.evolution.prey.genomes[idx]);
 
     state.prey.pos_x[idx] = state.runtime.rng.next_float(0.0f, grid_size);
     state.prey.pos_y[idx] = state.runtime.rng.next_float(0.0f, grid_size);
@@ -111,20 +101,16 @@ void EvolutionManager::seed_initial_population(AppState &state) {
   }
 }
 
-uint32_t EvolutionManager::create_predator_offspring(AppState &state,
-                                                     uint32_t parent_a,
-                                                     uint32_t parent_b,
+uint32_t EvolutionManager::create_predator_offspring(AppState &state, uint32_t parent_a, uint32_t parent_b,
                                                      Vec2 spawn_position) {
   MOONAI_PROFILE_SCOPE("evolution_offspring_predator");
   if (!state.predator.valid(parent_a) || !state.predator.valid(parent_b) ||
-      parent_a >= state.evolution.predators.genomes.size() ||
-      parent_b >= state.evolution.predators.genomes.size()) {
+      parent_a >= state.evolution.predators.genomes.size() || parent_b >= state.evolution.predators.genomes.size()) {
     return INVALID_ENTITY;
   }
 
   Genome child_genome =
-      create_child_genome(state.evolution.predators, state.runtime.rng,
-                          state.evolution.predators.genomes[parent_a],
+      create_child_genome(state.evolution.predators, state.runtime.rng, state.evolution.predators.genomes[parent_a],
                           state.evolution.predators.genomes[parent_b]);
 
   const uint32_t idx = state.predator.create();
@@ -143,8 +129,7 @@ uint32_t EvolutionManager::create_predator_offspring(AppState &state,
     state.evolution.predators.genomes.resize(idx + 1);
   }
   state.evolution.predators.genomes[idx] = std::move(child_genome);
-  state.evolution.predators.network_cache.assign(
-      idx, state.evolution.predators.genomes[idx]);
+  state.evolution.predators.network_cache.assign(idx, state.evolution.predators.genomes[idx]);
 
   state.predator.energy[parent_a] -= config_.reproduction_energy_cost;
   state.predator.energy[parent_b] -= config_.reproduction_energy_cost;
@@ -156,20 +141,16 @@ uint32_t EvolutionManager::create_predator_offspring(AppState &state,
   return idx;
 }
 
-uint32_t EvolutionManager::create_prey_offspring(AppState &state,
-                                                 uint32_t parent_a,
-                                                 uint32_t parent_b,
+uint32_t EvolutionManager::create_prey_offspring(AppState &state, uint32_t parent_a, uint32_t parent_b,
                                                  Vec2 spawn_position) {
   MOONAI_PROFILE_SCOPE("evolution_offspring_prey");
-  if (!state.prey.valid(parent_a) || !state.prey.valid(parent_b) ||
-      parent_a >= state.evolution.prey.genomes.size() ||
+  if (!state.prey.valid(parent_a) || !state.prey.valid(parent_b) || parent_a >= state.evolution.prey.genomes.size() ||
       parent_b >= state.evolution.prey.genomes.size()) {
     return INVALID_ENTITY;
   }
 
   Genome child_genome =
-      create_child_genome(state.evolution.prey, state.runtime.rng,
-                          state.evolution.prey.genomes[parent_a],
+      create_child_genome(state.evolution.prey, state.runtime.rng, state.evolution.prey.genomes[parent_a],
                           state.evolution.prey.genomes[parent_b]);
 
   const uint32_t idx = state.prey.create();
@@ -188,8 +169,7 @@ uint32_t EvolutionManager::create_prey_offspring(AppState &state,
     state.evolution.prey.genomes.resize(idx + 1);
   }
   state.evolution.prey.genomes[idx] = std::move(child_genome);
-  state.evolution.prey.network_cache.assign(idx,
-                                            state.evolution.prey.genomes[idx]);
+  state.evolution.prey.network_cache.assign(idx, state.evolution.prey.genomes[idx]);
 
   state.prey.energy[parent_a] -= config_.reproduction_energy_cost;
   state.prey.energy[parent_b] -= config_.reproduction_energy_cost;
@@ -201,8 +181,7 @@ uint32_t EvolutionManager::create_prey_offspring(AppState &state,
   return idx;
 }
 
-void EvolutionManager::refresh_population_species(
-    PopulationEvolutionState &population, AgentRegistry &agents) const {
+void EvolutionManager::refresh_population_species(PopulationEvolutionState &population, AgentRegistry &agents) const {
   auto &species = population.species;
   for (auto &entry : species) {
     entry.clear_members();
@@ -218,8 +197,7 @@ void EvolutionManager::refresh_population_species(
     int assigned_species_id = -1;
 
     for (auto &entry : species) {
-      if (entry.is_compatible(genome, config_.compatibility_threshold,
-                              config_.c1_excess, config_.c2_disjoint,
+      if (entry.is_compatible(genome, config_.compatibility_threshold, config_.c1_excess, config_.c2_disjoint,
                               config_.c3_weight)) {
         entry.add_member(idx, genome);
         assigned_species_id = entry.id();
@@ -241,11 +219,9 @@ void EvolutionManager::refresh_population_species(
     entry.refresh_summary();
   }
 
-  species.erase(std::remove_if(species.begin(), species.end(),
-                               [](const Species &entry) {
-                                 return entry.members().empty();
-                               }),
-                species.end());
+  species.erase(
+      std::remove_if(species.begin(), species.end(), [](const Species &entry) { return entry.members().empty(); }),
+      species.end());
 
   for (auto &entry : species) {
     const uint32_t representative_idx = entry.members().front().entity;
@@ -260,17 +236,14 @@ void EvolutionManager::refresh_species(AppState &state) {
   refresh_population_species(state.evolution.prey, state.prey);
 }
 
-void EvolutionManager::on_population_destroyed(
-    PopulationEvolutionState &population, uint32_t entity) {
-  if (entity != INVALID_ENTITY &&
-      static_cast<std::size_t>(entity) + 1 == population.genomes.size()) {
+void EvolutionManager::on_population_destroyed(PopulationEvolutionState &population, uint32_t entity) {
+  if (entity != INVALID_ENTITY && static_cast<std::size_t>(entity) + 1 == population.genomes.size()) {
     population.genomes.pop_back();
   }
   population.network_cache.remove(entity);
 }
 
-void EvolutionManager::on_population_moved(PopulationEvolutionState &population,
-                                           uint32_t from, uint32_t to) {
+void EvolutionManager::on_population_moved(PopulationEvolutionState &population, uint32_t from, uint32_t to) {
   if (from == to) {
     return;
   }
@@ -292,8 +265,7 @@ void EvolutionManager::on_predator_destroyed(AppState &state, uint32_t entity) {
   }
 }
 
-void EvolutionManager::on_predator_moved(AppState &state, uint32_t from,
-                                         uint32_t to) {
+void EvolutionManager::on_predator_moved(AppState &state, uint32_t from, uint32_t to) {
   on_population_moved(state.evolution.predators, from, to);
   if (predator_gpu_network_cache_) {
     predator_gpu_network_cache_->invalidate();
@@ -307,8 +279,7 @@ void EvolutionManager::on_prey_destroyed(AppState &state, uint32_t entity) {
   }
 }
 
-void EvolutionManager::on_prey_moved(AppState &state, uint32_t from,
-                                     uint32_t to) {
+void EvolutionManager::on_prey_moved(AppState &state, uint32_t from, uint32_t to) {
   on_population_moved(state.evolution.prey, from, to);
   if (prey_gpu_network_cache_) {
     prey_gpu_network_cache_->invalidate();

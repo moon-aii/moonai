@@ -42,8 +42,7 @@ private:
 } // namespace profiler
 } // namespace moonai
 
-#define MOONAI_PROFILE_SCOPE(event_name, ...)                                  \
-  ::moonai::profiler::ScopedTimer _moonai_scoped_timer(event_name,             \
-                                                       ##__VA_ARGS__)
+#define MOONAI_PROFILE_SCOPE(event_name, ...)                                                                          \
+  ::moonai::profiler::ScopedTimer _moonai_scoped_timer(event_name, ##__VA_ARGS__)
 
 #endif

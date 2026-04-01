@@ -11,8 +11,7 @@ namespace moonai {
 
 namespace {
 
-template <typename T>
-void lua_get(const sol::table &tbl, const char *key, T &field) {
+template <typename T> void lua_get(const sol::table &tbl, const char *key, T &field) {
   auto val = tbl[key];
   if (val.valid()) {
     field = val.get<T>();
@@ -26,8 +25,7 @@ void lua_get_bool(const sol::table &tbl, const char *key, bool &field) {
   }
 }
 
-void lua_get_uint64(const sol::table &tbl, const char *key,
-                    std::uint64_t &field) {
+void lua_get_uint64(const sol::table &tbl, const char *key, std::uint64_t &field) {
   auto val = tbl[key];
   if (val.valid()) {
     field = static_cast<std::uint64_t>(val.get<double>());
@@ -62,14 +60,12 @@ SimulationConfig table_to_config(const sol::table &tbl) {
   lua_get(tbl, "c1_excess", config.c1_excess);
   lua_get(tbl, "c2_disjoint", config.c2_disjoint);
   lua_get(tbl, "c3_weight", config.c3_weight);
-  lua_get(tbl, "species_update_interval_steps",
-          config.species_update_interval_steps);
+  lua_get(tbl, "species_update_interval_steps", config.species_update_interval_steps);
   lua_get_uint64(tbl, "seed", config.seed);
   lua_get(tbl, "output_dir", config.output_dir);
   lua_get(tbl, "report_interval_steps", config.report_interval_steps);
   lua_get(tbl, "mate_range", config.mate_range);
-  lua_get(tbl, "reproduction_energy_threshold",
-          config.reproduction_energy_threshold);
+  lua_get(tbl, "reproduction_energy_threshold", config.reproduction_energy_threshold);
   lua_get(tbl, "reproduction_energy_cost", config.reproduction_energy_cost);
   lua_get(tbl, "offspring_initial_energy", config.offspring_initial_energy);
   lua_get(tbl, "birth_spawn_radius", config.birth_spawn_radius);
@@ -118,8 +114,7 @@ void inject_defaults(sol::state &lua) {
 
 } // anonymous namespace
 
-std::map<std::string, SimulationConfig>
-load_all_configs_lua(const std::string &filepath) {
+std::map<std::string, SimulationConfig> load_all_configs_lua(const std::string &filepath) {
   LuaRuntime runtime;
   return runtime.load_config(filepath);
 }
@@ -138,13 +133,11 @@ LuaRuntime::~LuaRuntime() = default;
 
 // ── Config loading ───────────────────────────────────────────────────────────
 
-std::map<std::string, SimulationConfig>
-LuaRuntime::load_config(const std::string &filepath) {
+std::map<std::string, SimulationConfig> LuaRuntime::load_config(const std::string &filepath) {
   std::map<std::string, SimulationConfig> configs;
 
   auto &lua = impl_->lua;
-  lua.open_libraries(sol::lib::base, sol::lib::math, sol::lib::table,
-                     sol::lib::string);
+  lua.open_libraries(sol::lib::base, sol::lib::math, sol::lib::table, sol::lib::string);
   inject_defaults(lua);
 
   try {
@@ -164,8 +157,7 @@ LuaRuntime::load_config(const std::string &filepath) {
     sol::table tbl = obj.as<sol::table>();
 
     for (auto &[key, val] : tbl) {
-      if (key.get_type() != sol::type::string ||
-          val.get_type() != sol::type::table)
+      if (key.get_type() != sol::type::string || val.get_type() != sol::type::table)
         continue;
 
       std::string name = key.as<std::string>();
@@ -177,8 +169,7 @@ LuaRuntime::load_config(const std::string &filepath) {
     if (configs.empty()) {
       spdlog::error("Lua config '{}' returned no named experiments.", filepath);
     } else {
-      spdlog::info("Loaded {} experiment(s) from '{}'.", configs.size(),
-                   filepath);
+      spdlog::info("Loaded {} experiment(s) from '{}'.", configs.size(), filepath);
     }
 
   } catch (const std::exception &e) {

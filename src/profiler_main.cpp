@@ -114,12 +114,10 @@ Profiler::~Profiler() {
 }
 
 ScopedTimer::ScopedTimer(const char *event_name, cudaStream_t stream)
-    : event_name_(event_name), stream_(stream), gpu_event_index_(-1),
-      has_cpu_scope_(stream == nullptr) {
+    : event_name_(event_name), stream_(stream), gpu_event_index_(-1), has_cpu_scope_(stream == nullptr) {
 #ifdef MOONAI_ENABLE_CUDA
   if (stream) {
-    gpu_event_index_ =
-        Profiler::instance().record_gpu_event_start(event_name, stream);
+    gpu_event_index_ = Profiler::instance().record_gpu_event_start(event_name, stream);
   }
 #endif
   if (has_cpu_scope_) {
@@ -174,22 +172,17 @@ void Profiler::begin_scope(const char *event_name) {
 }
 
 void Profiler::end_scope(const char *event_name) {
-  assert(!active_stack_.empty() &&
-         "Scope stack underflow: no active scope to end");
-  assert(active_stack_.back()->name == event_name &&
-         "Scope mismatch: expected scope to match the ending scope name");
+  assert(!active_stack_.empty() && "Scope stack underflow: no active scope to end");
+  assert(active_stack_.back()->name == event_name && "Scope mismatch: expected scope to match the ending scope name");
 
   ScopeNode *node = active_stack_.back();
   active_stack_.pop_back();
 
   const auto end = std::chrono::steady_clock::now();
-  node->duration_ns =
-      std::chrono::duration_cast<std::chrono::nanoseconds>(end - node->start)
-          .count();
+  node->duration_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(end - node->start).count();
 
   if (std::strcmp(event_name, "frame_total") == 0) {
-    assert(active_stack_.empty() &&
-           "frame_total ended but scope stack not empty");
+    assert(active_stack_.empty() && "frame_total ended but scope stack not empty");
     assert(pending_root_ != nullptr && "Root node should exist");
     frame_trees_.push_back(std::move(pending_root_));
     pending_root_.reset();
@@ -216,8 +209,7 @@ int Profiler::record_gpu_event_start(const char *name, cudaStream_t stream) {
 }
 
 void Profiler::record_gpu_event_end(int event_index) {
-  assert(event_index >= 0 &&
-         event_index < static_cast<int>(pending_gpu_events_.size()));
+  assert(event_index >= 0 && event_index < static_cast<int>(pending_gpu_events_.size()));
 
   GpuEventPair &pair = pending_gpu_events_[event_index];
   cudaEventCreate(&pair.end);
@@ -325,9 +317,8 @@ RunData run_profiler(const moonai::AppConfig &cfg) {
   RunData result;
   result.seed = cfg.sim_config.seed;
 
-  const auto run_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                          std::chrono::steady_clock::now() - run_start)
-                          .count();
+  const auto run_ns =
+      std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - run_start).count();
   result.run_total_ms = ns_to_ms(run_ns);
   result.frames = profiler.finish_run();
 
@@ -360,17 +351,15 @@ nlohmann::json serialize_averaged_node(const AveragedNode *node) {
   return j;
 }
 
-void collect_scope_nodes(
-    const moonai::profiler::ScopeNode *node,
-    std::vector<const moonai::profiler::ScopeNode *> &out) {
+void collect_scope_nodes(const moonai::profiler::ScopeNode *node,
+                         std::vector<const moonai::profiler::ScopeNode *> &out) {
   out.push_back(node);
   for (const auto &child : node->children) {
     collect_scope_nodes(child.get(), out);
   }
 }
 
-std::unique_ptr<AveragedNode>
-merge_nodes(const std::vector<const moonai::profiler::ScopeNode *> &nodes) {
+std::unique_ptr<AveragedNode> merge_nodes(const std::vector<const moonai::profiler::ScopeNode *> &nodes) {
   if (nodes.empty())
     return nullptr;
 
@@ -387,9 +376,7 @@ merge_nodes(const std::vector<const moonai::profiler::ScopeNode *> &nodes) {
   result->avg_ms = total / nodes.size();
 
   // Group children by name
-  std::unordered_map<std::string,
-                     std::vector<const moonai::profiler::ScopeNode *>>
-      child_groups;
+  std::unordered_map<std::string, std::vector<const moonai::profiler::ScopeNode *>> child_groups;
   for (const auto *node : nodes) {
     for (const auto &child : node->children) {
       child_groups[child->name].push_back(child.get());
@@ -416,8 +403,7 @@ void calculate_percentages(AveragedNode *node, double parent_total) {
   }
 }
 
-std::unique_ptr<AveragedNode>
-build_averaged_tree(const std::vector<RunData> &kept_runs) {
+std::unique_ptr<AveragedNode> build_averaged_tree(const std::vector<RunData> &kept_runs) {
   if (kept_runs.empty() || kept_runs[0].frames.empty()) {
     return nullptr;
   }
@@ -438,8 +424,7 @@ build_averaged_tree(const std::vector<RunData> &kept_runs) {
   return tree;
 }
 
-std::vector<double>
-build_frame_timeline(const std::vector<RunData> &kept_runs) {
+std::vector<double> build_frame_timeline(const std::vector<RunData> &kept_runs) {
   if (kept_runs.empty() || kept_runs[0].frames.empty()) {
     return {};
   }
@@ -460,9 +445,7 @@ build_frame_timeline(const std::vector<RunData> &kept_runs) {
   return timeline;
 }
 
-void write_manifest(std::vector<RunData> runs,
-                    const std::filesystem::path &output_path,
-                    const moonai::AppConfig &cfg) {
+void write_manifest(std::vector<RunData> runs, const std::filesystem::path &output_path, const moonai::AppConfig &cfg) {
   nlohmann::json manifest;
 
   // Metadata
@@ -491,9 +474,7 @@ void write_manifest(std::vector<RunData> runs,
   }
 
   std::sort(completed.begin(), completed.end(),
-            [](const RunData &a, const RunData &b) {
-              return a.avg_frame_ms < b.avg_frame_ms;
-            });
+            [](const RunData &a, const RunData &b) { return a.avg_frame_ms < b.avg_frame_ms; });
 
   // Mark dispositions
   if (completed.size() > 2) {
@@ -589,8 +570,7 @@ int main(int argc, const char *argv[]) {
   base_cfg.interactive = false;
   base_cfg.speed_multiplier = args.speed_multiplier;
   const auto output_path =
-      std::filesystem::path(args.output_dir) /
-      (utc_timestamp() + "_" + args.experiment_name + ".json");
+      std::filesystem::path(args.output_dir) / (utc_timestamp() + "_" + args.experiment_name + ".json");
 
   std::vector<RunData> runs;
   runs.reserve(args.seeds.size());
