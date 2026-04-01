@@ -296,6 +296,17 @@ just setup-python           # installs simulation + profiler analysis dependenci
 just experiment-analyse     # reads output/, writes a self-contained HTML report
 ```
 
+### Simulation Output
+
+Each run writes to `output/{experiment_name}/` (named experiments) or `output/YYYYMMDD_HHMMSS_seedN/` (anonymous runs):
+
+| File | Contents |
+|------|----------|
+| `config.json` | Full config snapshot for this run |
+| `stats.csv` | One row per report window: `step, predator_count, prey_count, births, deaths, predator_species, prey_species, avg_complexity, avg_predator_energy, avg_prey_energy` |
+| `species.csv` | One row per species per generation: `step, population, species_id, size, avg_complexity` |
+| `genomes.json` | Representative genome snapshots (nodes + connections JSON) |
+
 ### Analysis
 
 The Python analysis tool generates self-contained HTML report for all qualifying runs in `output/`.
@@ -407,6 +418,8 @@ The profiler package lives under `profiler/moonai_profiler/` and includes:
 
 ## Development
 
+### Commands
+
 ```bash
 # Generate compile_commands.json for your IDE/LSP
 just compdb
@@ -419,6 +432,29 @@ just test -R GpuTest   # filter tests
 # Code formatting and linting
 just lint              # Auto-format and run static analysis
 ```
+
+### C++ Code Style
+
+MoonAI follows the **LLVM coding style** (2-space indentation, LLVM brace breaking, etc.).
+
+#### Style Configuration
+
+- **`.clang-format`** — LLVM-based configuration in project root
+  - 2-space indentation
+  - 120 column limit
+  - Attached braces
+  - Right-aligned pointers/references
+
+#### Code Style Conventions
+
+| Convention | Rule |
+|------------|------|
+| Namespace | `moonai` (CUDA internals: `moonai::gpu`) |
+| Include paths | Relative to `src/`: `#include "core/types.hpp"` |
+| Header guards | `#pragma once` |
+| Member variables | Trailing underscore: `speed_`, `position_` |
+| Functions / variables | `snake_case` |
+| Classes / structs | `PascalCase` |
 
 ## Project Structure
 
@@ -448,37 +484,3 @@ moonai/
 ├── web/                        # GitHub Pages website
 └── .github/workflows/          # CI/CD pipelines
 ```
-
-### Simulation Output
-
-Each run writes to `output/{experiment_name}/` (named experiments) or `output/YYYYMMDD_HHMMSS_seedN/` (anonymous runs):
-
-| File | Contents |
-|------|----------|
-| `config.json` | Full config snapshot for this run |
-| `stats.csv` | One row per report window: `step, predator_count, prey_count, births, deaths, predator_species, prey_species, avg_complexity, avg_predator_energy, avg_prey_energy` |
-| `species.csv` | One row per species per generation: `step, population, species_id, size, avg_complexity` |
-| `genomes.json` | Representative genome snapshots (nodes + connections JSON) |
-
-## C++ Code Style
-
-MoonAI follows the **LLVM coding style** (2-space indentation, LLVM brace breaking, etc.).
-
-### Style Configuration
-
-- **`.clang-format`** — LLVM-based configuration in project root
-  - 2-space indentation
-  - 120 column limit
-  - Attached braces
-  - Right-aligned pointers/references
-
-### Code Style Conventions
-
-| Convention | Rule |
-|------------|------|
-| Namespace | `moonai` (CUDA internals: `moonai::gpu`) |
-| Include paths | Relative to `src/`: `#include "core/types.hpp"` |
-| Header guards | `#pragma once` |
-| Member variables | Trailing underscore: `speed_`, `position_` |
-| Functions / variables | `snake_case` |
-| Classes / structs | `PascalCase` |
