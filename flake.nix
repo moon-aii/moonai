@@ -23,12 +23,12 @@
             ninja
             gnumake
             gcc
-            clang
             vcpkg
             clang-tools
             cppcheck
             llvm
             pkg-config
+            binutils
 
             cudatoolkit
 
@@ -41,6 +41,8 @@
             libGLU
           ];
 
+          AR = "${pkgs.gcc}/bin/gcc-ar";
+          RANLIB = "${pkgs.gcc}/bin/gcc-ranlib";
           CC = "${pkgs.gcc}/bin/gcc";
           CXX = "${pkgs.gcc}/bin/g++";
           VCPKG_ROOT = "${pkgs.vcpkg}/share/vcpkg";
