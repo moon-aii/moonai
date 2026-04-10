@@ -1,0 +1,86 @@
+@startuml core_classes
+skinparam classAttributeIconSize 0
+skinparam classBorderColor #2255AA
+skinparam classBackgroundColor #EEF4FF
+skinparam ArrowColor #444444
+skinparam shadowing false
+skinparam defaultFontSize 12
+
+class Vec2 <<struct>> {
+  + x : float
+  + y : float
+  --
+  + operator+(other: Vec2) : Vec2
+  + operator-(other: Vec2) : Vec2
+  + operator*(scalar: float) : Vec2
+  + length() : float
+  + normalized() : Vec2
+  + distance_to(other: Vec2) : float
+}
+
+enum BoundaryMode {
+  Clamp
+  Wrap
+}
+
+class SimulationConfig <<struct>> {
+  + grid_width : int = 800
+  + grid_height : int = 600
+  + boundary_mode : BoundaryMode
+  + predator_count : int = 50
+  + prey_count : int = 150
+  + predator_speed : float = 3.0
+  + prey_speed : float = 3.5
+  + vision_range : float = 100.0
+  + attack_range : float = 15.0
+  + initial_energy : float = 100.0
+  + energy_drain_per_tick : float = 0.1
+  + mutation_rate : float = 0.3
+  + crossover_rate : float = 0.75
+  + compatibility_threshold : float = 3.0
+  + stagnation_limit : int = 15
+  + generation_ticks : int = 500
+  + activation_function : string
+  + tick_log_enabled : bool
+  + ... (42 fields total)
+}
+
+class ConfigError <<struct>> {
+  + field : string
+  + message : string
+}
+
+class CLIArgs <<struct>> {
+  + config_path : string
+  + seed_override : uint64_t
+  + headless : bool
+  + verbose : bool
+  + no_gpu : bool
+  + max_generations_override : int
+  + resume_path : string
+  + checkpoint_interval : int
+  + compare_a : string
+  + compare_b : string
+}
+
+class Random {
+  - seed_ : uint64_t
+  - engine_ : mt19937_64
+  --
+  + Random(seed: uint64_t)
+  + next_int(min, max: int) : int
+  + next_float(min, max: float) : float
+  + next_gaussian(mean, stddev: float) : float
+  + next_bool(probability: float) : bool
+  + weighted_select(weights: vector<float>) : int
+  + shuffle<T>(vec: vector<T>) : void
+  + sample_indices(total, count: int) : vector<int>
+  + seed() : uint64_t
+  + engine() : mt19937_64&
+}
+
+note "load_config(path) : SimulationConfig\nsave_config(config, path) : void\nvalidate_config(config) : vector<ConfigError>\nparse_args(argc,argv) : CLIArgs\nprint_usage(name) : void" as FreeFunc
+
+SimulationConfig "1" *-- "1" BoundaryMode
+
+@enduml

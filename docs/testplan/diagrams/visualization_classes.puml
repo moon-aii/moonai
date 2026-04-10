@@ -1,0 +1,105 @@
+@startuml visualization_classes
+skinparam classAttributeIconSize 0
+skinparam classBorderColor #2255AA
+skinparam classBackgroundColor #EEF4FF
+skinparam ArrowColor #444444
+skinparam shadowing false
+skinparam defaultFontSize 11
+
+class OverlayStats <<struct>> {
+  + generation : int
+  + tick : int
+  + alive_predators : int
+  + alive_prey : int
+  + best_fitness : float
+  + avg_fitness : float
+  + num_species : int
+  + fps : float
+  + speed_multiplier : int
+  + paused : bool
+  + fast_forward : bool
+  + selected_agent : int
+  + selected_energy : float
+  + selected_age : int
+  + selected_kills : int
+  + selected_food_eaten : int
+  + selected_fitness : float
+  + selected_genome_complexity : int
+}
+
+class Renderer {
+  + show_grid : bool
+  + show_vision : bool
+  + show_sensors : bool
+  + dead_fade_alpha : float
+  - circle_ : sf::CircleShape
+  - triangle_ : sf::ConvexShape
+  - rect_ : sf::RectangleShape
+  --
+  + Renderer()
+  + draw_background(target, w, h) : void
+  + draw_grid(target, w, h, cell_size) : void
+  + draw_boundaries(target, w, h) : void
+  + draw_food(target, food) : void
+  + draw_agent(target, agent, selected) : void
+  + draw_vision_range(target, agent) : void
+  + draw_sensor_lines(target, agent, agents, food) : void
+  + {static} species_color(species_id: int) : sf::Color
+}
+
+class UIOverlay {
+  - best_history_ : deque<float>
+  - avg_history_ : deque<float>
+  - node_activations_ : unordered_map<uint32_t,float>
+  - font_ : sf::Font
+  - font_loaded_ : bool
+  - panel_bg_ : sf::RectangleShape
+  - {static} CHART_MAX_POINTS : int = 150
+  --
+  + initialize(font_path: string) : bool
+  + draw(target, stats, genome*) : void
+  + has_font() : bool
+  + push_fitness(best, avg: float) : void
+  + set_activations(vals: unordered_map<uint32_t,float>) : void
+  - draw_panel(target, x,y,w,h) : void
+  - draw_text(target, str, x,y,size,color) : void
+  - draw_fitness_chart(target) : void
+  - draw_nn_panel(target, genome) : void
+}
+
+class VisualizationManager {
+  - config_ : SimulationConfig
+  - window_ : unique_ptr<sf::RenderWindow>
+  - camera_view_ : sf::View
+  - renderer_ : Renderer
+  - overlay_ : UIOverlay
+  - overlay_stats_ : OverlayStats
+  - paused_ : bool
+  - fast_forward_ : bool
+  - speed_multiplier_ : int
+  - selected_agent_ : int
+  - zoom_level_ : float
+  - dragging_ : bool
+  --
+  + VisualizationManager(config)
+  + initialize() : bool
+  + render(sim, evolution) : void
+  + should_close() : bool
+  + handle_events() : void
+  + is_paused() : bool
+  + speed_multiplier() : int
+  + is_fast_forward() : bool
+  + should_reset() : bool
+  + should_step() : bool
+  + selected_agent() : int
+  + push_fitness(best, avg: float) : void
+  + set_selected_activations(vals, idx_map) : void
+  - handle_mouse_click(wx, wy, sim) : void
+  - update_camera() : void
+}
+
+VisualizationManager *-- Renderer
+VisualizationManager *-- UIOverlay
+VisualizationManager *-- OverlayStats
+
+@enduml
