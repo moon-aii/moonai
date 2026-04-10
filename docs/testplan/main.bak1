@@ -15,8 +15,6 @@
 % ── Graphics & color ────────────────────────────────────────────────────────
 \usepackage{graphicx}
 \usepackage[table,xcdraw]{xcolor}
-\usepackage{tikz}
-\usetikzlibrary{arrows.meta,positioning,shapes.geometric}
 \graphicspath{{img/}{out/generated/}}
 
 % ── Tables ──────────────────────────────────────────────────────────────────

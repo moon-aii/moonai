@@ -1,6 +1,6 @@
 INFO:  latexindent.pl version 3.24.7, 2025-08-15, a script to indent .tex files
        latexindent.pl lives here: /nix/store/qfdffs3ll4z7cfhcrzhcp436hzknbsng-latexindent-3.24.7-tex/scripts/latexindent/
-       Fri Apr 10 14:19:07 2026
+       Fri Apr 10 16:16:12 2026
        Filename: /home/ouz/oz/as/moonai/docs/testplan/main.tex
 INFO:  Processing switches:
        -s|--silent: Silent mode active (you have used either -s or --silent)
@@ -23,7 +23,9 @@ INFO:  YAML reading settings
        latexindent.pl didn't find indentconfig.yaml or .indentconfig.yaml
        see all possible locations: https://latexindentpl.readthedocs.io/en/latest/sec-appendices.html#indentconfig-options)
 INFO:  Backup procedure (-w flag active):
-       Backing up /home/ouz/oz/as/moonai/docs/testplan/main.tex to /home/ouz/oz/as/moonai/docs/testplan/main.bak0...
+       /home/ouz/oz/as/moonai/docs/testplan/main.bak0 already exists, incrementing by 1 (see maxNumberOfBackUps)
+       /home/ouz/oz/as/moonai/docs/testplan/main.bak1 already exists, incrementing by 1 (see maxNumberOfBackUps)
+       Backing up /home/ouz/oz/as/moonai/docs/testplan/main.tex to /home/ouz/oz/as/moonai/docs/testplan/main.bak2...
        /home/ouz/oz/as/moonai/docs/testplan/main.tex will be overwritten after indentation
 INFO:  Phase 1: searching for objects
 INFO:  Phase 2: finding surrounding indentation

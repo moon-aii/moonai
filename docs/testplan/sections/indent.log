@@ -1,7 +1,7 @@
 INFO:  latexindent.pl version 3.24.7, 2025-08-15, a script to indent .tex files
        latexindent.pl lives here: /nix/store/qfdffs3ll4z7cfhcrzhcp436hzknbsng-latexindent-3.24.7-tex/scripts/latexindent/
-       Fri Apr 10 14:23:11 2026
-       Filename: /home/ouz/oz/as/moonai/docs/testplan/sections/06_visualization.tex
+       Fri Apr 10 16:16:12 2026
+       Filename: /home/ouz/oz/as/moonai/docs/testplan/sections/04_simulation.tex
 INFO:  Processing switches:
        -s|--silent: Silent mode active (you have used either -s or --silent)
        -w|--overwrite: Overwrite mode active, will make a back up before overwriting
@@ -23,16 +23,18 @@ INFO:  YAML reading settings
        latexindent.pl didn't find indentconfig.yaml or .indentconfig.yaml
        see all possible locations: https://latexindentpl.readthedocs.io/en/latest/sec-appendices.html#indentconfig-options)
 INFO:  Backup procedure (-w flag active):
-       /home/ouz/oz/as/moonai/docs/testplan/sections/06_visualization.bak0 already exists, incrementing by 1 (see maxNumberOfBackUps)
-       /home/ouz/oz/as/moonai/docs/testplan/sections/06_visualization.bak1 already exists, incrementing by 1 (see maxNumberOfBackUps)
-       Backing up /home/ouz/oz/as/moonai/docs/testplan/sections/06_visualization.tex to /home/ouz/oz/as/moonai/docs/testplan/sections/06_visualization.bak2...
-       /home/ouz/oz/as/moonai/docs/testplan/sections/06_visualization.tex will be overwritten after indentation
+       /home/ouz/oz/as/moonai/docs/testplan/sections/04_simulation.bak0 already exists, incrementing by 1 (see maxNumberOfBackUps)
+       /home/ouz/oz/as/moonai/docs/testplan/sections/04_simulation.bak1 already exists, incrementing by 1 (see maxNumberOfBackUps)
+       /home/ouz/oz/as/moonai/docs/testplan/sections/04_simulation.bak2 already exists, incrementing by 1 (see maxNumberOfBackUps)
+       /home/ouz/oz/as/moonai/docs/testplan/sections/04_simulation.bak3 already exists, incrementing by 1 (see maxNumberOfBackUps)
+       Backing up /home/ouz/oz/as/moonai/docs/testplan/sections/04_simulation.tex to /home/ouz/oz/as/moonai/docs/testplan/sections/04_simulation.bak4...
+       /home/ouz/oz/as/moonai/docs/testplan/sections/04_simulation.tex will be overwritten after indentation
 INFO:  Phase 1: searching for objects
 INFO:  Phase 2: finding surrounding indentation
 INFO:  Phase 3: indenting objects
 INFO:  Phase 4: final indentation check
 INFO:  Output routine:
-       Overwriting file /home/ouz/oz/as/moonai/docs/testplan/sections/06_visualization.tex
+       Overwriting file /home/ouz/oz/as/moonai/docs/testplan/sections/04_simulation.tex
        --------------
 INFO:  Please direct all communication/issues to:
         https://github.com/cmhughes/latexindent.pl

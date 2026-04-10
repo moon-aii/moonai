@@ -15,12 +15,11 @@ are intentionally lightweight and collaborative.
 	\label{tab:roles}
 	\begin{tabularx}{\textwidth}{@{}>{\ttfamily\small}lX@{}}
 		\toprule
-		\textbf{Responsible personnel}            & \textbf{Testing responsibility}                                                                                     \\
+		\textbf{Responsible personnel} & \textbf{Testing responsibility}                                                                                 \\
 		\midrule
-		Oğuzhan Özkaya, Emir Irkılata, Caner Aras & Maintain and execute the automated unit, integration, system, and performance test commands used by the repository. \\
-		Oğuzhan Özkaya, Emir Irkılata, Caner Aras & Perform internal GUI smoke testing, user acceptance scenarios, and the closed internal beta pass.                   \\
-		Oğuzhan Özkaya, Emir Irkılata, Caner Aras & Compile the final PDF report, place it under \texttt{docs/}, and verify public website visibility.                  \\
-		Ayşenur Birtürk                           & Review the report as project supervisor and provide academic guidance on quality and completeness.                  \\
+		Oğuzhan Özkaya                 & Owns evolution-focused automated tests together with profiler and GPU-oriented performance verification.        \\
+		Emir Irkılata                  & Owns simulation, visualization, CPU-fallback, and manual acceptance or beta smoke verification.                 \\
+		Caner Aras                     & Owns configuration, integration flows, analysis-pipeline checks, and cross-platform CI regression verification. \\
 		\bottomrule
 	\end{tabularx}
 \end{table}
@@ -33,14 +32,13 @@ are intentionally lightweight and collaborative.
 	\label{tab:risks}
 	\begin{tabularx}{\textwidth}{@{}>{\ttfamily\small}lX X@{}}
 		\toprule
-		\textbf{Risk}                   & \textbf{Impact}                                                                           & \textbf{Mitigation}                                                                                      \\
+		\textbf{Risk}                   & \textbf{Impact}                                                                          & \textbf{Mitigation}                                                                                      \\
 		\midrule
-		CUDA hardware unavailable       & GPU-specific performance and runtime checks cannot be executed on every machine.          & Keep CPU fallback test coverage active and run GPU checks only on the available CUDA-capable machine.    \\
-		GUI requires display access     & GUI smoke tests cannot run inside fully headless automation.                              & Keep GUI checks manual and rely on headless automated paths for CI.                                      \\
-		Cross-platform dependency drift & Linux and Windows builds may diverge because of toolchain or dependency changes.          & Continue running both platforms in CI for pull requests and release workflows.                           \\
-		Large experiment runtime cost   & Full-scale performance or experiment runs may exceed available time before the deadline.  & Use shorter smoke runs for test verification and reserve long runs for analysis tasks when time permits. \\
-		Small manual tester pool        & Internal acceptance and beta coverage are limited to three team members.                  & Use a repeatable smoke checklist and ensure all three team members run the same scenarios.               \\
-		Report publication mismatch     & The website may expose an outdated PDF if the docs artifact is not refreshed after edits. & Rebuild the PDF immediately before publication and verify the website entry against the generated file.  \\
+		CUDA hardware unavailable       & GPU-specific performance and runtime checks cannot be executed on every machine.         & Keep CPU fallback test coverage active and run GPU checks only on the available CUDA-capable machine.    \\
+		GUI requires display access     & GUI smoke tests cannot run inside fully headless automation.                             & Keep GUI checks manual and rely on headless automated paths for CI.                                      \\
+		Cross-platform dependency drift & Linux and Windows builds may diverge because of toolchain or dependency changes.         & Continue running both platforms in CI for pull requests and release workflows.                           \\
+		Large experiment runtime cost   & Full-scale performance or experiment runs may exceed available time before the deadline. & Use shorter smoke runs for test verification and reserve long runs for analysis tasks when time permits. \\
+		Small manual tester pool        & Internal acceptance and beta coverage are limited to three team members.                 & Use a repeatable smoke checklist and ensure all three team members run the same scenarios.               \\
 		\bottomrule
 	\end{tabularx}
 \end{table}
@@ -50,13 +48,6 @@ are intentionally lightweight and collaborative.
 The implemented test process produces the following deliverables:
 
 \begin{itemize}[nosep]
-	\item the LaTeX source of this report under \texttt{docs/testplan/},
-	\item the compiled PDF report under \texttt{docs/TestPlanReport.pdf},
 	\item automated test evidence through local CTest runs and GitHub Actions logs,
-	\item generated runtime artifacts for experiment, analysis, and profiler flows,
-	\item the website document entry that exposes the report publicly.
+	\item generated runtime artifacts for experiment, analysis, and profiler flows.
 \end{itemize}
-
-The required email distribution of the PDF to the supervisor, jury members, and course
-coordinator is a submission activity external to the repository, so it is tracked as a final
-project-delivery action rather than a software-generated artifact.
