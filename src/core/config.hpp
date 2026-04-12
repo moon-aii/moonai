@@ -60,16 +60,8 @@ struct AppConfig {
   SimulationConfig sim_config;
   std::string experiment_name;
   bool headless = false;
-  bool enable_gpu = true;
   int speed_multiplier = 1;
   std::optional<std::string> run_name_override;
-
-  static constexpr bool cuda_compiled =
-#ifdef MOONAI_ENABLE_CUDA
-      true;
-#else
-      false;
-#endif
 
   static constexpr const char *platform =
 #ifdef _WIN32

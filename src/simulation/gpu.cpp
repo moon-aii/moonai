@@ -214,13 +214,17 @@ bool prepare_step(AppState &state, const SimulationConfig &config) {
   const std::size_t food_count = state.food.size();
 
   if (state.gpu_batch && !state.gpu_batch->ok()) {
-    spdlog::error("GPU batch in error state, disabling GPU path");
-    state.runtime.gpu_enabled = false;
-    state.gpu_batch.reset();
+    spdlog::error("GPU batch is in an error state");
     return false;
   }
 
   ensure_capacity(state.gpu_batch, predator_count, prey_count, food_count);
+  if (!state.gpu_batch || !state.gpu_batch->ok()) {
+    spdlog::error("Failed to initialize the CUDA simulation batch");
+    state.gpu_batch.reset();
+    return false;
+  }
+
   pack_state(state, *state.gpu_batch);
 
   const moonai::gpu::GpuStepParams params = build_step_params(config);
@@ -236,7 +240,6 @@ bool resolve_step(AppState &state, const SimulationConfig &config) {
 
   if (!state.gpu_batch) {
     spdlog::error("GPU batch is not initialized for resolve step");
-    state.runtime.gpu_enabled = false;
     return false;
   }
 
@@ -250,8 +253,7 @@ bool resolve_step(AppState &state, const SimulationConfig &config) {
   state.gpu_batch->synchronize();
 
   if (!state.gpu_batch->ok()) {
-    spdlog::error("GPU step failed, disabling GPU path");
-    state.runtime.gpu_enabled = false;
+    spdlog::error("CUDA simulation step failed");
     state.gpu_batch.reset();
     return false;
   }

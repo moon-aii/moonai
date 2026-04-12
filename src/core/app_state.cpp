@@ -93,11 +93,9 @@ void AgentRegistry::compact() {
 
     pop_back();
 
-#ifdef MOONAI_ENABLE_CUDA
     if (gpu_network_cache) {
       gpu_network_cache->invalidate();
     }
-#endif
   }
 }
 

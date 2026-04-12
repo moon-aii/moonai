@@ -52,12 +52,8 @@ App::App(AppConfig cfg)
   simulation::initialize(state_, cfg_.sim_config);
   evolution_.initialize(state_, SENSOR_COUNT, OUTPUT_COUNT);
   evolution_.seed_initial_population(state_);
-  state_.runtime.gpu_enabled = cfg_.enable_gpu && AppConfig::cuda_compiled;
+  evolution_.initialize_gpu(state_);
   metrics::refresh_live(state_);
-
-  if (cfg_.enable_gpu && !AppConfig::cuda_compiled) {
-    spdlog::warn("GPU requested, but this build was compiled without CUDA support; using CPU path");
-  }
 
   logger_.initialize(cfg_.sim_config);
 
@@ -69,10 +65,7 @@ App::App(AppConfig cfg)
     }
   }
 
-  if (state_.runtime.gpu_enabled) {
-    evolution_.enable_gpu(state_, true);
-    spdlog::info("GPU acceleration enabled");
-  }
+  spdlog::info("CUDA backend initialized");
 
   register_signal_handlers();
 }
@@ -96,19 +89,8 @@ bool App::step() {
     return true;
   };
 
-  const bool attempted_gpu = state_.runtime.gpu_enabled;
   if (!run_step_once()) {
-    if (!attempted_gpu || state_.runtime.gpu_enabled) {
-      return false;
-    }
-
-    evolution_.enable_gpu(state_, false);
-
-    spdlog::warn("GPU step failed, retrying on CPU");
-    metrics::begin_step(state_);
-    if (!run_step_once()) {
-      return false;
-    }
+    return false;
   }
 
   ++state_.runtime.step;

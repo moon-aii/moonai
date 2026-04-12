@@ -2,13 +2,10 @@
 #include "core/app_state.hpp"
 #include "core/profiler_macros.hpp"
 #include "core/types.hpp"
+#include "evolution/backends/cuda/gpu_network_cache.hpp"
 #include "evolution/crossover.hpp"
 #include "evolution/mutation.hpp"
-
-#ifdef MOONAI_ENABLE_CUDA
-#include "evolution/backends/cuda/gpu_network_cache.hpp"
 #include "simulation/backends/cuda/gpu_batch.hpp"
-#endif
 
 #include <algorithm>
 #include <cmath>
@@ -50,13 +47,9 @@ using moonai::SENSOR_COUNT;
 namespace {
 
 void invalidate_gpu_cache(AgentRegistry &registry) {
-#ifdef MOONAI_ENABLE_CUDA
   if (registry.gpu_network_cache) {
     registry.gpu_network_cache->invalidate();
   }
-#else
-  (void)registry;
-#endif
 }
 
 class DenseReproductionGrid {
@@ -140,49 +133,15 @@ private:
 
 } // namespace
 
-void EvolutionManager::compute_actions_for_population(AgentRegistry &registry, const std::vector<float> &sensors,
-                                                      std::vector<float> &decisions_out) const {
-  const uint32_t entity_count = static_cast<uint32_t>(registry.size());
-
-  std::vector<float> all_outputs;
-  registry.network_cache.activate_batch(entity_count, sensors, all_outputs, SENSOR_COUNT, OUTPUT_COUNT);
-
-  decisions_out.resize(entity_count * OUTPUT_COUNT);
-  for (uint32_t idx = 0; idx < entity_count; ++idx) {
-    decisions_out[idx * OUTPUT_COUNT] = all_outputs[idx * OUTPUT_COUNT];
-    decisions_out[idx * OUTPUT_COUNT + 1] = all_outputs[idx * OUTPUT_COUNT + 1];
-  }
-}
-
 bool EvolutionManager::run_inference(AppState &state) {
   MOONAI_PROFILE_SCOPE("evolution_run_inference");
 
-#ifdef MOONAI_ENABLE_CUDA
-  if (state.runtime.gpu_enabled) {
-    if (!state.gpu_batch) {
-      spdlog::error("GPU batch is not initialized for neural inference");
-      enable_gpu(state, false);
-      return false;
-    }
-
-    if (!launch_gpu_neural(state, *state.gpu_batch)) {
-      enable_gpu(state, false);
-      return false;
-    }
-
-    return true;
+  if (!state.gpu_batch) {
+    spdlog::error("GPU batch is not initialized for neural inference");
+    return false;
   }
-#else
-  if (state.runtime.gpu_enabled) {
-    spdlog::warn("GPU path requested, but CUDA support is not compiled in; using CPU inference");
-    state.runtime.gpu_enabled = false;
-  }
-#endif
 
-  compute_actions_for_population(state.predator, state.step_buffers.predator_sensors,
-                                 state.step_buffers.predator_decisions);
-  compute_actions_for_population(state.prey, state.step_buffers.prey_sensors, state.step_buffers.prey_decisions);
-  return true;
+  return launch_gpu_neural(state, *state.gpu_batch);
 }
 
 Genome EvolutionManager::create_initial_genome(AgentRegistry &registry, Random &rng) const {
@@ -365,6 +324,18 @@ void EvolutionManager::refresh_species(AppState &state) {
   refresh_population_species(state.prey);
 }
 
+void EvolutionManager::initialize_gpu(AppState &state) {
+  if (!state.predator.gpu_network_cache) {
+    state.predator.gpu_network_cache = std::make_unique<gpu::GpuNetworkCache>();
+  }
+  if (!state.prey.gpu_network_cache) {
+    state.prey.gpu_network_cache = std::make_unique<gpu::GpuNetworkCache>();
+  }
+
+  state.predator.gpu_network_cache->invalidate();
+  state.prey.gpu_network_cache->invalidate();
+}
+
 void EvolutionManager::reproduce_population(AppState &state, AgentRegistry &registry) {
   std::vector<uint8_t> used(registry.size(), 0);
 
@@ -425,7 +396,6 @@ void EvolutionManager::post_step(AppState &state) {
   }
 }
 
-#ifdef MOONAI_ENABLE_CUDA
 namespace {
 
 bool launch_population_gpu_neural(AgentRegistry &registry, gpu::GpuNetworkCache &gpu_cache,
@@ -458,37 +428,6 @@ bool launch_population_gpu_neural(AgentRegistry &registry, gpu::GpuNetworkCache 
 }
 
 } // namespace
-#endif
-
-void EvolutionManager::enable_gpu(AppState &state, bool use_gpu) {
-#ifdef MOONAI_ENABLE_CUDA
-  if (use_gpu) {
-    if (!state.predator.gpu_network_cache) {
-      state.predator.gpu_network_cache = std::make_unique<gpu::GpuNetworkCache>();
-      state.predator.gpu_network_cache->invalidate();
-    }
-    if (!state.prey.gpu_network_cache) {
-      state.prey.gpu_network_cache = std::make_unique<gpu::GpuNetworkCache>();
-      state.prey.gpu_network_cache->invalidate();
-    }
-    state.runtime.gpu_enabled = true;
-    spdlog::info("GPU neural inference enabled");
-  } else {
-    state.predator.gpu_network_cache.reset();
-    state.prey.gpu_network_cache.reset();
-    state.gpu_batch.reset();
-    state.runtime.gpu_enabled = false;
-    spdlog::info("GPU neural inference disabled");
-  }
-#else
-  state.runtime.gpu_enabled = false;
-  if (use_gpu) {
-    spdlog::warn("GPU requested, but this build was compiled without CUDA support");
-  }
-#endif
-}
-
-#ifdef MOONAI_ENABLE_CUDA
 bool EvolutionManager::launch_gpu_neural(AppState &state, gpu::GpuBatch &gpu_batch) {
   MOONAI_PROFILE_SCOPE("gpu_neural", gpu_batch.stream());
 
@@ -511,6 +450,5 @@ bool EvolutionManager::launch_gpu_neural(AppState &state, gpu::GpuBatch &gpu_bat
 
   return true;
 }
-#endif
 
 } // namespace moonai

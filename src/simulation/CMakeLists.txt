@@ -1,16 +1,10 @@
 set(MOONAI_SIMULATION_SOURCES
     simulation.cpp
     common.cpp
-    cpu.cpp
+    gpu.cpp
+    backends/cuda/gpu_data_buffer.cu
+    backends/cuda/gpu_batch.cu
 )
-
-if(MOONAI_ENABLE_CUDA)
-    list(APPEND MOONAI_SIMULATION_SOURCES
-        gpu.cpp
-        backends/cuda/gpu_data_buffer.cu
-        backends/cuda/gpu_batch.cu
-    )
-endif()
 
 add_library(moonai_simulation STATIC ${MOONAI_SIMULATION_SOURCES})
 
@@ -21,9 +15,7 @@ target_link_libraries(moonai_simulation PUBLIC
     moonai_core
 )
 
-if(MOONAI_ENABLE_CUDA)
-    set_property(TARGET moonai_simulation PROPERTY CUDA_ARCHITECTURES native)
-endif()
+set_property(TARGET moonai_simulation PROPERTY CUDA_ARCHITECTURES native)
 
 if(MOONAI_BUILD_PROFILER)
     add_library(moonai_simulation_profiler STATIC ${MOONAI_SIMULATION_SOURCES})
@@ -34,7 +26,5 @@ if(MOONAI_BUILD_PROFILER)
     )
     target_compile_definitions(moonai_simulation_profiler PUBLIC MOONAI_BUILD_PROFILER)
 
-    if(MOONAI_ENABLE_CUDA)
-        set_property(TARGET moonai_simulation_profiler PROPERTY CUDA_ARCHITECTURES native)
-    endif()
+    set_property(TARGET moonai_simulation_profiler PROPERTY CUDA_ARCHITECTURES native)
 endif()

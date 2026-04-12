@@ -454,12 +454,8 @@
             <span class="metadata-value">{{ run.metadata.platform }}</span>
           </div>
           <div class="metadata-item">
-            <span class="metadata-label">GPU Allowed</span>
-            <span class="metadata-value">{{ 'Yes' if run.metadata.gpu_allowed else 'No' }}</span>
-          </div>
-          <div class="metadata-item">
-            <span class="metadata-label">CUDA</span>
-            <span class="metadata-value">{{ 'Yes' if run.metadata.cuda_compiled else 'No' }}</span>
+            <span class="metadata-label">Backend</span>
+            <span class="metadata-value">{{ run.metadata.backend }}</span>
           </div>
           <div class="metadata-item">
             <span class="metadata-label">OpenMP</span>

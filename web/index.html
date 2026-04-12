@@ -1322,7 +1322,7 @@ just build
 just run</code></pre>
                             </div>
                             <p class="note">
-                                <strong>Prerequisites:</strong> C++17 compiler, CMake 3.21+, vcpkg, CUDA Toolkit (optional)
+                                <strong>Prerequisites:</strong> C++17 compiler, CMake 3.21+, vcpkg, CUDA Toolkit 11.0+
                             </p>
                         </div>
                     </div>
@@ -1355,9 +1355,9 @@ just run</code></pre>
                             <div class="detail-item">
                                 <h3>Heterogeneous Architecture</h3>
                                 <p>
-                                    To achieve high-performance execution, MoonAI employs a hybrid compute model. The CPU 
-                                    manages high-level control logic and physics updates, while massive parallelization via 
-                                    NVIDIA CUDA accelerates neural network inference and simulation updates for large 
+                                    To achieve high-performance execution, MoonAI uses a CUDA-first runtime. The host 
+                                    orchestrates lifecycle and data flow, while NVIDIA CUDA executes neural inference and 
+                                    simulation kernels for large 
                                     agent populations.
                                 </p>
                             </div>
@@ -1388,9 +1388,8 @@ just run</code></pre>
                             <details class="faq-item">
                                 <summary>Is CUDA required to run the simulation?</summary>
                                 <p>
-                                    No, CUDA is optional. The simulation includes a CPU fallback path that activates 
-                                    automatically when CUDA is unavailable. While GPU acceleration significantly improves 
-                                    performance for large populations, the simulation runs correctly on CPU-only systems.
+                                    Yes. MoonAI now targets a CUDA-only simulation backend, so a CUDA-capable GPU and 
+                                    installed CUDA toolkit are required to build and run the project.
                                 </p>
                             </details>
                             <details class="faq-item">

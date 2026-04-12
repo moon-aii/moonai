@@ -5,10 +5,14 @@
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 
+#include <cuda_runtime.h>
+
 #include <algorithm>
+#include <cassert>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <exception>
 #include <filesystem>
 #include <fstream>
@@ -17,11 +21,6 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
-
-// CUDA includes for GPU profiling
-#ifdef MOONAI_ENABLE_CUDA
-#include <cuda_runtime.h>
-#endif
 
 std::string utc_timestamp() {
   const auto now = std::chrono::system_clock::now();
@@ -54,14 +53,12 @@ struct ScopeNode {
   ScopeNode *parent = nullptr;
 };
 
-#ifdef MOONAI_ENABLE_CUDA
 struct GpuEventPair {
   const char *name;
   cudaEvent_t start;
   cudaEvent_t end;
   cudaStream_t stream;
 };
-#endif
 
 class Profiler {
 public:
@@ -74,11 +71,9 @@ public:
   void begin_scope(const char *event_name);
   void end_scope(const char *event_name);
 
-#ifdef MOONAI_ENABLE_CUDA
   int record_gpu_event_start(const char *name, cudaStream_t stream);
   void record_gpu_event_end(int event_index);
   void merge_gpu_timings();
-#endif
 
   std::vector<std::unique_ptr<ScopeNode>> finish_run();
 
@@ -91,37 +86,26 @@ private:
   std::vector<ScopeNode *> active_stack_;
   std::unique_ptr<ScopeNode> pending_root_;
 
-#ifdef MOONAI_ENABLE_CUDA
   std::vector<GpuEventPair> pending_gpu_events_;
   int next_gpu_event_index_;
-#endif
 };
 
-Profiler::Profiler()
-#ifdef MOONAI_ENABLE_CUDA
-    : next_gpu_event_index_(0)
-#endif
-{
-}
+Profiler::Profiler() : next_gpu_event_index_(0) {}
 
 Profiler::~Profiler() {
-#ifdef MOONAI_ENABLE_CUDA
   for (auto &event : pending_gpu_events_) {
     if (event.start)
       cudaEventDestroy(event.start);
     if (event.end)
       cudaEventDestroy(event.end);
   }
-#endif
 }
 
 ScopedTimer::ScopedTimer(const char *event_name, cudaStream_t stream)
     : event_name_(event_name), stream_(stream), gpu_event_index_(-1), has_cpu_scope_(stream == nullptr) {
-#ifdef MOONAI_ENABLE_CUDA
   if (stream) {
     gpu_event_index_ = Profiler::instance().record_gpu_event_start(event_name, stream);
   }
-#endif
   if (has_cpu_scope_) {
     Profiler::instance().begin_scope(event_name);
   }
@@ -129,16 +113,12 @@ ScopedTimer::ScopedTimer(const char *event_name, cudaStream_t stream)
 
 ScopedTimer::~ScopedTimer() {
   if (std::strcmp(event_name_, "gpu_synchronize") == 0) {
-#ifdef MOONAI_ENABLE_CUDA
     Profiler::instance().merge_gpu_timings();
-#endif
   }
 
-#ifdef MOONAI_ENABLE_CUDA
   if (gpu_event_index_ >= 0) {
     Profiler::instance().record_gpu_event_end(gpu_event_index_);
   }
-#endif
 
   if (has_cpu_scope_) {
     Profiler::instance().end_scope(event_name_);
@@ -150,10 +130,8 @@ void Profiler::start_run(const AppConfig &cfg) {
   frame_trees_.clear();
   active_stack_.clear();
   pending_root_.reset();
-#ifdef MOONAI_ENABLE_CUDA
   pending_gpu_events_.clear();
   next_gpu_event_index_ = 0;
-#endif
 }
 
 void Profiler::begin_scope(const char *event_name) {
@@ -191,7 +169,6 @@ void Profiler::end_scope(const char *event_name) {
   }
 }
 
-#ifdef MOONAI_ENABLE_CUDA
 int Profiler::record_gpu_event_start(const char *name, cudaStream_t stream) {
   int index = next_gpu_event_index_++;
 
@@ -246,7 +223,6 @@ void Profiler::merge_gpu_timings() {
   pending_gpu_events_.clear();
   next_gpu_event_index_ = 0;
 }
-#endif
 
 std::vector<std::unique_ptr<ScopeNode>> Profiler::finish_run() {
   return std::move(frame_trees_);
@@ -263,7 +239,6 @@ struct ProfilerArgs {
   std::vector<std::uint64_t> seeds = {61, 62, 63, 64, 65, 66};
   std::string output_dir = "output/profiles";
   std::string experiment_name = "profile";
-  bool no_gpu = false;
   bool help = false;
 };
 
@@ -274,14 +249,12 @@ struct ParseProfilerResult {
 
 void print_profiler_usage(const char *program_name) {
   std::printf("MoonAI profiler\n"
-              "\n"
               "Usage: %s [OPTIONS]\n"
               "\n"
               "Options:\n"
               "      --frames <n>          Number of frames per run (default: 300)\n"
               "      --output-dir <path>   Output directory for profiler JSON\n"
               "      --name <name>         Suite name in output file\n"
-              "      --no-gpu              Disable CUDA GPU acceleration\n"
               "  -h, --help                Show this help message\n",
               program_name);
 }
@@ -333,8 +306,6 @@ ParseProfilerResult parse_profiler_args(int argc, const char *argv[]) {
         continue;
       }
       result.args.experiment_name = argv[++i];
-    } else if (arg == "--no-gpu") {
-      result.args.no_gpu = true;
     } else {
       spdlog::warn("Unknown profiler argument: {}", arg);
     }
@@ -516,9 +487,8 @@ void write_manifest(std::vector<RunData> runs, const std::filesystem::path &outp
   nlohmann::json metadata;
   metadata["suite_name"] = cfg.experiment_name;
   metadata["frame_count"] = cfg.sim_config.max_steps / cfg.speed_multiplier;
-  metadata["gpu_allowed"] = cfg.enable_gpu;
+  metadata["backend"] = "cuda";
   metadata["platform"] = moonai::AppConfig::platform;
-  metadata["cuda_compiled"] = moonai::AppConfig::cuda_compiled;
   metadata["generated_at_utc"] = utc_timestamp();
   manifest["metadata"] = metadata;
 
@@ -640,7 +610,6 @@ int main(int argc, const char *argv[]) {
   base_cfg.sim_config.max_steps = args.frames * args.speed_multiplier;
   base_cfg.experiment_name = args.experiment_name;
   base_cfg.headless = false;
-  base_cfg.enable_gpu = !args.no_gpu;
   base_cfg.speed_multiplier = args.speed_multiplier;
   const auto output_path =
       std::filesystem::path(args.output_dir) / (utc_timestamp() + "_" + args.experiment_name + ".json");
