@@ -123,8 +123,8 @@ void UIOverlay::draw_right_column(sf::RenderTarget &target, const OverlayStats &
   float y = MARGIN;
 
   // Stats widget: Population counts, species, and events
-  draw_stats_widget(target, stats, x, y, PANEL_WIDTH, 170.0f);
-  y += 170.0f + MARGIN;
+  draw_stats_widget(target, stats, x, y, PANEL_WIDTH, 188.0f);
+  y += 188.0f + MARGIN;
 
   // Population chart
   draw_population_chart(target, x, y, PANEL_WIDTH, 180.0f);

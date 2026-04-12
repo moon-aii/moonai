@@ -42,14 +42,14 @@ constexpr uint8_t BG_G = 0;
 constexpr uint8_t BG_B = 0;
 
 // UI Panel
-constexpr uint8_t PANEL_BG_R = 10;
-constexpr uint8_t PANEL_BG_G = 10;
-constexpr uint8_t PANEL_BG_B = 20;
-constexpr uint8_t PANEL_ALPHA = 200;
+constexpr uint8_t PANEL_BG_R = 0;
+constexpr uint8_t PANEL_BG_G = 0;
+constexpr uint8_t PANEL_BG_B = 0;
+constexpr uint8_t PANEL_ALPHA = 180;
 
-constexpr uint8_t PANEL_OUTLINE_R = 60;
-constexpr uint8_t PANEL_OUTLINE_G = 60;
-constexpr uint8_t PANEL_OUTLINE_B = 80;
+constexpr uint8_t PANEL_OUTLINE_R = 30;
+constexpr uint8_t PANEL_OUTLINE_G = 30;
+constexpr uint8_t PANEL_OUTLINE_B = 40;
 
 // Vision range
 constexpr uint8_t VISION_FILL_ALPHA = 15;
