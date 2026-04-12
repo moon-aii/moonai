@@ -1,987 +1,516 @@
 #include "evolution/evolution_manager.hpp"
+#include "core/app_state.hpp"
+#include "core/profiler_macros.hpp"
+#include "core/types.hpp"
 #include "evolution/crossover.hpp"
-#include "core/profiler.hpp"
-#include "simulation/physics.hpp"
-#include "core/lua_runtime.hpp"
-
-#include <spdlog/spdlog.h>
-#include <nlohmann/json.hpp>
-#include <algorithm>
-#include <numeric>
-#include <cmath>
-#include <unordered_map>
-#include <chrono>
-#include <fstream>
-#include <sstream>
-
-#ifdef MOONAI_OPENMP_ENABLED
-#include <omp.h>
-#endif
+#include "evolution/mutation.hpp"
 
 #ifdef MOONAI_ENABLE_CUDA
-#include "gpu/gpu_batch.hpp"
-
-namespace {
-
-constexpr int kGpuMinPopulation = 1000;
-
-std::vector<moonai::gpu::GpuAgentState> build_gpu_agent_states(
-    const moonai::SimulationManager& sim,
-    int agent_count) {
-    std::vector<moonai::gpu::GpuAgentState> states(static_cast<size_t>(agent_count));
-    for (int i = 0; i < agent_count; ++i) {
-        const auto& agent = sim.agents()[i];
-        const auto position = agent->position();
-        const auto velocity = agent->velocity();
-        states[static_cast<size_t>(i)] = moonai::gpu::GpuAgentState{
-            position.x,
-            position.y,
-            velocity.x,
-            velocity.y,
-            agent->speed(),
-            agent->vision_range(),
-            agent->energy(),
-            agent->distance_traveled(),
-            agent->age(),
-            agent->kills(),
-            agent->food_eaten(),
-            agent->id(),
-            static_cast<unsigned int>(agent->type() == moonai::AgentType::Predator ? 0 : 1),
-            static_cast<unsigned int>(agent->alive() ? 1 : 0)
-        };
-    }
-    return states;
-}
-
-void build_gpu_grid_data(const moonai::SpatialGrid& grid,
-                         std::vector<int>& cell_offsets,
-                         std::vector<moonai::gpu::GpuGridEntry>& entries) {
-    std::vector<moonai::SpatialGrid::FlatEntry> flat_entries;
-    grid.flatten(cell_offsets, flat_entries);
-    entries.resize(flat_entries.size());
-    for (size_t i = 0; i < flat_entries.size(); ++i) {
-        entries[i] = moonai::gpu::GpuGridEntry{flat_entries[i].id, flat_entries[i].x, flat_entries[i].y};
-    }
-}
-
-std::vector<moonai::gpu::GpuFoodState> build_gpu_food_states(const moonai::SimulationManager& sim) {
-    const auto& food = sim.environment().food();
-    std::vector<moonai::gpu::GpuFoodState> states(food.size());
-    for (size_t i = 0; i < food.size(); ++i) {
-        states[i] = moonai::gpu::GpuFoodState{
-            food[i].position.x,
-            food[i].position.y,
-            static_cast<unsigned int>(food[i].active ? 1 : 0)
-        };
-    }
-    return states;
-}
-
-void sync_gpu_state_to_simulation(const std::vector<moonai::gpu::GpuAgentState>& agent_states,
-                                  const std::vector<moonai::gpu::GpuFoodState>& food_states,
-                                  moonai::SimulationManager& sim) {
-    auto& agents = sim.agents();
-    for (size_t i = 0; i < agents.size() && i < agent_states.size(); ++i) {
-        const auto& src = agent_states[i];
-        auto& dst = agents[i];
-        dst->set_position({src.pos_x, src.pos_y});
-        dst->set_velocity({src.vel_x, src.vel_y});
-        dst->set_energy(src.energy);
-        dst->set_age(src.age);
-        dst->set_distance_traveled(src.distance_traveled);
-        dst->set_kills(src.kills);
-        dst->set_food_eaten(src.food_eaten);
-        dst->set_alive(src.alive != 0U);
-    }
-
-    auto& food = sim.environment().mutable_food();
-    for (size_t i = 0; i < food.size() && i < food_states.size(); ++i) {
-        food[i].position = {food_states[i].pos_x, food_states[i].pos_y};
-        food[i].active = food_states[i].active != 0U;
-    }
-    sim.refresh_state();
-}
-
-}
-
-// ── GPU network packing helper ────────────────────────────────────────────────
-// Extracts the CSR-packed flat arrays from NeuralNetwork objects into the
-// GpuNetworkData struct. Lives here (in moonai_evolution) because it needs
-// NeuralNetwork internals, keeping moonai_gpu free of moonai_evolution dependency.
-static moonai::gpu::GpuNetworkData build_gpu_network_data(
-    const std::vector<std::unique_ptr<moonai::NeuralNetwork>>& nets,
-    const std::string& activation_fn)
-{
-    moonai::gpu::GpuNetworkData data;
-
-    if (activation_fn == "tanh")       data.activation_fn_id = 1;
-    else if (activation_fn == "relu")  data.activation_fn_id = 2;
-    else                               data.activation_fn_id = 0;
-
-    int n = static_cast<int>(nets.size());
-    data.descs.resize(n);
-
-    int total_nodes = 0, total_eval = 0, total_conn = 0, total_out = 0;
-
-    // Pass 1: compute cumulative sizes and fill desc offsets
-    for (int i = 0; i < n; ++i) {
-        const auto& net        = nets[i];
-        const auto& nodes      = net->raw_nodes();
-        const auto& eval_order = net->eval_order();
-        const auto& incoming   = net->incoming();
-        const auto& nidx       = net->node_index_map();
-
-        int num_conn = 0;
-        for (auto nid : eval_order) {
-            num_conn += static_cast<int>(incoming[nidx.at(nid)].size());
-        }
-        int num_out = 0;
-        for (const auto& node : nodes) {
-            if (node.type == moonai::NodeType::Output) ++num_out;
-        }
-
-        data.descs[i].num_nodes  = static_cast<int>(nodes.size());
-        data.descs[i].num_eval   = static_cast<int>(eval_order.size());
-        data.descs[i].num_inputs  = net->num_inputs();
-        data.descs[i].num_outputs = net->num_outputs();
-        data.descs[i].node_off   = total_nodes;
-        data.descs[i].eval_off   = total_eval;
-        data.descs[i].conn_off   = total_conn;
-        data.descs[i].out_off    = total_out;
-
-        total_nodes += static_cast<int>(nodes.size());
-        total_eval  += static_cast<int>(eval_order.size());
-        total_conn  += num_conn;
-        total_out   += num_out;
-    }
-
-    // Allocate flat host arrays
-    data.node_types.resize(total_nodes);
-    data.eval_order.resize(total_eval);
-    data.conn_ptr.resize(total_eval);
-    data.in_count.resize(total_eval);
-    data.conn_from.resize(total_conn);
-    data.conn_w.resize(total_conn);
-    data.out_indices.resize(total_out);
-
-    // Pass 2: fill flat arrays
-    for (int i = 0; i < n; ++i) {
-        const auto& net        = nets[i];
-        const auto& nodes      = net->raw_nodes();
-        const auto& eval_order = net->eval_order();
-        const auto& incoming   = net->incoming();
-        const auto& nidx       = net->node_index_map();
-        const auto& desc       = data.descs[i];
-
-        // node_types: 0=Input, 1=Bias, 2=Hidden, 3=Output
-        for (int j = 0; j < static_cast<int>(nodes.size()); ++j) {
-            uint8_t t;
-            switch (nodes[j].type) {
-                case moonai::NodeType::Input:  t = 0; break;
-                case moonai::NodeType::Bias:   t = 1; break;
-                case moonai::NodeType::Hidden: t = 2; break;
-                case moonai::NodeType::Output: t = 3; break;
-                default:                       t = 2; break;
-            }
-            data.node_types[desc.node_off + j] = t;
-        }
-
-        // eval_order, conn_ptr, in_count, conn_from, conn_w
-        int conn_running = 0;
-        for (int j = 0; j < static_cast<int>(eval_order.size()); ++j) {
-            std::uint32_t nid = eval_order[j];
-            int ni = nidx.at(nid);
-
-            data.eval_order[desc.eval_off + j] = ni;
-            data.conn_ptr  [desc.eval_off + j] = conn_running;
-            data.in_count  [desc.eval_off + j] = static_cast<int>(incoming[ni].size());
-
-            for (const auto& [from_idx, w] : incoming[ni]) {
-                data.conn_from[desc.conn_off + conn_running] = from_idx;
-                data.conn_w   [desc.conn_off + conn_running] = w;
-                ++conn_running;
-            }
-        }
-
-        // out_indices
-        int out_running = 0;
-        for (int j = 0; j < static_cast<int>(nodes.size()); ++j) {
-            if (nodes[j].type == moonai::NodeType::Output) {
-                data.out_indices[desc.out_off + out_running] = j;
-                ++out_running;
-            }
-        }
-    }
-
-    return data;
-}
+#include "evolution/backends/cuda/gpu_network_cache.hpp"
+#include "simulation/backends/cuda/gpu_batch.hpp"
 #endif
+
+#include <algorithm>
+#include <cmath>
+#include <spdlog/spdlog.h>
 
 namespace moonai {
 
-EvolutionManager::EvolutionManager(const SimulationConfig& config, Random& rng)
-    : config_(config)
-    , rng_(rng) {
-}
+namespace {
+
+void invalidate_gpu_cache(AgentRegistry &registry);
+
+} // namespace
+
+EvolutionManager::EvolutionManager(const SimulationConfig &config) : config_(config) {}
 
 EvolutionManager::~EvolutionManager() = default;
 
-void EvolutionManager::initialize(int num_inputs, int num_outputs) {
-    population_.clear();
-    species_.clear();
-    generation_ = 0;
-    num_inputs_ = num_inputs;
-    num_outputs_ = num_outputs;
-
-    int total_pop = config_.predator_count + config_.prey_count;
-
-    // Create initial population with fully-connected minimal topologies
-    for (int i = 0; i < total_pop; ++i) {
-        Genome g(num_inputs, num_outputs);
-        // Connect all inputs (+ bias) to all outputs with random weights
-        for (const auto& in_node : g.nodes()) {
-            if (in_node.type != NodeType::Input && in_node.type != NodeType::Bias)
-                continue;
-            for (const auto& out_node : g.nodes()) {
-                if (out_node.type != NodeType::Output) continue;
-                std::uint32_t innov = tracker_.get_innovation(in_node.id, out_node.id);
-                g.add_connection({in_node.id, out_node.id,
-                                  rng_.next_float(-1.0f, 1.0f),
-                                  true, innov});
-            }
-        }
-        population_.push_back(std::move(g));
-    }
-
-    build_networks();
-
-    spdlog::info("Evolution initialized: {} genomes ({} inputs, {} outputs)",
-                 total_pop, num_inputs, num_outputs);
+void EvolutionManager::initialize_population(AgentRegistry &registry) const {
+  registry.innovation_tracker = InnovationTracker();
+  registry.innovation_tracker.set_counters(0, static_cast<std::uint32_t>(num_inputs_ + num_outputs_ + 1));
+  registry.species.clear();
+  registry.genomes.clear();
+  registry.network_cache.clear();
+  invalidate_gpu_cache(registry);
 }
 
-void EvolutionManager::enable_gpu(bool use_gpu) {
-    use_gpu_ = use_gpu;
+void EvolutionManager::initialize(AppState &state, int num_inputs, int num_outputs) {
+  num_inputs_ = num_inputs;
+  num_outputs_ = num_outputs;
+
+  Species::reset_id_counter();
+  initialize_population(state.predator);
+  initialize_population(state.prey);
+}
+
+using moonai::OUTPUT_COUNT;
+using moonai::SENSOR_COUNT;
+
+namespace {
+
+void invalidate_gpu_cache(AgentRegistry &registry) {
 #ifdef MOONAI_ENABLE_CUDA
-    if (use_gpu_) {
-        int total_agents = config_.predator_count + config_.prey_count;
-        if (total_agents < kGpuMinPopulation) {
-            spdlog::info("GPU disabled: population {} < {} threshold "
-                         "(kernel launch overhead exceeds computation)",
-                         total_agents, kGpuMinPopulation);
-            use_gpu_ = false;
-            return;
-        }
-        if (num_inputs_ > 0 && !population_.empty()) {
-            gpu_batch_ = std::make_unique<moonai::gpu::GpuBatch>(
-                static_cast<int>(population_.size()), num_inputs_, num_outputs_);
-            spdlog::debug("GpuBatch allocated: {} agents, {} inputs, {} outputs",
-                          population_.size(), num_inputs_, num_outputs_);
-            if (!gpu_batch_->ok()) {
-                spdlog::warn("GpuBatch allocation failed; falling back to CPU inference");
-                gpu_batch_.reset();
-                use_gpu_ = false;
-            }
-        }
-    }
+  if (registry.gpu_network_cache) {
+    registry.gpu_network_cache->invalidate();
+  }
+#else
+  (void)registry;
 #endif
 }
 
-#ifdef MOONAI_ENABLE_CUDA
-bool EvolutionManager::prepare_gpu_generation() {
-    MOONAI_PROFILE_SCOPE(ProfileEvent::PrepareGpuGeneration);
-    if (!use_gpu_ || !gpu_batch_) {
-        return false;
+class DenseReproductionGrid {
+public:
+  DenseReproductionGrid(float world_width, float world_height, float cell_size, std::size_t entity_count)
+      : cell_size_(std::max(cell_size, 1.0f)),
+        cols_(std::max(1, static_cast<int>(std::ceil(world_width / cell_size_)))),
+        rows_(std::max(1, static_cast<int>(std::ceil(world_height / cell_size_)))),
+        counts_(static_cast<std::size_t>(cols_ * rows_), 0), offsets_(static_cast<std::size_t>(cols_ * rows_) + 1, 0),
+        write_offsets_(static_cast<std::size_t>(cols_ * rows_), 0), entries_(entity_count, INVALID_ENTITY) {}
+
+  void build(const AgentRegistry &registry, std::size_t entity_count) {
+    std::fill(counts_.begin(), counts_.end(), 0);
+    std::fill(offsets_.begin(), offsets_.end(), 0);
+
+    for (uint32_t idx = 0; idx < entity_count; ++idx) {
+      const int cell = cell_index(registry.pos_x[idx], registry.pos_y[idx]);
+      counts_[static_cast<std::size_t>(cell)] += 1;
     }
 
-    gpu_batch_->upload_network_data(
-        build_gpu_network_data(networks_, config_.activation_function));
-    if (!gpu_batch_->ok()) {
-        spdlog::warn("GPU network upload failed; falling back to CPU inference");
-        gpu_batch_.reset();
-        use_gpu_ = false;
-        return false;
+    for (std::size_t cell = 0; cell < counts_.size(); ++cell) {
+      offsets_[cell + 1] = offsets_[cell] + counts_[cell];
     }
+
+    std::copy(offsets_.begin(), offsets_.end() - 1, write_offsets_.begin());
+    for (uint32_t idx = 0; idx < entity_count; ++idx) {
+      const int cell = cell_index(registry.pos_x[idx], registry.pos_y[idx]);
+      const std::size_t slot = static_cast<std::size_t>(write_offsets_[static_cast<std::size_t>(cell)]++);
+      entries_[slot] = idx;
+    }
+  }
+
+  template <typename Callback> void for_each_candidate(Vec2 center, float radius, Callback &&callback) const {
+    const int cells_to_check = std::max(1, static_cast<int>(std::ceil(radius / cell_size_)));
+    const int base_x = cell_coord(center.x, cols_);
+    const int base_y = cell_coord(center.y, rows_);
+
+    for (int dy = -cells_to_check; dy <= cells_to_check; ++dy) {
+      for (int dx = -cells_to_check; dx <= cells_to_check; ++dx) {
+        const int cell = flat_index(clamp_cell(base_x + dx, cols_), clamp_cell(base_y + dy, rows_));
+        for (int slot = offsets_[static_cast<std::size_t>(cell)]; slot < offsets_[static_cast<std::size_t>(cell) + 1];
+             ++slot) {
+          callback(entries_[static_cast<std::size_t>(slot)]);
+        }
+      }
+    }
+  }
+
+private:
+  int cell_coord(float value, int limit) const {
+    int coord = static_cast<int>(value / cell_size_);
+    return clamp_cell(coord, limit);
+  }
+
+  int clamp_cell(int coord, int limit) const {
+    if (coord < 0) {
+      return 0;
+    }
+    if (coord >= limit) {
+      return limit - 1;
+    }
+    return coord;
+  }
+
+  int flat_index(int x, int y) const {
+    return y * cols_ + x;
+  }
+
+  int cell_index(float x, float y) const {
+    return flat_index(cell_coord(x, cols_), cell_coord(y, rows_));
+  }
+
+  float cell_size_;
+  int cols_;
+  int rows_;
+  std::vector<int> counts_;
+  std::vector<int> offsets_;
+  std::vector<int> write_offsets_;
+  std::vector<uint32_t> entries_;
+};
+
+} // namespace
+
+void EvolutionManager::compute_actions_for_population(AgentRegistry &registry, const std::vector<float> &sensors,
+                                                      std::vector<float> &decisions_out) const {
+  const uint32_t entity_count = static_cast<uint32_t>(registry.size());
+
+  std::vector<float> all_outputs;
+  registry.network_cache.activate_batch(entity_count, sensors, all_outputs, SENSOR_COUNT, OUTPUT_COUNT);
+
+  decisions_out.resize(entity_count * OUTPUT_COUNT);
+  for (uint32_t idx = 0; idx < entity_count; ++idx) {
+    decisions_out[idx * OUTPUT_COUNT] = all_outputs[idx * OUTPUT_COUNT];
+    decisions_out[idx * OUTPUT_COUNT + 1] = all_outputs[idx * OUTPUT_COUNT + 1];
+  }
+}
+
+bool EvolutionManager::run_inference(AppState &state) {
+  MOONAI_PROFILE_SCOPE("evolution_run_inference");
+
+#ifdef MOONAI_ENABLE_CUDA
+  if (state.runtime.gpu_enabled) {
+    if (!state.gpu_batch) {
+      spdlog::error("GPU batch is not initialized for neural inference");
+      enable_gpu(state, false);
+      return false;
+    }
+
+    if (!launch_gpu_neural(state, *state.gpu_batch)) {
+      enable_gpu(state, false);
+      return false;
+    }
+
     return true;
-}
-
-bool EvolutionManager::infer_actions_gpu(const SimulationManager& sim, std::vector<Vec2>& actions) {
-    if (!use_gpu_ || !gpu_batch_) {
-        return false;
-    }
-
-    int agent_count = static_cast<int>(std::min(sim.agents().size(), networks_.size()));
-    if (agent_count <= 0) {
-        return true;
-    }
-
-    if (static_cast<int>(actions.size()) < agent_count) {
-        actions.resize(agent_count, {0.0f, 0.0f});
-    }
-    std::fill(actions.begin(), actions.end(), Vec2{0.0f, 0.0f});
-
-    {
-        MOONAI_PROFILE_SCOPE(ProfileEvent::GpuSensorFlatten);
-        auto agent_states = build_gpu_agent_states(sim, agent_count);
-        std::vector<int> agent_cell_offsets;
-        std::vector<moonai::gpu::GpuGridEntry> agent_entries;
-        std::vector<int> food_cell_offsets;
-        std::vector<moonai::gpu::GpuGridEntry> food_entries;
-        build_gpu_grid_data(sim.spatial_grid(), agent_cell_offsets, agent_entries);
-        build_gpu_grid_data(sim.food_grid(), food_cell_offsets, food_entries);
-        gpu_batch_->upload_tick_state_async(
-            agent_states.data(),
-            agent_count,
-            sim.spatial_grid().cols(),
-            sim.spatial_grid().rows(),
-            sim.spatial_grid().cell_size(),
-            agent_cell_offsets.data(),
-            static_cast<int>(agent_cell_offsets.size()),
-            agent_entries.data(),
-            static_cast<int>(agent_entries.size()),
-            sim.food_grid().cols(),
-            sim.food_grid().rows(),
-            sim.food_grid().cell_size(),
-            food_cell_offsets.data(),
-            static_cast<int>(food_cell_offsets.size()),
-            food_entries.data(),
-            static_cast<int>(food_entries.size()));
-        gpu_batch_->launch_sensor_build_async(
-            static_cast<float>(config_.grid_width),
-            static_cast<float>(config_.grid_height),
-            config_.initial_energy,
-            config_.boundary_mode == BoundaryMode::Clamp);
-    }
-    {
-        MOONAI_PROFILE_SCOPE(ProfileEvent::GpuLaunch);
-        gpu_batch_->launch_inference_async();
-    }
-    {
-        MOONAI_PROFILE_SCOPE(ProfileEvent::GpuStartUnpack);
-        gpu_batch_->start_unpack_async();
-    }
-    {
-        MOONAI_PROFILE_SCOPE(ProfileEvent::GpuFinishUnpack);
-        gpu_batch_->finish_unpack();
-    }
-
-    if (!gpu_batch_->ok()) {
-        spdlog::warn("GPU inference failed; falling back to CPU inference");
-        gpu_batch_.reset();
-        use_gpu_ = false;
-        return false;
-    }
-
-    {
-        MOONAI_PROFILE_SCOPE(ProfileEvent::GpuOutputConvert);
-        const float* flat_out = gpu_batch_->host_outputs();
-        for (int i = 0; i < agent_count; ++i) {
-            if (!sim.agents()[i]->alive()) {
-                continue;
-            }
-            if (num_outputs_ >= 2) {
-                actions[i] = Vec2{
-                    flat_out[i * num_outputs_ + 0] * 2.0f - 1.0f,
-                    flat_out[i * num_outputs_ + 1] * 2.0f - 1.0f
-                };
-            }
-        }
-    }
-    return true;
-}
+  }
+#else
+  if (state.runtime.gpu_enabled) {
+    spdlog::warn("GPU path requested, but CUDA support is not compiled in; using CPU inference");
+    state.runtime.gpu_enabled = false;
+  }
 #endif
 
-void EvolutionManager::evaluate_generation(SimulationManager& sim) {
-    build_networks();
-
-    float dt = 1.0f / static_cast<float>(config_.target_fps);
-    int last_tick = 0;
-    int agent_count = static_cast<int>(std::min(sim.agents().size(), networks_.size()));
-    std::vector<Vec2> actions(sim.agents().size(), {0.0f, 0.0f});
-    std::vector<float> sensor_values(static_cast<size_t>(agent_count * num_inputs_), 0.0f);
-    std::vector<float> output_values(static_cast<size_t>(agent_count * num_outputs_), 0.0f);
-
-#ifdef MOONAI_ENABLE_CUDA
-    if (prepare_gpu_generation()) {
-        sim.set_neighbor_cache_enabled(false);
-        MOONAI_PROFILE_MARK_GPU_USED(true);
-        if (!tick_callback_ && !config_.tick_log_enabled) {
-            auto agent_states = build_gpu_agent_states(sim, agent_count);
-            auto food_states = build_gpu_food_states(sim);
-            std::vector<int> agent_cell_offsets;
-            std::vector<moonai::gpu::GpuGridEntry> agent_entries;
-            std::vector<int> food_cell_offsets;
-            std::vector<moonai::gpu::GpuGridEntry> food_entries;
-            build_gpu_grid_data(sim.spatial_grid(), agent_cell_offsets, agent_entries);
-            build_gpu_grid_data(sim.food_grid(), food_cell_offsets, food_entries);
-            gpu_batch_->upload_tick_state_async(
-                agent_states.data(),
-                agent_count,
-                sim.spatial_grid().cols(),
-                sim.spatial_grid().rows(),
-                sim.spatial_grid().cell_size(),
-                agent_cell_offsets.data(),
-                static_cast<int>(agent_cell_offsets.size()),
-                agent_entries.data(),
-                static_cast<int>(agent_entries.size()),
-                sim.food_grid().cols(),
-                sim.food_grid().rows(),
-                sim.food_grid().cell_size(),
-                food_cell_offsets.data(),
-                static_cast<int>(food_cell_offsets.size()),
-                food_entries.data(),
-                static_cast<int>(food_entries.size()));
-            gpu_batch_->upload_resident_food_states_async(food_states.data(), static_cast<int>(food_states.size()));
-
-            for (int tick = 0; tick < config_.generation_ticks; ++tick) {
-                {
-                    MOONAI_PROFILE_SCOPE(ProfileEvent::GpuResidentSensorBuild);
-                    gpu_batch_->launch_resident_sensor_build_async(
-                        static_cast<float>(config_.grid_width),
-                        static_cast<float>(config_.grid_height),
-                        config_.initial_energy,
-                        config_.boundary_mode == BoundaryMode::Clamp);
-                }
-                {
-                    MOONAI_PROFILE_SCOPE(ProfileEvent::GpuResidentTick);
-                    gpu_batch_->launch_inference_async();
-                    gpu_batch_->launch_resident_tick_async(
-                        dt,
-                        static_cast<float>(config_.grid_width),
-                        static_cast<float>(config_.grid_height),
-                        config_.boundary_mode == BoundaryMode::Clamp,
-                        config_.energy_drain_per_tick,
-                        config_.target_fps,
-                        config_.food_pickup_range,
-                        config_.attack_range,
-                        config_.energy_gain_from_food,
-                        config_.energy_gain_from_kill,
-                        config_.food_respawn_rate,
-                        config_.seed,
-                        tick);
-                }
-                MOONAI_PROFILE_INC(ProfileCounter::TicksExecuted);
-            }
-
-            if (use_gpu_) {
-                {
-                    MOONAI_PROFILE_SCOPE(ProfileEvent::GpuFinishUnpack);
-                    gpu_batch_->finish_unpack();
-                }
-                if (!gpu_batch_->ok()) {
-                    spdlog::warn("GPU resident simulation failed; falling back to CPU inference");
-                    gpu_batch_.reset();
-                    use_gpu_ = false;
-                } else {
-                    gpu_batch_->download_agent_states(agent_states);
-                    gpu_batch_->download_food_states(food_states);
-                    if (!gpu_batch_->ok()) {
-                        spdlog::warn("GPU state download failed; falling back to CPU inference");
-                        gpu_batch_.reset();
-                        use_gpu_ = false;
-                    } else {
-                        sync_gpu_state_to_simulation(agent_states, food_states, sim);
-                        sim.set_neighbor_cache_enabled(true);
-                        compute_fitness(sim);
-                        return;
-                    }
-                }
-            }
-        }
-
-        for (int tick = 0; tick < config_.generation_ticks; ++tick) {
-            if (!infer_actions_gpu(sim, actions)) {
-                break;
-            }
-
-            {
-                MOONAI_PROFILE_SCOPE(ProfileEvent::ApplyActions);
-                for (std::size_t i : sim.alive_agent_indices()) {
-                    if (static_cast<int>(i) >= agent_count) {
-                        continue;
-                    }
-                    sim.apply_action(i, actions[i], dt);
-                }
-            }
-
-            sim.tick(dt);
-            last_tick = tick + 1;
-            MOONAI_PROFILE_INC(ProfileCounter::TicksExecuted);
-
-            if (tick_callback_) {
-                MOONAI_PROFILE_SCOPE(ProfileEvent::TickCallback);
-                tick_callback_(tick, sim);
-            }
-            if (sim.alive_prey() == 0 || sim.alive_predators() == 0) break;
-        }
-
-        if (use_gpu_) {
-            sim.set_neighbor_cache_enabled(true);
-            compute_fitness(sim);
-            return;
-        }
-    }
-#endif
-
-    // CPU path (OpenMP-parallelized)
-    sim.set_neighbor_cache_enabled(true);
-    MOONAI_PROFILE_MARK_CPU_USED(true);
-    MOONAI_PROFILE_SCOPE(ProfileEvent::CpuEvalTotal);
-    for (int tick = last_tick; tick < config_.generation_ticks; ++tick) {
-        // Parallel compute phase: sensor + NN per agent (read-only on shared state)
-        std::fill(actions.begin(), actions.end(), Vec2{0.0f, 0.0f});
-        std::fill(sensor_values.begin(), sensor_values.end(), 0.0f);
-        std::fill(output_values.begin(), output_values.end(), 0.0f);
-
-        {
-            MOONAI_PROFILE_SCOPE(ProfileEvent::CpuSensorBuild);
-            #pragma omp parallel for schedule(dynamic) if(MOONAI_OPENMP_ENABLED)
-            for (int i = 0; i < agent_count; ++i) {
-                if (!sim.agents()[i]->alive()) continue;
-                sim.get_sensors(static_cast<size_t>(i)).write_to(
-                    sensor_values.data() + static_cast<size_t>(i * num_inputs_));
-            }
-        }
-
-        {
-            MOONAI_PROFILE_SCOPE(ProfileEvent::CpuNnActivate);
-            #pragma omp parallel for schedule(dynamic) if(MOONAI_OPENMP_ENABLED)
-            for (int i = 0; i < agent_count; ++i) {
-                if (!sim.agents()[i]->alive()) continue;
-
-                float* sensor_buf = sensor_values.data() + static_cast<size_t>(i * num_inputs_);
-                float* output_buf = output_values.data() + static_cast<size_t>(i * num_outputs_);
-                networks_[i]->activate_into(sensor_buf, num_inputs_, output_buf, num_outputs_);
-
-                if (num_outputs_ >= 2) {
-                    actions[i] = Vec2{
-                        output_buf[0] * 2.0f - 1.0f,
-                        output_buf[1] * 2.0f - 1.0f
-                    };
-                }
-            }
-        }
-
-        // Sequential apply phase
-        {
-            MOONAI_PROFILE_SCOPE(ProfileEvent::ApplyActions);
-            for (std::size_t i : sim.alive_agent_indices()) {
-                sim.apply_action(i, actions[i], dt);
-            }
-        }
-
-        sim.tick(dt);
-        last_tick = tick + 1;
-        MOONAI_PROFILE_INC(ProfileCounter::TicksExecuted);
-
-        if (tick_callback_) {
-            MOONAI_PROFILE_SCOPE(ProfileEvent::TickCallback);
-            tick_callback_(tick, sim);
-        }
-
-        // Early exit if all prey or all predators are dead
-        if (sim.alive_prey() == 0 || sim.alive_predators() == 0) {
-            break;
-        }
-    }
-    // Compute fitness from simulation results
-    compute_fitness(sim);
+  compute_actions_for_population(state.predator, state.step_buffers.predator_sensors,
+                                 state.step_buffers.predator_decisions);
+  compute_actions_for_population(state.prey, state.step_buffers.prey_sensors, state.step_buffers.prey_decisions);
+  return true;
 }
 
-void EvolutionManager::evolve() {
-    tracker_.reset_generation();
+Genome EvolutionManager::create_initial_genome(AgentRegistry &registry, Random &rng) const {
+  Genome genome(num_inputs_, num_outputs_);
+  for (const auto &in_node : genome.nodes()) {
+    if (in_node.type != NodeType::Input && in_node.type != NodeType::Bias) {
+      continue;
+    }
+    for (const auto &out_node : genome.nodes()) {
+      if (out_node.type != NodeType::Output) {
+        continue;
+      }
 
-    speciate();
-
-    // Dynamic compatibility threshold (Stanley 2002, Section 3.3):
-    // Adjust delta_t to maintain a target number of species.
-    int target_species = std::max(2, (config_.predator_count + config_.prey_count) / 10);
-    if (static_cast<int>(species_.size()) > target_species)
-        config_.compatibility_threshold += 0.3f;
-    else if (static_cast<int>(species_.size()) < target_species)
-        config_.compatibility_threshold -= 0.3f;
-    config_.compatibility_threshold = std::max(config_.compatibility_threshold, 0.5f);
-
-    remove_stagnant_species();
-    reproduce();
-
-    ++generation_;
-
-    spdlog::debug("Generation {}: {} species, {} genomes, threshold={:.2f}",
-                  generation_, species_.size(), population_.size(),
-                  config_.compatibility_threshold);
+      const std::uint32_t innovation = registry.innovation_tracker.get_innovation(in_node.id, out_node.id);
+      genome.add_connection({in_node.id, out_node.id, rng.next_float(-1.0f, 1.0f), true, innovation});
+    }
+  }
+  return genome;
 }
 
-void EvolutionManager::build_networks() {
-    MOONAI_PROFILE_SCOPE(ProfileEvent::BuildNetworks);
-    networks_.clear();
-    networks_.reserve(population_.size());
-    for (const auto& genome : population_) {
-        networks_.push_back(std::make_unique<NeuralNetwork>(genome, config_.activation_function));
-    }
+Genome EvolutionManager::create_child_genome(AgentRegistry &registry, Random &rng, const Genome &parent_a,
+                                             const Genome &parent_b) const {
+  Genome child = Crossover::crossover(parent_a, parent_b, rng);
+  Mutation::mutate(child, rng, config_, registry.innovation_tracker);
+  return child;
 }
 
-void EvolutionManager::compute_fitness(const SimulationManager& sim) {
-    MOONAI_PROFILE_SCOPE(ProfileEvent::ComputeFitness);
-    const auto& agents = sim.agents();
-    bool use_lua = lua_runtime_ && lua_runtime_->callbacks().has_fitness_fn;
+void EvolutionManager::seed_initial_population(AppState &state) {
+  state.predator.clear();
+  state.prey.clear();
+  state.runtime.next_agent_id = 1;
+  initialize_population(state.predator);
+  initialize_population(state.prey);
 
-    for (size_t i = 0; i < population_.size() && i < agents.size(); ++i) {
-        const auto& agent = agents[i];
+  const float grid_size = static_cast<float>(config_.grid_size);
 
-        // Pre-compute normalized stats (used by both Lua and default paths)
-        float age_ratio = static_cast<float>(agent->age()) /
-                          static_cast<float>(config_.generation_ticks);
-        float kills_or_food = (agent->type() == AgentType::Predator)
-            ? static_cast<float>(agent->kills())
-            : static_cast<float>(agent->food_eaten());
-        float energy_ratio = std::max(0.0f, agent->energy()) / config_.initial_energy;
-        float alive_bonus  = agent->alive() ? 1.0f : 0.0f;
-        float max_dist = agent->speed()
-            * static_cast<float>(config_.generation_ticks)
-            / static_cast<float>(config_.target_fps);
-        float dist_ratio = (max_dist > 0.0f)
-            ? std::min(agent->distance_traveled() / max_dist, 1.0f)
-            : 0.0f;
-        float complexity = static_cast<float>(population_[i].complexity());
-
-        float fitness;
-        if (use_lua) {
-            fitness = lua_runtime_->call_fitness(
-                age_ratio, kills_or_food, energy_ratio,
-                alive_bonus, dist_ratio, complexity, config_);
-        } else {
-            fitness = default_fitness(age_ratio, kills_or_food, energy_ratio,
-                                      alive_bonus, dist_ratio, complexity);
-        }
-
-        population_[i].set_fitness(fitness);
+  auto seed_predator = [&] {
+    const uint32_t idx = state.predator.create();
+    Genome genome = create_initial_genome(state.predator, state.runtime.rng);
+    if (idx >= state.predator.genomes.size()) {
+      state.predator.genomes.resize(idx + 1);
     }
+    state.predator.genomes[idx] = genome;
+    state.predator.network_cache.assign(idx, state.predator.genomes[idx]);
+
+    state.predator.pos_x[idx] = state.runtime.rng.next_float(0.0f, grid_size);
+    state.predator.pos_y[idx] = state.runtime.rng.next_float(0.0f, grid_size);
+    state.predator.vel_x[idx] = 0.0f;
+    state.predator.vel_y[idx] = 0.0f;
+    state.predator.energy[idx] = config_.initial_energy;
+    state.predator.age[idx] = 0;
+    state.predator.alive[idx] = 1;
+    state.predator.species_id[idx] = 0;
+    state.predator.entity_id[idx] = state.runtime.next_agent_id++;
+    state.predator.consumption[idx] = 0;
+  };
+
+  auto seed_prey = [&] {
+    const uint32_t idx = state.prey.create();
+    Genome genome = create_initial_genome(state.prey, state.runtime.rng);
+    if (idx >= state.prey.genomes.size()) {
+      state.prey.genomes.resize(idx + 1);
+    }
+    state.prey.genomes[idx] = genome;
+    state.prey.network_cache.assign(idx, state.prey.genomes[idx]);
+
+    state.prey.pos_x[idx] = state.runtime.rng.next_float(0.0f, grid_size);
+    state.prey.pos_y[idx] = state.runtime.rng.next_float(0.0f, grid_size);
+    state.prey.vel_x[idx] = 0.0f;
+    state.prey.vel_y[idx] = 0.0f;
+    state.prey.energy[idx] = config_.initial_energy;
+    state.prey.age[idx] = 0;
+    state.prey.alive[idx] = 1;
+    state.prey.species_id[idx] = 0;
+    state.prey.entity_id[idx] = state.runtime.next_agent_id++;
+    state.prey.consumption[idx] = 0;
+  };
+
+  for (int i = 0; i < config_.predator_count; ++i) {
+    seed_predator();
+  }
+  for (int i = 0; i < config_.prey_count; ++i) {
+    seed_prey();
+  }
+
+  invalidate_gpu_cache(state.predator);
+  invalidate_gpu_cache(state.prey);
 }
 
-float EvolutionManager::default_fitness(float age_ratio, float kills_or_food,
-    float energy_ratio, float alive_bonus, float dist_ratio, float complexity) const {
-    float f = config_.fitness_survival_weight * age_ratio
-            + config_.fitness_kill_weight     * kills_or_food
-            + config_.fitness_energy_weight   * energy_ratio
-            + alive_bonus
-            + config_.fitness_distance_weight * dist_ratio
-            - config_.complexity_penalty_weight * complexity;
-    return std::max(0.0f, f);
+uint32_t EvolutionManager::create_offspring(AppState &state, AgentRegistry &registry, uint32_t parent_a,
+                                            uint32_t parent_b, Vec2 spawn_position) {
+  MOONAI_PROFILE_SCOPE("evolution_offspring_predator");
+  if (!registry.valid(parent_a) || !registry.valid(parent_b) || parent_a >= registry.genomes.size() ||
+      parent_b >= registry.genomes.size()) {
+    return INVALID_ENTITY;
+  }
+
+  Genome child_genome =
+      create_child_genome(registry, state.runtime.rng, registry.genomes[parent_a], registry.genomes[parent_b]);
+
+  const uint32_t idx = registry.create();
+  registry.pos_x[idx] = spawn_position.x;
+  registry.pos_y[idx] = spawn_position.y;
+  registry.vel_x[idx] = 0.0f;
+  registry.vel_y[idx] = 0.0f;
+  registry.energy[idx] = config_.offspring_initial_energy;
+  registry.age[idx] = 0;
+  registry.alive[idx] = 1;
+  registry.species_id[idx] = registry.species_id[parent_a];
+  registry.entity_id[idx] = state.runtime.next_agent_id++;
+  registry.consumption[idx] = 0;
+
+  if (idx >= registry.genomes.size()) {
+    registry.genomes.resize(idx + 1);
+  }
+  registry.genomes[idx] = std::move(child_genome);
+  registry.network_cache.assign(idx, registry.genomes[idx]);
+
+  registry.energy[parent_a] -= config_.reproduction_energy_cost;
+  registry.energy[parent_b] -= config_.reproduction_energy_cost;
+
+  invalidate_gpu_cache(registry);
+
+  return idx;
 }
 
-void EvolutionManager::speciate() {
-    MOONAI_PROFILE_SCOPE(ProfileEvent::Speciate);
-    for (auto& genome : population_) {
-        genome.sort_connections_by_innovation();
+void EvolutionManager::refresh_population_species(AgentRegistry &registry) const {
+  auto &species = registry.species;
+  for (auto &entry : species) {
+    entry.clear_members();
+  }
+
+  const uint32_t entity_count = static_cast<uint32_t>(registry.size());
+  for (uint32_t idx = 0; idx < entity_count; ++idx) {
+    if (idx >= registry.genomes.size()) {
+      continue;
     }
 
-    // Clear stale member pointers first (they point into the previous generation's
-    // population which was freed in reproduce()), then update the representative
-    // from the now-empty members (keeps the existing representative if no members).
-    for (auto& s : species_) {
-        s.clear_members();
-        s.update_representative();
+    Genome &genome = registry.genomes[idx];
+    int assigned_species_id = -1;
+
+    for (auto &entry : species) {
+      if (entry.is_compatible(genome, config_.compatibility_threshold, config_.c1_excess, config_.c2_disjoint,
+                              config_.c3_weight)) {
+        entry.add_member(idx, genome);
+        assigned_species_id = entry.id();
+        break;
+      }
     }
 
-    // Assign each genome to a species
-    for (auto& genome : population_) {
-        bool placed = false;
-        for (auto& s : species_) {
-            if (s.is_compatible(genome, config_.compatibility_threshold,
-                                config_.c1_excess, config_.c2_disjoint, config_.c3_weight)) {
-                s.add_member(&genome);
-                placed = true;
-                break;
-            }
-        }
-        if (!placed) {
-            species_.emplace_back(genome);
-            species_.back().add_member(&genome);
-        }
+    if (assigned_species_id < 0) {
+      Species entry(genome);
+      entry.add_member(idx, genome);
+      assigned_species_id = entry.id();
+      species.push_back(std::move(entry));
     }
 
-    // Remove empty species
-    species_.erase(
-        std::remove_if(species_.begin(), species_.end(),
-                        [](const Species& s) { return s.members().empty(); }),
-        species_.end());
+    registry.species_id[idx] = static_cast<uint32_t>(assigned_species_id);
+  }
 
-    // Adjust fitness and track stagnation
-    for (auto& s : species_) {
-        s.adjust_fitness();
-        s.sort_by_fitness();
-        s.update_best_fitness();
+  for (auto &entry : species) {
+    entry.refresh_summary();
+  }
+
+  species.erase(
+      std::remove_if(species.begin(), species.end(), [](const Species &entry) { return entry.members().empty(); }),
+      species.end());
+
+  for (auto &entry : species) {
+    const uint32_t representative_idx = entry.members().front().entity;
+    if (representative_idx < registry.genomes.size()) {
+      entry.set_representative(registry.genomes[representative_idx]);
     }
+  }
 }
 
-void EvolutionManager::remove_stagnant_species() {
-    MOONAI_PROFILE_SCOPE(ProfileEvent::RemoveStagnantSpecies);
-    if (species_.size() <= 2) return;  // Always keep at least 2 species
-
-    species_.erase(
-        std::remove_if(species_.begin(), species_.end(),
-            [this](const Species& s) {
-                return s.is_stagnant(config_.stagnation_limit);
-            }),
-        species_.end());
-
-    // Ensure at least one species remains
-    if (species_.empty() && !population_.empty()) {
-        species_.emplace_back(population_[0]);
-        for (auto& g : population_) {
-            species_.back().add_member(&g);
-        }
-        species_.back().adjust_fitness();
-        species_.back().sort_by_fitness();
-    }
+void EvolutionManager::refresh_species(AppState &state) {
+  MOONAI_PROFILE_SCOPE("refresh_species");
+  refresh_population_species(state.predator);
+  refresh_population_species(state.prey);
 }
 
-void EvolutionManager::reproduce() {
-    MOONAI_PROFILE_SCOPE(ProfileEvent::Reproduce);
-    std::vector<Genome> new_population;
-    int target_size = static_cast<int>(population_.size());
+void EvolutionManager::reproduce_population(AppState &state, AgentRegistry &registry) {
+  std::vector<uint8_t> used(registry.size(), 0);
 
-    if (species_.empty()) {
-        // Fallback: re-initialize population
-        spdlog::warn("All species extinct. Re-initializing population.");
-        initialize(num_inputs_, num_outputs_);
+  DenseReproductionGrid grid(static_cast<float>(config_.grid_size), static_cast<float>(config_.grid_size),
+                             config_.mate_range, registry.size());
+  grid.build(registry, registry.size());
+  const float world_size = static_cast<float>(config_.grid_size);
+  const uint32_t entity_count = static_cast<uint32_t>(registry.size());
+
+  for (uint32_t idx = 0; idx < entity_count; ++idx) {
+    if (registry.energy[idx] < config_.reproduction_energy_threshold || used[idx] != 0) {
+      continue;
+    }
+
+    const Vec2 pos{registry.pos_x[idx], registry.pos_y[idx]};
+    uint32_t best_mate = INVALID_ENTITY;
+    float best_dist_sq = config_.mate_range * config_.mate_range;
+
+    grid.for_each_candidate(pos, config_.mate_range, [&](uint32_t mate_id) {
+      if (mate_id == idx || used[mate_id] != 0 || registry.energy[mate_id] < config_.reproduction_energy_threshold) {
         return;
+      }
+
+      const Vec2 mate_pos{registry.pos_x[mate_id], registry.pos_y[mate_id]};
+      const Vec2 diff{mate_pos.x - pos.x, mate_pos.y - pos.y};
+      const float dist_sq = diff.x * diff.x + diff.y * diff.y;
+      if (dist_sq < best_dist_sq) {
+        best_dist_sq = dist_sq;
+        best_mate = mate_id;
+      }
+    });
+
+    if (best_mate == INVALID_ENTITY) {
+      continue;
     }
 
-    // Calculate total adjusted fitness across all species
-    float total_adjusted = 0.0f;
-    for (const auto& s : species_) {
-        total_adjusted += s.total_adjusted_fitness();
+    const Vec2 mate_pos{registry.pos_x[best_mate], registry.pos_y[best_mate]};
+    const Vec2 mid_pos{(pos.x + mate_pos.x) * 0.5f, (pos.y + mate_pos.y) * 0.5f};
+    const float clamped_x = std::clamp(mid_pos.x, 0.0f, world_size);
+    const float clamped_y = std::clamp(mid_pos.y, 0.0f, world_size);
+    const uint32_t child = create_offspring(state, registry, idx, best_mate, {clamped_x, clamped_y});
+    if (child != INVALID_ENTITY) {
+      ++state.metrics.step_delta.births;
     }
-
-    // Largest-remainder method: guarantees total == target_size exactly
-    std::vector<int> quotas(species_.size(), 1);  // min 1 per species
-    int allocated = static_cast<int>(species_.size());
-
-    if (total_adjusted > 0.0f && allocated < target_size) {
-        std::vector<float> remainders(species_.size(), 0.0f);
-        for (size_t i = 0; i < species_.size(); ++i) {
-            float exact = species_[i].total_adjusted_fitness() / total_adjusted
-                          * static_cast<float>(target_size);
-            int floor_val = std::max(1, static_cast<int>(exact));
-            quotas[i] = floor_val;
-            remainders[i] = exact - static_cast<float>(floor_val);
-            allocated += floor_val - 1;  // already counted the min-1
-        }
-        // Distribute leftover slots by largest remainder
-        int leftover = target_size - allocated;
-        std::vector<size_t> order(species_.size());
-        std::iota(order.begin(), order.end(), 0);
-        std::sort(order.begin(), order.end(),
-            [&](size_t a, size_t b) { return remainders[a] > remainders[b]; });
-        for (int k = 0; k < leftover && k < static_cast<int>(order.size()); ++k) {
-            quotas[order[k]]++;
-        }
-    }
-
-    // Produce offspring for each species according to its quota
-    for (size_t si = 0; si < species_.size(); ++si) {
-        auto& s = species_[si];
-        const auto& members = s.members();
-        if (members.empty()) continue;
-
-        int offspring_count = quotas[si];
-
-        // Elitism: keep the best member unchanged
-        new_population.push_back(*members[0]);
-
-        // Produce remaining offspring via crossover + mutation
-        for (int i = 1; i < offspring_count; ++i) {
-            Genome child;
-
-            if (members.size() == 1 || !rng_.next_bool(config_.crossover_rate)) {
-                // Mutation only
-                child = *members[rng_.next_int(0, static_cast<int>(members.size()) - 1)];
-            } else {
-                // Crossover + mutation
-                int p1 = rng_.next_int(0, static_cast<int>(members.size()) - 1);
-                int p2 = rng_.next_int(0, static_cast<int>(members.size()) - 1);
-                child = Crossover::crossover(*members[p1], *members[p2], rng_);
-            }
-
-            Mutation::mutate(child, rng_, config_, tracker_);
-            new_population.push_back(std::move(child));
-        }
-    }
-
-    // Trim to target (elitism can slightly overshoot if quota rounds up)
-    if (static_cast<int>(new_population.size()) > target_size) {
-        new_population.resize(target_size);
-    }
-
-    population_ = std::move(new_population);
+    used[idx] = 1;
+    used[best_mate] = 1;
+  }
 }
 
-void EvolutionManager::save_checkpoint(const std::string& path, const Random& rng) const {
-    nlohmann::json j;
-    j["format_version"] = 1;
-    j["generation"] = generation_;
-    j["compatibility_threshold"] = config_.compatibility_threshold;
-    j["innovation_counter"] = tracker_.innovation_count();
-    j["node_counter"] = tracker_.node_count();
-    j["species_next_id"] = Species::next_species_id();  // peek current counter
+void EvolutionManager::post_step(AppState &state) {
+  MOONAI_PROFILE_SCOPE("evolution_post_step");
 
-    // Serialize RNG state
-    std::ostringstream oss;
-    oss << const_cast<Random&>(rng).engine();
-    j["rng_state"] = oss.str();
+  reproduce_population(state, state.predator);
+  reproduce_population(state, state.prey);
 
-    // Serialize population (genome + species_id)
-    j["population"] = nlohmann::json::array();
-    for (const auto& genome : population_) {
-        nlohmann::json entry;
-        entry["species_id"] = -1;
-        // Find which species this genome belongs to
-        for (const auto& s : species_) {
-            for (const auto* m : s.members()) {
-                if (m == &genome) {
-                    entry["species_id"] = s.id();
-                    break;
-                }
-            }
-            if (entry["species_id"] != -1) break;
-        }
-        entry["genome"] = nlohmann::json::parse(genome.to_json());
-        j["population"].push_back(entry);
-    }
-
-    // Serialize species metadata
-    j["species"] = nlohmann::json::array();
-    for (const auto& s : species_) {
-        nlohmann::json se;
-        se["id"] = s.id();
-        se["representative"] = nlohmann::json::parse(s.representative().to_json());
-        se["best_fitness_ever"] = s.best_fitness_ever();
-        se["generations_without_improvement"] = s.generations_without_improvement();
-        j["species"].push_back(se);
-    }
-
-    std::ofstream file(path);
-    if (!file.is_open()) {
-        spdlog::error("Cannot write checkpoint to '{}'", path);
-        return;
-    }
-    file << j.dump(2);
-    spdlog::info("Checkpoint saved: {} (gen {})", path, generation_);
+  if (config_.species_update_interval_steps > 0 && (state.runtime.step % config_.species_update_interval_steps) == 0) {
+    refresh_species(state);
+  }
 }
 
-bool EvolutionManager::load_checkpoint(const std::string& path, Random& rng) {
-    std::ifstream file(path);
-    if (!file.is_open()) {
-        spdlog::error("Cannot open checkpoint '{}'", path);
-        return false;
+#ifdef MOONAI_ENABLE_CUDA
+namespace {
+
+bool launch_population_gpu_neural(AgentRegistry &registry, gpu::GpuNetworkCache &gpu_cache,
+                                  gpu::GpuPopulationBuffer &buffer, std::size_t count, cudaStream_t stream) {
+  std::vector<std::pair<uint32_t, int>> network_entities_with_indices;
+  network_entities_with_indices.reserve(count);
+
+  const uint32_t entity_count = static_cast<uint32_t>(count);
+  for (uint32_t entity = 0; entity < entity_count; ++entity) {
+    if (registry.network_cache.has(entity)) {
+      network_entities_with_indices.emplace_back(entity, static_cast<int>(entity));
     }
+  }
 
-    nlohmann::json j;
-    try {
-        file >> j;
-    } catch (const nlohmann::json::parse_error& e) {
-        spdlog::error("Failed to parse checkpoint '{}': {}", path, e.what());
-        return false;
-    }
-
-    generation_ = j["generation"];
-    config_.compatibility_threshold = j["compatibility_threshold"];
-
-    std::uint32_t innov = j["innovation_counter"];
-    std::uint32_t node  = j["node_counter"];
-    tracker_.set_counters(innov, node);
-
-    int species_next = j["species_next_id"];
-    Species::set_next_species_id(species_next);
-
-    // Restore RNG state
-    std::string rng_str = j["rng_state"];
-    std::istringstream iss(rng_str);
-    iss >> rng.engine();
-
-    // Restore species (without members; members rebuilt below)
-    species_.clear();
-    for (const auto& se : j["species"]) {
-        Genome rep = Genome::from_json(se["representative"].dump());
-        Species s(rep);
-        // Override id (Species constructor auto-increments, but we set next_id above)
-        // We need to reconstruct with the correct id — create and then fix by building
-        // a matching species entry. Since set_next_species_id was called before loop,
-        // we already incremented; we need to handle ids by rebuilding species_ from scratch.
-        // The simplest approach: build species map for later lookup.
-        (void)se["best_fitness_ever"].get<float>();   // validate fields exist
-        species_.push_back(std::move(s));
-    }
-    // Re-do species: species_ was built above with auto-incremented IDs.
-    // Rebuild properly using saved IDs by restarting from a fresh counter.
-    // The set_next_species_id call above set counter to species_next, so the
-    // Species constructed in the loop used IDs >= species_next. That's wrong.
-    // Fix: set counter to the first saved id before building, clear and rebuild.
-    species_.clear();
-    for (const auto& se : j["species"]) {
-        int saved_id = se["id"];
-        Species::set_next_species_id(saved_id);
-        Genome rep = Genome::from_json(se["representative"].dump());
-        Species s(rep);  // will get id == saved_id
-        species_.push_back(std::move(s));
-    }
-    // Restore stagnation metadata on each species
-    for (size_t si = 0; si < species_.size() && si < j["species"].size(); ++si) {
-        const auto& se = j["species"][si];
-        species_[si].restore_stagnation(
-            se["best_fitness_ever"].get<float>(),
-            se["generations_without_improvement"].get<int>());
-    }
-    // Restore the counter to species_next_id so new species get correct IDs
-    Species::set_next_species_id(species_next);
-
-    // Restore population
-    population_.clear();
-    std::vector<int> genome_species_ids;
-    for (const auto& entry : j["population"]) {
-        population_.push_back(Genome::from_json(entry["genome"].dump()));
-        genome_species_ids.push_back(entry["species_id"].get<int>());
-    }
-
-    // Rebuild species members by matching saved species_id
-    for (size_t gi = 0; gi < population_.size(); ++gi) {
-        int sid = genome_species_ids[gi];
-        for (auto& s : species_) {
-            if (s.id() == sid) {
-                s.add_member(&population_[gi]);
-                break;
-            }
-        }
-    }
-
-    build_networks();
-
-    spdlog::info("Checkpoint loaded: '{}' (resuming from gen {})", path, generation_);
+  if (network_entities_with_indices.empty()) {
     return true;
+  }
+
+  if (gpu_cache.is_dirty() || gpu_cache.entity_mapping().size() != network_entities_with_indices.size() ||
+      !std::equal(gpu_cache.entity_mapping().begin(), gpu_cache.entity_mapping().end(),
+                  network_entities_with_indices.begin(),
+                  [](uint32_t entity, const std::pair<uint32_t, int> &entity_with_index) {
+                    return entity == entity_with_index.first;
+                  })) {
+    gpu_cache.build_from(registry.network_cache, network_entities_with_indices);
+  }
+
+  return gpu_cache.launch_inference_async(buffer.device_sensor_inputs(), buffer.device_brain_outputs(),
+                                          network_entities_with_indices.size(), stream);
 }
 
-const Genome* EvolutionManager::genome_at(int idx) const {
-    if (idx < 0 || idx >= static_cast<int>(population_.size())) return nullptr;
-    return &population_[idx];
+} // namespace
+#endif
+
+void EvolutionManager::enable_gpu(AppState &state, bool use_gpu) {
+#ifdef MOONAI_ENABLE_CUDA
+  if (use_gpu) {
+    if (!state.predator.gpu_network_cache) {
+      state.predator.gpu_network_cache = std::make_unique<gpu::GpuNetworkCache>();
+      state.predator.gpu_network_cache->invalidate();
+    }
+    if (!state.prey.gpu_network_cache) {
+      state.prey.gpu_network_cache = std::make_unique<gpu::GpuNetworkCache>();
+      state.prey.gpu_network_cache->invalidate();
+    }
+    state.runtime.gpu_enabled = true;
+    spdlog::info("GPU neural inference enabled");
+  } else {
+    state.predator.gpu_network_cache.reset();
+    state.prey.gpu_network_cache.reset();
+    state.gpu_batch.reset();
+    state.runtime.gpu_enabled = false;
+    spdlog::info("GPU neural inference disabled");
+  }
+#else
+  state.runtime.gpu_enabled = false;
+  if (use_gpu) {
+    spdlog::warn("GPU requested, but this build was compiled without CUDA support");
+  }
+#endif
 }
 
-void EvolutionManager::assign_species_ids(SimulationManager& sim) const {
-    const auto& agents = sim.agents();
-    // Build genome pointer → species ID map
-    std::unordered_map<const Genome*, int> genome_species;
-    for (const auto& s : species_) {
-        for (const auto* g : s.members()) {
-            genome_species[g] = s.id();
-        }
-    }
-    // Population index matches agent index
-    for (size_t i = 0; i < population_.size() && i < agents.size(); ++i) {
-        auto it = genome_species.find(&population_[i]);
-        if (it != genome_species.end()) {
-            agents[i]->set_species_id(it->second);
-        }
-    }
+#ifdef MOONAI_ENABLE_CUDA
+bool EvolutionManager::launch_gpu_neural(AppState &state, gpu::GpuBatch &gpu_batch) {
+  MOONAI_PROFILE_SCOPE("gpu_neural", gpu_batch.stream());
+
+  if (!state.predator.gpu_network_cache || !state.prey.gpu_network_cache) {
+    spdlog::error("GPU neural caches not initialized");
+    return false;
+  }
+
+  if (!launch_population_gpu_neural(state.predator, *state.predator.gpu_network_cache, gpu_batch.predator_buffer(),
+                                    state.predator.size(), gpu_batch.stream())) {
+    gpu_batch.mark_error();
+    return false;
+  }
+
+  if (!launch_population_gpu_neural(state.prey, *state.prey.gpu_network_cache, gpu_batch.prey_buffer(),
+                                    state.prey.size(), gpu_batch.stream())) {
+    gpu_batch.mark_error();
+    return false;
+  }
+
+  return true;
 }
+#endif
 
 } // namespace moonai

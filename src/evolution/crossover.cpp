@@ -5,62 +5,74 @@
 
 namespace moonai {
 
-Genome Crossover::crossover(const Genome& parent_a, const Genome& parent_b,
-                            Random& rng) {
-    // parent_a should be the fitter parent
-    const Genome& fitter = (parent_a.fitness() >= parent_b.fitness()) ? parent_a : parent_b;
-    const Genome& other = (&fitter == &parent_a) ? parent_b : parent_a;
+Genome Crossover::crossover(const Genome &parent_a, const Genome &parent_b, Random &rng) {
+  Genome child(parent_a.num_inputs(), parent_a.num_outputs());
 
-    Genome child(fitter.num_inputs(), fitter.num_outputs());
+  std::map<std::uint32_t, const ConnectionGene *> map_a, map_b;
+  for (const auto &c : parent_a.connections())
+    map_a[c.innovation] = &c;
+  for (const auto &c : parent_b.connections())
+    map_b[c.innovation] = &c;
 
-    // Build innovation maps
-    std::map<std::uint32_t, const ConnectionGene*> map_fitter, map_other;
-    for (const auto& c : fitter.connections()) map_fitter[c.innovation] = &c;
-    for (const auto& c : other.connections()) map_other[c.innovation] = &c;
+  std::unordered_set<std::uint32_t> needed_nodes;
+  std::vector<ConnectionGene> inherited_connections;
 
-    // Collect all hidden node ids we'll need
-    std::unordered_set<std::uint32_t> needed_nodes;
+  auto inherit_gene = [&](const ConnectionGene &gene) {
+    inherited_connections.push_back(gene);
+    needed_nodes.insert(gene.in_node);
+    needed_nodes.insert(gene.out_node);
+  };
 
-    // Matching genes: pick randomly, disjoint/excess: take from fitter
-    for (const auto& [innov, conn] : map_fitter) {
-        ConnectionGene gene;
+  std::unordered_set<std::uint32_t> all_innovations;
+  for (const auto &[innov, _] : map_a)
+    all_innovations.insert(innov);
+  for (const auto &[innov, _] : map_b)
+    all_innovations.insert(innov);
 
-        if (map_other.count(innov)) {
-            // Matching gene - randomly pick from either parent
-            if (rng.next_bool(0.5f)) {
-                gene = *conn;
-            } else {
-                gene = *map_other.at(innov);
-            }
+  for (std::uint32_t innov : all_innovations) {
+    const auto it_a = map_a.find(innov);
+    const auto it_b = map_b.find(innov);
 
-            // If disabled in either parent, 75% chance of being disabled in child
-            if (!conn->enabled || !map_other.at(innov)->enabled) {
-                gene.enabled = !rng.next_bool(0.75f);
-            }
-        } else {
-            // Disjoint or excess from fitter parent
-            gene = *conn;
-        }
-
-        child.add_connection(gene);
-        needed_nodes.insert(gene.in_node);
-        needed_nodes.insert(gene.out_node);
+    if (it_a != map_a.end() && it_b != map_b.end()) {
+      ConnectionGene gene = rng.next_bool(0.5f) ? *it_a->second : *it_b->second;
+      if (!it_a->second->enabled || !it_b->second->enabled) {
+        gene.enabled = !rng.next_bool(0.75f);
+      }
+      inherit_gene(gene);
+      continue;
     }
 
-    // Add hidden nodes that are referenced by connections
-    for (const auto& node : fitter.nodes()) {
-        if (node.type == NodeType::Hidden && needed_nodes.count(node.id)) {
-            child.add_node(node);
-        }
-    }
-    // Also check other parent for hidden nodes (for matching gene connections)
-    for (const auto& node : other.nodes()) {
-        if (node.type == NodeType::Hidden && needed_nodes.count(node.id) && !child.has_node(node.id)) {
-            child.add_node(node);
-        }
+    if (!rng.next_bool(0.5f)) {
+      continue;
     }
 
-    return child;
+    const ConnectionGene &gene = (it_a != map_a.end()) ? *it_a->second : *it_b->second;
+    inherit_gene(gene);
+  }
+
+  if (inherited_connections.empty() && !all_innovations.empty()) {
+    auto innov_it = all_innovations.begin();
+    std::advance(innov_it, rng.next_int(0, static_cast<int>(all_innovations.size()) - 1));
+    const auto it_a = map_a.find(*innov_it);
+    const ConnectionGene &gene = (it_a != map_a.end()) ? *it_a->second : *map_b.at(*innov_it);
+    inherit_gene(gene);
+  }
+
+  for (const auto &gene : inherited_connections)
+    child.add_connection(gene);
+
+  for (const auto &node : parent_a.nodes()) {
+    if (node.type == NodeType::Hidden && needed_nodes.count(node.id)) {
+      child.add_node(node);
+    }
+  }
+  for (const auto &node : parent_b.nodes()) {
+    if (node.type == NodeType::Hidden && needed_nodes.count(node.id) && !child.has_node(node.id)) {
+      child.add_node(node);
+    }
+  }
+
+  return child;
 }
 
 } // namespace moonai

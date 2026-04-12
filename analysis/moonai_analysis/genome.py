@@ -28,6 +28,9 @@ def load_latest_genome(run_dir: Path) -> dict | None:
 
 
 def render_genome_plot(genome: dict, title: str) -> str:
+    if "genome" in genome and isinstance(genome["genome"], dict):
+        genome = genome["genome"]
+
     graph = nx.DiGraph()
     node_types: dict[int, int] = {}
 

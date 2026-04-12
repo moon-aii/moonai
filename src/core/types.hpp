@@ -1,31 +1,28 @@
 #pragma once
 
-#include <cstdint>
 #include <cmath>
+#include <cstdint>
+#include <limits>
 
 namespace moonai {
 
-using AgentId = std::uint32_t;
-
 struct Vec2 {
-    float x = 0.0f;
-    float y = 0.0f;
+  float x = 0.0f;
+  float y = 0.0f;
 
-    Vec2 operator+(const Vec2& other) const { return {x + other.x, y + other.y}; }
-    Vec2 operator-(const Vec2& other) const { return {x - other.x, y - other.y}; }
-    Vec2 operator*(float scalar) const { return {x * scalar, y * scalar}; }
+  Vec2 operator-(const Vec2 &other) const {
+    return {x - other.x, y - other.y};
+  }
 
-    float length() const { return std::sqrt(x * x + y * y); }
-
-    Vec2 normalized() const {
-        float len = length();
-        if (len < 1e-6f) return {0.0f, 0.0f};
-        return {x / len, y / len};
-    }
-
-    float distance_to(const Vec2& other) const {
-        return (*this - other).length();
-    }
+  float length() const {
+    return std::sqrt(x * x + y * y);
+  }
 };
+
+constexpr uint32_t INVALID_ENTITY = std::numeric_limits<uint32_t>::max();
+
+// Agent neural network topology constants
+inline constexpr int SENSOR_COUNT = 14;
+inline constexpr int OUTPUT_COUNT = 2;
 
 } // namespace moonai

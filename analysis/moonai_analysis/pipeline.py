@@ -41,22 +41,21 @@ def run_analysis(input_dir: Path, output_dir: Path) -> None:
         genome = load_latest_genome(aggregate.representative_run.path)
         genome_chart = None
         if genome is not None:
-            fitness = float(genome.get("fitness", 0.0))
             title = (
-                f"{aggregate.label} - Best Genome ({aggregate.representative_run.name}, "
-                f"Gen {genome.get('generation', '?')}, Fitness {fitness:.3f})"
+                f"{aggregate.label} - Representative Genome "
+                f"({aggregate.representative_run.name}, Step {genome.get('step', '?')})"
             )
             genome_chart = {
                 "title": "Genome",
                 "image_uri": render_genome_plot(genome, title),
-                "caption": f"Representative best-genome topology for `{aggregate.representative_run.name}`.",
+                "caption": f"Representative topology snapshot for `{aggregate.representative_run.name}`.",
             }
         condition_sections.append(
             {
                 "label": aggregate.label,
                 "run_count": len(aggregate.runs),
                 "representative_run": aggregate.representative_run.name,
-                "final_generation": int(aggregate.summary_frame["generation"].max()),
+                "final_step": int(aggregate.summary_frame["step"].max()),
                 "charts": [chart.__dict__ for chart in charts],
                 "genome_chart": genome_chart,
             }
@@ -73,7 +72,7 @@ def run_analysis(input_dir: Path, output_dir: Path) -> None:
             "run_count": len(runs),
             "condition_count": len(aggregates),
             "skipped_count": len(skipped_runs),
-            "summary_generation": summary.generation,
+            "summary_step": summary.step,
             "summary_headers": summary.headers,
             "summary_rows": [
                 {

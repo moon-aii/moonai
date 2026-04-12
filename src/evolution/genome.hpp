@@ -1,72 +1,69 @@
 #pragma once
 
 #include <cstdint>
-#include <vector>
-#include <map>
 #include <string>
+#include <vector>
 
 namespace moonai {
 
 enum class NodeType { Input, Hidden, Output, Bias };
 
 struct NodeGene {
-    std::uint32_t id;
-    NodeType type;
+  std::uint32_t id;
+  NodeType type;
 };
 
 struct ConnectionGene {
-    std::uint32_t in_node;
-    std::uint32_t out_node;
-    float weight;
-    bool enabled;
-    std::uint32_t innovation;
+  std::uint32_t in_node;
+  std::uint32_t out_node;
+  float weight;
+  bool enabled;
+  std::uint32_t innovation;
 };
 
 class Genome {
 public:
-    Genome() = default;
-    Genome(int num_inputs, int num_outputs);
+  Genome() = default;
+  Genome(int num_inputs, int num_outputs);
 
-    void add_node(const NodeGene& node);
-    void add_connection(const ConnectionGene& conn);
+  void add_node(const NodeGene &node);
+  void add_connection(const ConnectionGene &conn);
 
-    bool has_connection(std::uint32_t from, std::uint32_t to) const;
-    bool has_node(std::uint32_t id) const;
-    std::uint32_t max_node_id() const;
+  bool has_connection(std::uint32_t from, std::uint32_t to) const;
+  bool has_node(std::uint32_t id) const;
+  std::uint32_t max_node_id() const;
 
-    const std::vector<NodeGene>& nodes() const { return nodes_; }
-    std::vector<NodeGene>& nodes() { return nodes_; }
-    const std::vector<ConnectionGene>& connections() const { return connections_; }
-    std::vector<ConnectionGene>& connections() { return connections_; }
+  const std::vector<NodeGene> &nodes() const {
+    return nodes_;
+  }
+  const std::vector<ConnectionGene> &connections() const {
+    return connections_;
+  }
+  std::vector<ConnectionGene> &connections() {
+    return connections_;
+  }
 
-    float fitness() const { return fitness_; }
-    void set_fitness(float f) { fitness_ = f; }
+  int num_inputs() const {
+    return num_inputs_;
+  }
+  int num_outputs() const {
+    return num_outputs_;
+  }
 
-    // Adjusted fitness (after species sharing)
-    float adjusted_fitness() const { return adjusted_fitness_; }
-    void set_adjusted_fitness(float f) { adjusted_fitness_ = f; }
+  // Genome complexity (nodes + connections)
+  int complexity() const;
 
-    int num_inputs() const { return num_inputs_; }
-    int num_outputs() const { return num_outputs_; }
+  static float compatibility_distance(const Genome &a, const Genome &b, float c1, float c2, float c3);
 
-    // Genome complexity (nodes + connections)
-    int complexity() const;
-    void sort_connections_by_innovation();
-
-    static float compatibility_distance(const Genome& a, const Genome& b,
-                                        float c1, float c2, float c3);
-
-    // JSON serialization
-    std::string to_json() const;
-    static Genome from_json(const std::string& json_str);
+  // JSON serialization
+  std::string to_json() const;
+  static Genome from_json(const std::string &json_str);
 
 private:
-    std::vector<NodeGene> nodes_;
-    std::vector<ConnectionGene> connections_;
-    int num_inputs_ = 0;
-    int num_outputs_ = 0;
-    float fitness_ = 0.0f;
-    float adjusted_fitness_ = 0.0f;
+  std::vector<NodeGene> nodes_;
+  std::vector<ConnectionGene> connections_;
+  int num_inputs_ = 0;
+  int num_outputs_ = 0;
 };
 
 } // namespace moonai

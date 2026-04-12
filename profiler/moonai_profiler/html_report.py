@@ -14,5 +14,5 @@ def render_html_report(context: dict) -> str:
         trim_blocks=True,
         lstrip_blocks=True,
     )
-    template = environment.get_template("report.html.j2")
+    template = environment.get_template("report.html")
     return template.render(**context)

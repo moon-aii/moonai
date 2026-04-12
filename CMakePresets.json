@@ -33,7 +33,9 @@
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build/linux-release",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release"
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_CXX_FLAGS_RELEASE": "-O3 -DNDEBUG",
+        "CMAKE_CUDA_FLAGS_RELEASE": "-O3 -DNDEBUG"
       },
       "condition": {
         "type": "equals",

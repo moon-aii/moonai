@@ -56,7 +56,8 @@ jobs:
             -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake \
-            -DMOONAI_BUILD_TESTS=ON
+            -DMOONAI_BUILD_TESTS=ON \
+            -DMOONAI_CUDA=OFF
 
       - name: Configure (Windows)
         if: runner.os == 'Windows'
@@ -64,7 +65,8 @@ jobs:
           cmake -B build `
             -DCMAKE_BUILD_TYPE=Release `
             -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
-            -DMOONAI_BUILD_TESTS=ON
+            -DMOONAI_BUILD_TESTS=ON `
+            -DMOONAI_CUDA=OFF
 
       - name: Build (Linux)
         if: runner.os == 'Linux'
@@ -89,6 +91,7 @@ jobs:
           cp build/moonai package/moonai/
           cp config.lua package/moonai/
           cp README.md package/moonai/
+          cp -r assets package/moonai/
           cd package && tar -czf ../moonai-linux-x64-cpu.tar.gz moonai/
 
       - name: Package (Windows)
@@ -98,6 +101,7 @@ jobs:
           Copy-Item build/Release/moonai.exe package/moonai/
           Copy-Item config.lua package/moonai/
           Copy-Item README.md package/moonai/
+          Copy-Item assets package/moonai/ -Recurse
           Compress-Archive -Path package/moonai -DestinationPath moonai-windows-x64-cpu.zip
 
       - name: Upload artifact

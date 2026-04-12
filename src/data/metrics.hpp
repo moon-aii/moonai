@@ -1,31 +1,16 @@
 #pragma once
 
-#include "evolution/genome.hpp"
-
-#include <vector>
-
 namespace moonai {
 
-struct GenerationMetrics {
-    int generation = 0;
-    int predator_count = 0;
-    int prey_count = 0;
-    float best_fitness = 0.0f;
-    float avg_fitness = 0.0f;
-    int num_species = 0;
-    float avg_genome_complexity = 0.0f;  // avg number of connections
-};
+struct AppState;
 
-class MetricsCollector {
-public:
-    GenerationMetrics collect(int generation,
-                              const std::vector<Genome>& population,
-                              int predator_count, int prey_count);
+namespace metrics {
 
-    const std::vector<GenerationMetrics>& history() const { return history_; }
+void begin_step(AppState &state);
+void refresh_live(AppState &state);
+void finalize_step(AppState &state);
+void record_report(AppState &state);
 
-private:
-    std::vector<GenerationMetrics> history_;
-};
+} // namespace metrics
 
 } // namespace moonai

@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from .pipeline import run_analysis
+from .report import generate_report
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -35,7 +35,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
-    run_analysis(Path(args.input_dir), Path(args.output_dir))
+    generate_report(Path(args.input_dir), Path(args.output_dir))
 
 
 if __name__ == "__main__":
