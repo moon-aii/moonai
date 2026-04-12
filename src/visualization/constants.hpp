@@ -6,8 +6,8 @@ namespace moonai {
 
 // uint32_t sizes
 namespace sizes {
-constexpr float PREDATOR_RADIUS = 6.0f;
-constexpr float PREY_RADIUS = 4.8f;
+constexpr float PREDATOR_RADIUS = 4.2f;
+constexpr float PREY_RADIUS = 3.6f;
 constexpr float FOOD_RADIUS = 1.2f;
 } // namespace sizes
 
@@ -21,8 +21,8 @@ constexpr uint8_t PREY_R = 0x4E;
 constexpr uint8_t PREY_G = 0xCD;
 constexpr uint8_t PREY_B = 0xC4;
 
-constexpr uint8_t FOOD_R = 0xFF;
-constexpr uint8_t FOOD_G = 0xE6;
+constexpr uint8_t FOOD_R = 0xaa;
+constexpr uint8_t FOOD_G = 0xff;
 constexpr uint8_t FOOD_B = 0x6D;
 } // namespace chart_colors
 
@@ -37,9 +37,9 @@ constexpr uint8_t BORDER_R = 100;
 constexpr uint8_t BORDER_G = 100;
 constexpr uint8_t BORDER_B = 140;
 
-constexpr uint8_t BG_R = 20;
-constexpr uint8_t BG_G = 20;
-constexpr uint8_t BG_B = 30;
+constexpr uint8_t BG_R = 0;
+constexpr uint8_t BG_G = 0;
+constexpr uint8_t BG_B = 0;
 
 // UI Panel
 constexpr uint8_t PANEL_BG_R = 10;
