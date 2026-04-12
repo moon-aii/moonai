@@ -8,6 +8,8 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
+#include <cstdio>
+#include <exception>
 #include <filesystem>
 #include <fstream>
 #include <memory>
@@ -255,30 +257,90 @@ std::vector<std::unique_ptr<ScopeNode>> Profiler::finish_run() {
 
 namespace {
 
-struct Args {
+struct ProfilerArgs {
   int frames = 600;
   int speed_multiplier = 64;
   std::vector<std::uint64_t> seeds = {61, 62, 63, 64, 65, 66};
   std::string output_dir = "output/profiles";
   std::string experiment_name = "profile";
   bool no_gpu = false;
+  bool help = false;
 };
 
-Args parse_args(int argc, const char *argv[]) {
-  Args args;
+struct ParseProfilerResult {
+  ProfilerArgs args;
+  bool ok = true;
+};
+
+void print_profiler_usage(const char *program_name) {
+  std::printf("MoonAI profiler\n"
+              "\n"
+              "Usage: %s [OPTIONS]\n"
+              "\n"
+              "Options:\n"
+              "      --frames <n>          Number of frames per run (default: 600)\n"
+              "      --output-dir <path>   Output directory for profiler JSON\n"
+              "      --name <name>         Suite name in output file\n"
+              "      --no-gpu              Disable CUDA GPU acceleration\n"
+              "  -h, --help                Show this help message\n",
+              program_name);
+}
+
+bool parse_int_arg(const char *value, int &out) {
+  try {
+    out = std::stoi(value);
+    return true;
+  } catch (const std::exception &) {
+    return false;
+  }
+}
+
+ParseProfilerResult parse_profiler_args(int argc, const char *argv[]) {
+  ParseProfilerResult result;
   for (int i = 1; i < argc; ++i) {
     const std::string arg = argv[i];
-    if (arg == "--frames" && i + 1 < argc) {
-      args.frames = std::stoi(argv[++i]);
-    } else if (arg == "--output-dir" && i + 1 < argc) {
-      args.output_dir = argv[++i];
-    } else if (arg == "--name" && i + 1 < argc) {
-      args.experiment_name = argv[++i];
+
+    if (arg == "-h" || arg == "--help") {
+      result.args.help = true;
+      continue;
+    }
+
+    if (arg == "--frames") {
+      if (i + 1 >= argc) {
+        std::fprintf(stderr, "Missing value for %s\n", arg.c_str());
+        result.ok = false;
+        continue;
+      }
+
+      int parsed = 0;
+      if (!parse_int_arg(argv[++i], parsed)) {
+        std::fprintf(stderr, "Invalid frames value '%s'\n", argv[i]);
+        result.ok = false;
+        continue;
+      }
+      result.args.frames = parsed;
+    } else if (arg == "--output-dir") {
+      if (i + 1 >= argc) {
+        std::fprintf(stderr, "Missing value for %s\n", arg.c_str());
+        result.ok = false;
+        continue;
+      }
+      result.args.output_dir = argv[++i];
+    } else if (arg == "--name") {
+      if (i + 1 >= argc) {
+        std::fprintf(stderr, "Missing value for %s\n", arg.c_str());
+        result.ok = false;
+        continue;
+      }
+      result.args.experiment_name = argv[++i];
     } else if (arg == "--no-gpu") {
-      args.no_gpu = true;
+      result.args.no_gpu = true;
+    } else {
+      spdlog::warn("Unknown profiler argument: {}", arg);
     }
   }
-  return args;
+
+  return result;
 }
 
 struct RunData {
@@ -311,7 +373,9 @@ RunData run_profiler(const moonai::AppConfig &cfg) {
 
   if (!completed) {
     spdlog::info("Run stopped early, skipping profile generation");
-    return RunData{.seed = cfg.sim_config.seed};
+    RunData skipped;
+    skipped.seed = static_cast<std::uint64_t>(cfg.sim_config.seed);
+    return skipped;
   }
 
   RunData result;
@@ -558,7 +622,18 @@ void write_manifest(std::vector<RunData> runs, const std::filesystem::path &outp
 } // namespace
 
 int main(int argc, const char *argv[]) {
-  const Args args = parse_args(argc, argv);
+  const auto parsed = parse_profiler_args(argc, argv);
+  const auto &args = parsed.args;
+
+  if (args.help) {
+    print_profiler_usage(argv[0]);
+    return parsed.ok ? 0 : 1;
+  }
+
+  if (!parsed.ok) {
+    print_profiler_usage(argv[0]);
+    return 1;
+  }
 
   moonai::AppConfig base_cfg;
   base_cfg.sim_config = moonai::SimulationConfig();

@@ -85,30 +85,4 @@ void save_config(const SimulationConfig &config, const std::string &filepath);
 
 std::vector<ConfigError> validate_config(const SimulationConfig &config);
 
-std::vector<ConfigError> apply_overrides(SimulationConfig &config,
-                                         const std::vector<std::pair<std::string, std::string>> &overrides);
-
-struct CLIArgs {
-  std::string config_path = "config.lua";
-  int seed_override = 0; // 0 = use config seed
-  bool headless = false;
-  bool verbose = false;
-  bool help = false;
-  bool no_gpu = false;        // --no-gpu: skip CUDA even if available
-  int max_steps_override = 0; // 0 = use config value
-
-  // Lua config orchestration
-  std::string experiment_name;   // --experiment: select one from multi-config
-  bool run_all = false;          // --all: run all experiments sequentially
-  bool list_experiments = false; // --list: list experiment names and exit
-  std::string run_name;          // --name: override output directory name
-  bool validate_only = false;    // --validate: check config and exit
-
-  // --set key=value overrides
-  std::vector<std::pair<std::string, std::string>> overrides;
-};
-
-CLIArgs parse_args(int argc, const char *argv[]);
-void print_usage(const char *program_name);
-
 } // namespace moonai

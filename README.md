@@ -236,12 +236,17 @@ A single-entry file auto-selects without `--experiment`. The `default` entry (20
 
 | Flag | Purpose |
 |------|---------|
+| `-c, --config <path>` | Path to Lua config file (default: `config.lua`) |
+| `-n, --steps <n>` | Override max steps (`0` = infinite) |
+| `--headless` | Run without visualization |
+| `-v, --verbose` | Enable debug logging |
+| `--no-gpu` | Force CPU path even when CUDA is available |
 | `--experiment <name>` | Select one experiment by name |
 | `--all` | Run all experiments sequentially (headless only) |
 | `--list` | List experiment names and exit |
 | `--name <name>` | Override output directory name |
 | `--validate` | Load + validate config, print result, exit |
-| `--set key=value` | Override any param after Lua load (repeatable) |
+| `-h, --help` | Show CLI help |
 
 ### Examples
 
@@ -252,10 +257,9 @@ just run -- --no-gpu                                  # Force CPU-only
 just run -- --headless --no-gpu                       # Server mode (no display/GPU)
 just run -- --experiment mut_low_seed42 --headless    # One experiment
 just run-release -- --all --headless                  # Full batch (release build)
-just run -- --set mutation_rate=0.1                   # Ad-hoc override
 ```
 
-Set `seed` to `0` for random seed, or a fixed value for reproducible experiments.
+Set `seed` to `0` for random seed, or a fixed value for reproducible experiments in `config.lua`.
 
 ## Running Experiments
 
