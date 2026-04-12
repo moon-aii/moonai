@@ -159,8 +159,8 @@ def _format_tree_events(tree: AveragedNode | None, frame_count: int) -> list[dic
         # This shows the average time contribution per frame
         avg_per_frame = node.total_ms / total_frames if total_frames > 0 else 0.0
 
-        # Add non-breaking space indentation (copy-paste friendly, consistent visual width)
-        indented_name = "&nbsp;&nbsp;&nbsp;&nbsp;" * depth + node.name
+        # Add 4-space indentation (rendered via CSS white-space: pre)
+        indented_name = " " * (4 * depth) + node.name
         rows.append(
             {
                 "name": indented_name,
