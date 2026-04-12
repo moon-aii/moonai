@@ -1,4 +1,4 @@
-#include "simulation/reproduction.hpp"
+#include "simulation/common.hpp"
 
 #include "core/metrics.hpp"
 #include "evolution/evolution_manager.hpp"
@@ -7,7 +7,7 @@
 #include <cmath>
 #include <vector>
 
-namespace moonai::reproduction {
+namespace moonai::common {
 
 namespace {
 
@@ -96,9 +96,8 @@ private:
   std::vector<uint32_t> entries_;
 };
 
-} // namespace
-
-void run(AppState &state, EvolutionManager &evolution, AgentRegistry &registry, const SimulationConfig &config) {
+void reproduction(AppState &state, EvolutionManager &evolution, AgentRegistry &registry,
+                  const SimulationConfig &config) {
   std::vector<uint8_t> used(registry.size(), 0);
 
   DenseReproductionGrid grid(static_cast<float>(config.grid_size), static_cast<float>(config.grid_size),
@@ -145,4 +144,24 @@ void run(AppState &state, EvolutionManager &evolution, AgentRegistry &registry, 
   }
 }
 
-} // namespace moonai::reproduction
+} // namespace
+
+void run(AppState &state, EvolutionManager &evolution, const SimulationConfig &config) {
+  // Compact registries to remove dead entities
+  state.predator.compact();
+  state.prey.compact();
+
+  // Respawn food
+  state.food.respawn_step(config, state.runtime.step, state.runtime.rng.seed());
+
+  // Reproduction for both species
+  reproduction(state, evolution, state.predator, config);
+  reproduction(state, evolution, state.prey, config);
+
+  // Refresh species if interval reached
+  if (config.species_update_interval_steps > 0 && (state.runtime.step % config.species_update_interval_steps) == 0) {
+    evolution.refresh_species(state);
+  }
+}
+
+} // namespace moonai::common

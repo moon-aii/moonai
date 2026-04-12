@@ -7,10 +7,10 @@ namespace moonai {
 
 class EvolutionManager;
 
-namespace cpu_backend {
+namespace cpu {
 
 void step(AppState &state, EvolutionManager &evolution, const SimulationConfig &config);
 
-} // namespace cpu_backend
+} // namespace cpu
 
 } // namespace moonai

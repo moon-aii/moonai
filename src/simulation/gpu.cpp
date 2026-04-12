@@ -1,16 +1,16 @@
-#include "simulation/step_gpu.hpp"
+#include "simulation/gpu.hpp"
 
 #include "core/metrics.hpp"
 #include "core/profiler_macros.hpp"
 #include "evolution/evolution_manager.hpp"
-#include "simulation/step_cpu.hpp"
+#include "simulation/cpu.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <spdlog/spdlog.h>
 
-namespace moonai::gpu_backend {
+namespace moonai::gpu {
 
 namespace {
 
@@ -194,7 +194,7 @@ void ensure_capacity(std::unique_ptr<gpu::GpuBatch> &batch, std::size_t predator
 
 void step(AppState &state, EvolutionManager &evolution, std::unique_ptr<gpu::GpuBatch> &batch,
           const SimulationConfig &config) {
-  MOONAI_PROFILE_SCOPE("simulation_step_gpu");
+  MOONAI_PROFILE_SCOPE("simulation_gpu");
 
   std::vector<uint8_t> was_food_active = state.food.active;
 
@@ -204,7 +204,7 @@ void step(AppState &state, EvolutionManager &evolution, std::unique_ptr<gpu::Gpu
 
   if (!batch || !batch->ok()) {
     spdlog::error("GPU batch not initialized or in error state, falling back to CPU");
-    cpu_backend::step(state, evolution, config);
+    cpu::step(state, evolution, config);
     return;
   }
 
@@ -234,7 +234,7 @@ void step(AppState &state, EvolutionManager &evolution, std::unique_ptr<gpu::Gpu
       spdlog::error("GPU neural inference failed, disabling GPU path and retrying on CPU");
       state.runtime.gpu_enabled = false;
       disable(batch);
-      cpu_backend::step(state, evolution, config);
+      cpu::step(state, evolution, config);
       return;
     }
   }
@@ -248,7 +248,7 @@ void step(AppState &state, EvolutionManager &evolution, std::unique_ptr<gpu::Gpu
     spdlog::error("GPU step failed, disabling GPU path and retrying on CPU");
     state.runtime.gpu_enabled = false;
     disable(batch);
-    cpu_backend::step(state, evolution, config);
+    cpu::step(state, evolution, config);
     return;
   }
 
@@ -261,4 +261,4 @@ void disable(std::unique_ptr<gpu::GpuBatch> &batch) {
   spdlog::info("GPU batch processing disabled");
 }
 
-} // namespace moonai::gpu_backend
+} // namespace moonai::gpu

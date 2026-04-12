@@ -1,19 +1,21 @@
-#include "simulation/systems.hpp"
+#include "simulation/cpu.hpp"
 
+#include "core/metrics.hpp"
+#include "core/profiler_macros.hpp"
 #include "core/types.hpp"
+#include "evolution/evolution_manager.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <vector>
 
-namespace moonai::systems {
+namespace moonai::cpu {
 
 namespace {
 
 constexpr float kMaxDensity = 10.0f;
 constexpr float kMissingTargetSentinel = 2.0f;
-
-} // namespace
 
 void build_sensors(AgentRegistry &self_agents, const AgentRegistry &predator_agents, const AgentRegistry &prey_agents,
                    const Food &food_store, const SimulationConfig &config, float agent_speed,
@@ -365,4 +367,38 @@ void collect_death_events(const AgentRegistry &registry, MetricsSnapshot &metric
   }
 }
 
-} // namespace moonai::systems
+} // namespace
+
+void step(AppState &state, EvolutionManager &evolution, const SimulationConfig &config) {
+  MOONAI_PROFILE_SCOPE("simulation_cpu");
+
+  const std::vector<uint8_t> was_food_active = state.food.active;
+
+  std::vector<int> food_consumed_by(state.food.size(), -1);
+  std::vector<int> killed_by(state.prey.size(), -1);
+  std::vector<uint32_t> kill_counts(state.predator.size(), 0U);
+
+  std::vector<float> predator_sensors;
+  std::vector<float> prey_sensors;
+  build_sensors(state.predator, state.predator, state.prey, state.food, config, config.predator_speed,
+                predator_sensors);
+  build_sensors(state.prey, state.predator, state.prey, state.food, config, config.prey_speed, prey_sensors);
+
+  std::vector<float> predator_decisions;
+  std::vector<float> prey_decisions;
+  evolution.compute_actions(state, predator_sensors, prey_sensors, predator_decisions, prey_decisions);
+
+  update_vitals(state.predator, config);
+  update_vitals(state.prey, config);
+  process_food(state.prey, state.food, config, food_consumed_by);
+  process_combat(state.predator, state.prey, config, killed_by, kill_counts);
+  apply_movement(state.predator, config, config.predator_speed, predator_decisions);
+  apply_movement(state.prey, config, config.prey_speed, prey_decisions);
+
+  collect_food_events(state.prey, state.food, was_food_active, food_consumed_by, state.metrics.step_delta);
+  collect_combat_events(state.predator, state.prey, killed_by, kill_counts, state.metrics.step_delta);
+  collect_death_events(state.predator, state.metrics.step_delta);
+  collect_death_events(state.prey, state.metrics.step_delta);
+}
+
+} // namespace moonai::cpu

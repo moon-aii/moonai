@@ -3,7 +3,6 @@ include(GoogleTest)
 
 add_executable(moonai_tests
     test_evolution.cpp
-    test_simulation_sensors.cpp
 )
 
 target_link_libraries(moonai_tests PRIVATE

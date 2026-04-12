@@ -1,9 +1,8 @@
 set(MOONAI_SIMULATION_SOURCES
     manager.cpp
-    reproduction.cpp
-    step_cpu.cpp
-    step_gpu.cpp
-    systems.cpp
+    common.cpp
+    cpu.cpp
+    gpu.cpp
 )
 
 add_library(moonai_simulation STATIC ${MOONAI_SIMULATION_SOURCES})

@@ -11,7 +11,7 @@ namespace moonai {
 
 class EvolutionManager;
 
-namespace gpu_backend {
+namespace gpu {
 
 void step(AppState &state, EvolutionManager &evolution, std::unique_ptr<gpu::GpuBatch> &batch,
           const SimulationConfig &config);
@@ -21,6 +21,6 @@ void ensure_capacity(std::unique_ptr<gpu::GpuBatch> &batch, std::size_t predator
 
 void disable(std::unique_ptr<gpu::GpuBatch> &batch);
 
-} // namespace gpu_backend
+} // namespace gpu
 
 } // namespace moonai

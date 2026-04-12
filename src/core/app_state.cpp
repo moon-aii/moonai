@@ -1,6 +1,6 @@
 #include "core/app_state.hpp"
-#include "core/profiler_macros.hpp"
 #include "core/deterministic_respawn.hpp"
+#include "core/profiler_macros.hpp"
 
 #include <algorithm>
 
@@ -94,7 +94,7 @@ void AgentRegistry::compact() {
     pop_back();
 
     if (gpu_network_cache) {
-        gpu_network_cache->invalidate();
+      gpu_network_cache->invalidate();
     }
   }
 }
