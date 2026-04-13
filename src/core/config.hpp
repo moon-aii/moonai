@@ -16,7 +16,7 @@ struct SimulationConfig {
 
   float predator_speed = 0.6f;
   float prey_speed = 0.66f;
-  float vision_range = 50.0f;
+  float vision_range = 12.0f;
   float interaction_range = 1.0f;
   float mate_range = 30.0f;
 

@@ -60,9 +60,12 @@ __device__ bool cell_may_intersect_radius(int cx, int cy, float cell_size, float
   return nearest_x * nearest_x + nearest_y * nearest_y <= radius * radius;
 }
 
-__global__ void kernel_count_population_cells(const float *__restrict__ pos_x, const float *__restrict__ pos_y,
-                                              const uint32_t *__restrict__ alive, int *__restrict__ cell_counts,
-                                              int population_count, int grid_cols, int grid_rows, float cell_size) {
+
+__global__ void kernel_count_population_cells_from_positions(const float *__restrict__ pos_x,
+                                                             const float *__restrict__ pos_y,
+                                                             const uint32_t *__restrict__ alive,
+                                                             int *__restrict__ cell_counts, int population_count,
+                                                             int grid_cols, int grid_rows, float cell_size) {
   const int idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx >= population_count || alive[idx] == 0) {
     return;
@@ -73,10 +76,10 @@ __global__ void kernel_count_population_cells(const float *__restrict__ pos_x, c
   atomicAdd(&cell_counts[cy * grid_cols + cx], 1);
 }
 
-__global__ void kernel_scatter_population_cells(const float *__restrict__ pos_x, const float *__restrict__ pos_y,
-                                                const uint32_t *__restrict__ alive, int *__restrict__ cell_offsets,
-                                                PopulationEntry *__restrict__ entries, int population_count,
-                                                int grid_cols, int grid_rows, float cell_size) {
+__global__ void kernel_scatter_population_cells_from_positions(
+    const float *__restrict__ pos_x, const float *__restrict__ pos_y, const uint32_t *__restrict__ alive,
+    int *__restrict__ cell_offsets, PopulationEntry *__restrict__ entries, int population_count, int grid_cols,
+    int grid_rows, float cell_size) {
   const int idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx >= population_count || alive[idx] == 0) {
     return;
@@ -88,9 +91,11 @@ __global__ void kernel_scatter_population_cells(const float *__restrict__ pos_x,
   entries[slot] = PopulationEntry{static_cast<unsigned int>(idx), pos_x[idx], pos_y[idx], 0.0f};
 }
 
-__global__ void kernel_count_food_cells(const float *__restrict__ food_pos_x, const float *__restrict__ food_pos_y,
-                                        const uint32_t *__restrict__ food_active, int *__restrict__ cell_counts,
-                                        int food_count, int grid_cols, int grid_rows, float cell_size) {
+__global__ void kernel_count_food_cells_from_positions(const float *__restrict__ food_pos_x,
+                                                       const float *__restrict__ food_pos_y,
+                                                       const uint32_t *__restrict__ food_active,
+                                                       int *__restrict__ cell_counts, int food_count, int grid_cols,
+                                                       int grid_rows, float cell_size) {
   const int idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx >= food_count || food_active[idx] == 0) {
     return;
@@ -101,10 +106,12 @@ __global__ void kernel_count_food_cells(const float *__restrict__ food_pos_x, co
   atomicAdd(&cell_counts[cy * grid_cols + cx], 1);
 }
 
-__global__ void kernel_scatter_food_cells(const float *__restrict__ food_pos_x, const float *__restrict__ food_pos_y,
-                                          const uint32_t *__restrict__ food_active, int *__restrict__ cell_offsets,
-                                          FoodEntry *__restrict__ entries, int food_count, int grid_cols, int grid_rows,
-                                          float cell_size) {
+__global__ void kernel_scatter_food_cells_from_positions(const float *__restrict__ food_pos_x,
+                                                         const float *__restrict__ food_pos_y,
+                                                         const uint32_t *__restrict__ food_active,
+                                                         int *__restrict__ cell_offsets, FoodEntry *__restrict__ entries,
+                                                         int food_count, int grid_cols, int grid_rows,
+                                                         float cell_size) {
   const int idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx >= food_count || food_active[idx] == 0) {
     return;
@@ -646,53 +653,62 @@ void Batch::launch_build_sensors_async(const StepParams &params, std::size_t pre
     CUDA_CHECK(cudaMemsetAsync(d_prey_cell_counts_, 0, (cell_count + 1) * sizeof(int), stream));
     CUDA_CHECK(cudaMemsetAsync(d_food_cell_counts_, 0, (cell_count + 1) * sizeof(int), stream));
 
-    if (predator_count > 0) {
-      kernel_count_population_cells<<<predator_blocks, kThreadsPerBlock, 0, stream>>>(
-          predator_buffer_.device_positions_x(), predator_buffer_.device_positions_y(), predator_buffer_.device_alive(),
-          d_predator_cell_counts_, static_cast<int>(predator_count), grid_cols_, grid_rows_, grid_cell_size_);
-    }
-    if (prey_count > 0) {
-      kernel_count_population_cells<<<prey_blocks, kThreadsPerBlock, 0, stream>>>(
-          prey_buffer_.device_positions_x(), prey_buffer_.device_positions_y(), prey_buffer_.device_alive(),
-          d_prey_cell_counts_, static_cast<int>(prey_count), grid_cols_, grid_rows_, grid_cell_size_);
-    }
-    if (food_count > 0) {
-      kernel_count_food_cells<<<food_blocks, kThreadsPerBlock, 0, stream>>>(
-          food_buffer_.device_positions_x(), food_buffer_.device_positions_y(), food_buffer_.device_active(),
-          d_food_cell_counts_, static_cast<int>(food_count), grid_cols_, grid_rows_, grid_cell_size_);
+    {
+      MOONAI_PROFILE_SCOPE("grid_count", stream);
+      if (predator_count > 0) {
+        kernel_count_population_cells_from_positions<<<predator_blocks, kThreadsPerBlock, 0, stream>>>(
+            predator_buffer_.device_positions_x(), predator_buffer_.device_positions_y(), predator_buffer_.device_alive(),
+            d_predator_cell_counts_, static_cast<int>(predator_count), grid_cols_, grid_rows_, grid_cell_size_);
+      }
+      if (prey_count > 0) {
+        kernel_count_population_cells_from_positions<<<prey_blocks, kThreadsPerBlock, 0, stream>>>(
+            prey_buffer_.device_positions_x(), prey_buffer_.device_positions_y(), prey_buffer_.device_alive(),
+            d_prey_cell_counts_, static_cast<int>(prey_count), grid_cols_, grid_rows_, grid_cell_size_);
+      }
+      if (food_count > 0) {
+        kernel_count_food_cells_from_positions<<<food_blocks, kThreadsPerBlock, 0, stream>>>(
+            food_buffer_.device_positions_x(), food_buffer_.device_positions_y(), food_buffer_.device_active(),
+            d_food_cell_counts_, static_cast<int>(food_count), grid_cols_, grid_rows_, grid_cell_size_);
+      }
     }
 
-    thrust::exclusive_scan(thrust::cuda::par.on(stream), d_predator_cell_counts_,
-                           d_predator_cell_counts_ + cell_count + 1, d_predator_cell_offsets_);
-    thrust::exclusive_scan(thrust::cuda::par.on(stream), d_prey_cell_counts_, d_prey_cell_counts_ + cell_count + 1,
-                           d_prey_cell_offsets_);
-    thrust::exclusive_scan(thrust::cuda::par.on(stream), d_food_cell_counts_, d_food_cell_counts_ + cell_count + 1,
-                           d_food_cell_offsets_);
+    {
+      MOONAI_PROFILE_SCOPE("grid_scan", stream);
+      thrust::exclusive_scan(thrust::cuda::par.on(stream), d_predator_cell_counts_,
+                             d_predator_cell_counts_ + cell_count + 1, d_predator_cell_offsets_);
+      thrust::exclusive_scan(thrust::cuda::par.on(stream), d_prey_cell_counts_, d_prey_cell_counts_ + cell_count + 1,
+                             d_prey_cell_offsets_);
+      thrust::exclusive_scan(thrust::cuda::par.on(stream), d_food_cell_counts_, d_food_cell_counts_ + cell_count + 1,
+                             d_food_cell_offsets_);
 
-    CUDA_CHECK(cudaMemcpyAsync(d_predator_cell_write_offsets_, d_predator_cell_offsets_, cell_count * sizeof(int),
-                               cudaMemcpyDeviceToDevice, stream));
-    CUDA_CHECK(cudaMemcpyAsync(d_prey_cell_write_offsets_, d_prey_cell_offsets_, cell_count * sizeof(int),
-                               cudaMemcpyDeviceToDevice, stream));
-    CUDA_CHECK(cudaMemcpyAsync(d_food_cell_write_offsets_, d_food_cell_offsets_, cell_count * sizeof(int),
-                               cudaMemcpyDeviceToDevice, stream));
+      CUDA_CHECK(cudaMemcpyAsync(d_predator_cell_write_offsets_, d_predator_cell_offsets_, cell_count * sizeof(int),
+                                 cudaMemcpyDeviceToDevice, stream));
+      CUDA_CHECK(cudaMemcpyAsync(d_prey_cell_write_offsets_, d_prey_cell_offsets_, cell_count * sizeof(int),
+                                 cudaMemcpyDeviceToDevice, stream));
+      CUDA_CHECK(cudaMemcpyAsync(d_food_cell_write_offsets_, d_food_cell_offsets_, cell_count * sizeof(int),
+                                 cudaMemcpyDeviceToDevice, stream));
+    }
 
-    if (predator_count > 0) {
-      kernel_scatter_population_cells<<<predator_blocks, kThreadsPerBlock, 0, stream>>>(
-          predator_buffer_.device_positions_x(), predator_buffer_.device_positions_y(), predator_buffer_.device_alive(),
-          d_predator_cell_write_offsets_, d_predator_grid_entries_, static_cast<int>(predator_count), grid_cols_,
-          grid_rows_, grid_cell_size_);
-    }
-    if (prey_count > 0) {
-      kernel_scatter_population_cells<<<prey_blocks, kThreadsPerBlock, 0, stream>>>(
-          prey_buffer_.device_positions_x(), prey_buffer_.device_positions_y(), prey_buffer_.device_alive(),
-          d_prey_cell_write_offsets_, d_prey_grid_entries_, static_cast<int>(prey_count), grid_cols_, grid_rows_,
-          grid_cell_size_);
-    }
-    if (food_count > 0) {
-      kernel_scatter_food_cells<<<food_blocks, kThreadsPerBlock, 0, stream>>>(
-          food_buffer_.device_positions_x(), food_buffer_.device_positions_y(), food_buffer_.device_active(),
-          d_food_cell_write_offsets_, d_food_grid_entries_, static_cast<int>(food_count), grid_cols_, grid_rows_,
-          grid_cell_size_);
+    {
+      MOONAI_PROFILE_SCOPE("grid_scatter", stream);
+      if (predator_count > 0) {
+        kernel_scatter_population_cells_from_positions<<<predator_blocks, kThreadsPerBlock, 0, stream>>>(
+            predator_buffer_.device_positions_x(), predator_buffer_.device_positions_y(), predator_buffer_.device_alive(),
+            d_predator_cell_write_offsets_, d_predator_grid_entries_, static_cast<int>(predator_count), grid_cols_,
+            grid_rows_, grid_cell_size_);
+      }
+      if (prey_count > 0) {
+        kernel_scatter_population_cells_from_positions<<<prey_blocks, kThreadsPerBlock, 0, stream>>>(
+            prey_buffer_.device_positions_x(), prey_buffer_.device_positions_y(), prey_buffer_.device_alive(),
+            d_prey_cell_write_offsets_, d_prey_grid_entries_, static_cast<int>(prey_count), grid_cols_, grid_rows_,
+            grid_cell_size_);
+      }
+      if (food_count > 0) {
+        kernel_scatter_food_cells_from_positions<<<food_blocks, kThreadsPerBlock, 0, stream>>>(
+            food_buffer_.device_positions_x(), food_buffer_.device_positions_y(), food_buffer_.device_active(),
+            d_food_cell_write_offsets_, d_food_grid_entries_, static_cast<int>(food_count), grid_cols_, grid_rows_,
+            grid_cell_size_);
+      }
     }
   }
 
