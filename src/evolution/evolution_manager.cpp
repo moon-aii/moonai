@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cmath>
 #include <spdlog/spdlog.h>
+#include <stdexcept>
 
 namespace moonai {
 
@@ -212,7 +213,7 @@ void EvolutionManager::seed_initial_population(AppState &state) {
 
 uint32_t EvolutionManager::create_offspring(AppState &state, AgentRegistry &registry, uint32_t parent_a,
                                             uint32_t parent_b, Vec2 spawn_position) {
-  MOONAI_PROFILE_SCOPE("evolution_offspring_predator");
+  MOONAI_PROFILE_SCOPE((&registry == &state.predator) ? "evolution_offspring_predator" : "evolution_offspring_prey");
   if (!registry.valid(parent_a) || !registry.valid(parent_b) || parent_a >= registry.genomes.size() ||
       parent_b >= registry.genomes.size()) {
     return INVALID_ENTITY;
@@ -307,11 +308,16 @@ void EvolutionManager::refresh_species(AppState &state) {
 }
 
 void EvolutionManager::initialize_inference(AppState &state) {
-  state.predator.inference_cache.build_from(state.predator.network_cache, state.predator.size(), state.batch.stream());
-  state.prey.inference_cache.build_from(state.prey.network_cache, state.prey.size(), state.batch.stream());
+  if (!state.predator.inference_cache.build_from(state.predator.network_cache, state.predator.size(),
+                                                 state.batch.stream()) ||
+      !state.prey.inference_cache.build_from(state.prey.network_cache, state.prey.size(), state.batch.stream())) {
+    throw std::runtime_error("Failed to initialize inference cache");
+  }
 }
 
 void EvolutionManager::reproduce_population(AppState &state, AgentRegistry &registry) {
+  MOONAI_PROFILE_SCOPE("reproduce_population");
+
   std::vector<uint8_t> used(registry.size(), 0);
 
   DenseReproductionGrid grid(static_cast<float>(config_.grid_size), static_cast<float>(config_.grid_size),

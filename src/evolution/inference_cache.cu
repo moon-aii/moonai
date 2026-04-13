@@ -17,18 +17,22 @@ namespace {
 constexpr int kBlockSize = 256;
 constexpr int kOutputSlots = OUTPUT_COUNT;
 constexpr int kSensorInputs = SENSOR_COUNT;
+constexpr float kRepackSlackRatio = 1.5f;
 
 __device__ __forceinline__ float activate(float x) {
   return __tanhf(x);
 }
 
-#define CUDA_CHECK(call)                                                                                               \
-  do {                                                                                                                 \
-    cudaError_t err = call;                                                                                            \
-    if (err != cudaSuccess) {                                                                                          \
-      spdlog::error("CUDA error in {} at {}: {}", #call, __FILE__, __LINE__, cudaGetErrorString(err));                 \
-    }                                                                                                                  \
-  } while (0)
+bool check_cuda(cudaError_t err, const char *call, const char *file, int line) {
+  if (err == cudaSuccess) {
+    return true;
+  }
+
+  spdlog::error("CUDA error in {} at {}:{}: {}", call, file, line, cudaGetErrorString(err));
+  return false;
+}
+
+#define CUDA_CHECK(call) check_cuda((call), #call, __FILE__, __LINE__)
 
 } // namespace
 
@@ -89,6 +93,7 @@ void InferenceCache::clear() {
   slot_to_entry_.clear();
   free_entries_.clear();
   launch_descriptors_.clear();
+  entry_in_use_.clear();
   h_eval_order_.clear();
   h_conn_from_.clear();
   h_conn_weights_.clear();
@@ -100,27 +105,70 @@ void InferenceCache::clear() {
   dirty_ = true;
   launch_dirty_ = true;
   full_upload_required_ = false;
+  active_node_count_ = 0;
   node_extent_ = 0;
+  active_eval_count_ = 0;
   eval_extent_ = 0;
+  active_conn_count_ = 0;
   conn_extent_ = 0;
+  active_ptr_count_ = 0;
   ptr_extent_ = 0;
   output_extent_ = 0;
 
   free_device_memory();
 }
 
-void InferenceCache::allocate_device_memory(std::size_t node_capacity, std::size_t eval_capacity,
+bool InferenceCache::allocate_device_memory(std::size_t node_capacity, std::size_t eval_capacity,
                                             std::size_t conn_capacity, std::size_t ptr_capacity,
                                             std::size_t output_capacity, std::size_t entity_capacity) {
   free_device_memory();
 
-  CUDA_CHECK(cudaMalloc(&d_node_values_, node_capacity * sizeof(float)));
-  CUDA_CHECK(cudaMalloc(&d_eval_order_, eval_capacity * sizeof(int)));
-  CUDA_CHECK(cudaMalloc(&d_conn_from_, conn_capacity * sizeof(int)));
-  CUDA_CHECK(cudaMalloc(&d_conn_weights_, conn_capacity * sizeof(float)));
-  CUDA_CHECK(cudaMalloc(&d_conn_ptr_, ptr_capacity * sizeof(int)));
-  CUDA_CHECK(cudaMalloc(&d_out_indices_, output_capacity * sizeof(int)));
-  CUDA_CHECK(cudaMalloc(&d_descriptors_, entity_capacity * sizeof(NetworkDescriptor)));
+  float *node_values = nullptr;
+  int *eval_order = nullptr;
+  int *conn_from = nullptr;
+  float *conn_weights = nullptr;
+  int *conn_ptr = nullptr;
+  int *out_indices = nullptr;
+  NetworkDescriptor *descriptors = nullptr;
+
+  if (!CUDA_CHECK(cudaMalloc(&node_values, node_capacity * sizeof(float))) ||
+      !CUDA_CHECK(cudaMalloc(&eval_order, eval_capacity * sizeof(int))) ||
+      !CUDA_CHECK(cudaMalloc(&conn_from, conn_capacity * sizeof(int))) ||
+      !CUDA_CHECK(cudaMalloc(&conn_weights, conn_capacity * sizeof(float))) ||
+      !CUDA_CHECK(cudaMalloc(&conn_ptr, ptr_capacity * sizeof(int))) ||
+      !CUDA_CHECK(cudaMalloc(&out_indices, output_capacity * sizeof(int))) ||
+      !CUDA_CHECK(cudaMalloc(&descriptors, entity_capacity * sizeof(NetworkDescriptor)))) {
+    if (node_values) {
+      cudaFree(node_values);
+    }
+    if (eval_order) {
+      cudaFree(eval_order);
+    }
+    if (conn_from) {
+      cudaFree(conn_from);
+    }
+    if (conn_weights) {
+      cudaFree(conn_weights);
+    }
+    if (conn_ptr) {
+      cudaFree(conn_ptr);
+    }
+    if (out_indices) {
+      cudaFree(out_indices);
+    }
+    if (descriptors) {
+      cudaFree(descriptors);
+    }
+    return false;
+  }
+
+  d_node_values_ = node_values;
+  d_eval_order_ = eval_order;
+  d_conn_from_ = conn_from;
+  d_conn_weights_ = conn_weights;
+  d_conn_ptr_ = conn_ptr;
+  d_out_indices_ = out_indices;
+  d_descriptors_ = descriptors;
 
   entity_capacity_ = entity_capacity;
   node_capacity_ = node_capacity;
@@ -128,6 +176,7 @@ void InferenceCache::allocate_device_memory(std::size_t node_capacity, std::size
   conn_capacity_ = conn_capacity;
   ptr_capacity_ = ptr_capacity;
   output_capacity_ = output_capacity;
+  return true;
 }
 
 bool InferenceCache::needs_reallocation(std::size_t node_capacity, std::size_t eval_capacity, std::size_t conn_capacity,
@@ -139,37 +188,41 @@ bool InferenceCache::needs_reallocation(std::size_t node_capacity, std::size_t e
 
 void InferenceCache::free_device_memory() {
   if (d_node_values_) {
-    cudaFree(d_node_values_);
+    CUDA_CHECK(cudaFree(d_node_values_));
     d_node_values_ = nullptr;
   }
   if (d_eval_order_) {
-    cudaFree(d_eval_order_);
+    CUDA_CHECK(cudaFree(d_eval_order_));
     d_eval_order_ = nullptr;
   }
   if (d_conn_from_) {
-    cudaFree(d_conn_from_);
+    CUDA_CHECK(cudaFree(d_conn_from_));
     d_conn_from_ = nullptr;
   }
   if (d_conn_weights_) {
-    cudaFree(d_conn_weights_);
+    CUDA_CHECK(cudaFree(d_conn_weights_));
     d_conn_weights_ = nullptr;
   }
   if (d_conn_ptr_) {
-    cudaFree(d_conn_ptr_);
+    CUDA_CHECK(cudaFree(d_conn_ptr_));
     d_conn_ptr_ = nullptr;
   }
   if (d_out_indices_) {
-    cudaFree(d_out_indices_);
+    CUDA_CHECK(cudaFree(d_out_indices_));
     d_out_indices_ = nullptr;
   }
   if (d_descriptors_) {
-    cudaFree(d_descriptors_);
+    CUDA_CHECK(cudaFree(d_descriptors_));
     d_descriptors_ = nullptr;
   }
   entity_capacity_ = 0;
+  active_node_count_ = 0;
   node_capacity_ = 0;
+  active_eval_count_ = 0;
   eval_capacity_ = 0;
+  active_conn_count_ = 0;
   conn_capacity_ = 0;
+  active_ptr_count_ = 0;
   ptr_capacity_ = 0;
   output_capacity_ = 0;
 }
@@ -195,6 +248,8 @@ void InferenceCache::assign_entry_data(Entry &entry, const CompiledNetwork &comp
   entry.descriptor.num_eval = compiled.num_eval();
   entry.descriptor.num_inputs = compiled.num_inputs;
   entry.descriptor.num_outputs = compiled.num_outputs;
+  entry.conn_used = compiled.num_connections();
+  entry.ptr_used = static_cast<int>(compiled.conn_ptr.size());
   entry.descriptor.padding0 = 0;
   entry.descriptor.padding = 0;
 
@@ -219,7 +274,12 @@ uint32_t InferenceCache::acquire_entry(const CompiledNetwork &compiled) {
     const uint32_t entry_index = *free_it;
     free_entries_.erase(free_it);
     assign_entry_data(entries_[entry_index], compiled);
+    entry_in_use_[entry_index] = 1;
     mark_entry_for_upload(entry_index);
+    active_node_count_ += static_cast<std::size_t>(entries_[entry_index].descriptor.num_nodes);
+    active_eval_count_ += static_cast<std::size_t>(entries_[entry_index].descriptor.num_eval);
+    active_conn_count_ += static_cast<std::size_t>(entries_[entry_index].conn_used);
+    active_ptr_count_ += static_cast<std::size_t>(entries_[entry_index].ptr_used);
     return entry_index;
   }
 
@@ -250,8 +310,13 @@ uint32_t InferenceCache::acquire_entry(const CompiledNetwork &compiled) {
 
   const uint32_t entry_index = static_cast<uint32_t>(entries_.size());
   entries_.push_back(entry);
+  entry_in_use_.push_back(1);
   entry_upload_pending_.push_back(0);
-  full_upload_required_ = true;
+  mark_entry_for_upload(entry_index);
+  active_node_count_ += static_cast<std::size_t>(entry.descriptor.num_nodes);
+  active_eval_count_ += static_cast<std::size_t>(entry.descriptor.num_eval);
+  active_conn_count_ += static_cast<std::size_t>(entry.conn_used);
+  active_ptr_count_ += static_cast<std::size_t>(entry.ptr_used);
   return entry_index;
 }
 
@@ -273,32 +338,42 @@ void InferenceCache::rebuild_launch_descriptors() {
   }
 }
 
-void InferenceCache::upload_full(cudaStream_t stream) {
+bool InferenceCache::upload_full(cudaStream_t stream) {
   MOONAI_PROFILE_SCOPE("inference_cache_upload", stream);
 
   if (!h_eval_order_.empty()) {
-    CUDA_CHECK(cudaMemcpyAsync(d_eval_order_, h_eval_order_.data(), h_eval_order_.size() * sizeof(int),
-                               cudaMemcpyHostToDevice, stream));
+    if (!CUDA_CHECK(cudaMemcpyAsync(d_eval_order_, h_eval_order_.data(), h_eval_order_.size() * sizeof(int),
+                                    cudaMemcpyHostToDevice, stream))) {
+      return false;
+    }
   }
   if (!h_conn_from_.empty()) {
-    CUDA_CHECK(cudaMemcpyAsync(d_conn_from_, h_conn_from_.data(), h_conn_from_.size() * sizeof(int),
-                               cudaMemcpyHostToDevice, stream));
-    CUDA_CHECK(cudaMemcpyAsync(d_conn_weights_, h_conn_weights_.data(), h_conn_weights_.size() * sizeof(float),
-                               cudaMemcpyHostToDevice, stream));
+    if (!CUDA_CHECK(cudaMemcpyAsync(d_conn_from_, h_conn_from_.data(), h_conn_from_.size() * sizeof(int),
+                                    cudaMemcpyHostToDevice, stream)) ||
+        !CUDA_CHECK(cudaMemcpyAsync(d_conn_weights_, h_conn_weights_.data(), h_conn_weights_.size() * sizeof(float),
+                                    cudaMemcpyHostToDevice, stream))) {
+      return false;
+    }
   }
   if (!h_conn_ptr_.empty()) {
-    CUDA_CHECK(cudaMemcpyAsync(d_conn_ptr_, h_conn_ptr_.data(), h_conn_ptr_.size() * sizeof(int),
-                               cudaMemcpyHostToDevice, stream));
+    if (!CUDA_CHECK(cudaMemcpyAsync(d_conn_ptr_, h_conn_ptr_.data(), h_conn_ptr_.size() * sizeof(int),
+                                    cudaMemcpyHostToDevice, stream))) {
+      return false;
+    }
   }
   if (!h_out_indices_.empty()) {
-    CUDA_CHECK(cudaMemcpyAsync(d_out_indices_, h_out_indices_.data(), h_out_indices_.size() * sizeof(int),
-                               cudaMemcpyHostToDevice, stream));
+    if (!CUDA_CHECK(cudaMemcpyAsync(d_out_indices_, h_out_indices_.data(), h_out_indices_.size() * sizeof(int),
+                                    cudaMemcpyHostToDevice, stream))) {
+      return false;
+    }
   }
+
+  return true;
 }
 
-void InferenceCache::upload_pending(cudaStream_t stream) {
+bool InferenceCache::upload_pending(cudaStream_t stream) {
   if (pending_entry_uploads_.empty()) {
-    return;
+    return true;
   }
 
   MOONAI_PROFILE_SCOPE("inference_cache_upload", stream);
@@ -307,41 +382,98 @@ void InferenceCache::upload_pending(cudaStream_t stream) {
     const Entry &entry = entries_[entry_index];
 
     if (entry.descriptor.num_eval > 0) {
-      CUDA_CHECK(cudaMemcpyAsync(d_eval_order_ + entry.descriptor.eval_off,
-                                 h_eval_order_.data() + entry.descriptor.eval_off,
-                                 static_cast<std::size_t>(entry.descriptor.num_eval) * sizeof(int),
-                                 cudaMemcpyHostToDevice, stream));
+      if (!CUDA_CHECK(cudaMemcpyAsync(d_eval_order_ + entry.descriptor.eval_off,
+                                      h_eval_order_.data() + entry.descriptor.eval_off,
+                                      static_cast<std::size_t>(entry.descriptor.num_eval) * sizeof(int),
+                                      cudaMemcpyHostToDevice, stream))) {
+        return false;
+      }
     }
 
-    if (entry.conn_capacity > 0) {
-      CUDA_CHECK(cudaMemcpyAsync(d_conn_from_ + entry.descriptor.conn_off, h_conn_from_.data() + entry.descriptor.conn_off,
-                                 static_cast<std::size_t>(entry.conn_capacity) * sizeof(int),
-                                 cudaMemcpyHostToDevice, stream));
-      CUDA_CHECK(cudaMemcpyAsync(d_conn_weights_ + entry.descriptor.conn_off,
-                                 h_conn_weights_.data() + entry.descriptor.conn_off,
-                                 static_cast<std::size_t>(entry.conn_capacity) * sizeof(float),
-                                 cudaMemcpyHostToDevice, stream));
+    if (entry.conn_used > 0) {
+      if (!CUDA_CHECK(cudaMemcpyAsync(d_conn_from_ + entry.descriptor.conn_off,
+                                      h_conn_from_.data() + entry.descriptor.conn_off,
+                                      static_cast<std::size_t>(entry.conn_used) * sizeof(int),
+                                      cudaMemcpyHostToDevice, stream)) ||
+          !CUDA_CHECK(cudaMemcpyAsync(d_conn_weights_ + entry.descriptor.conn_off,
+                                      h_conn_weights_.data() + entry.descriptor.conn_off,
+                                      static_cast<std::size_t>(entry.conn_used) * sizeof(float),
+                                      cudaMemcpyHostToDevice, stream))) {
+        return false;
+      }
     }
 
-    if (entry.ptr_capacity > 0) {
-      CUDA_CHECK(cudaMemcpyAsync(d_conn_ptr_ + entry.descriptor.ptr_off, h_conn_ptr_.data() + entry.descriptor.ptr_off,
-                                 static_cast<std::size_t>(entry.ptr_capacity) * sizeof(int), cudaMemcpyHostToDevice,
-                                 stream));
+    if (entry.ptr_used > 0) {
+      if (!CUDA_CHECK(cudaMemcpyAsync(d_conn_ptr_ + entry.descriptor.ptr_off,
+                                      h_conn_ptr_.data() + entry.descriptor.ptr_off,
+                                      static_cast<std::size_t>(entry.ptr_used) * sizeof(int), cudaMemcpyHostToDevice,
+                                      stream))) {
+        return false;
+      }
     }
 
-    CUDA_CHECK(cudaMemcpyAsync(d_out_indices_ + entry.descriptor.out_off, h_out_indices_.data() + entry.descriptor.out_off,
-                               kOutputSlots * sizeof(int), cudaMemcpyHostToDevice, stream));
+    if (!CUDA_CHECK(cudaMemcpyAsync(d_out_indices_ + entry.descriptor.out_off,
+                                    h_out_indices_.data() + entry.descriptor.out_off,
+                                    kOutputSlots * sizeof(int), cudaMemcpyHostToDevice, stream))) {
+      return false;
+    }
 
     entry_upload_pending_[entry_index] = 0;
   }
 
   pending_entry_uploads_.clear();
+  return true;
 }
 
-void InferenceCache::build_from(const NetworkCache &network_cache, std::size_t count, cudaStream_t stream) {
+void InferenceCache::trim_free_tail() {
+  while (!entries_.empty() && !entry_in_use_.back()) {
+    const uint32_t entry_index = static_cast<uint32_t>(entries_.size() - 1);
+    const Entry &entry = entries_.back();
+
+    free_entries_.erase(std::remove(free_entries_.begin(), free_entries_.end(), entry_index), free_entries_.end());
+    pending_entry_uploads_.erase(std::remove(pending_entry_uploads_.begin(), pending_entry_uploads_.end(), entry_index),
+                                 pending_entry_uploads_.end());
+    if (!entry_upload_pending_.empty()) {
+      entry_upload_pending_.pop_back();
+    }
+
+    node_extent_ -= static_cast<std::size_t>(entry.node_capacity);
+    eval_extent_ -= static_cast<std::size_t>(entry.eval_capacity);
+    conn_extent_ -= static_cast<std::size_t>(entry.conn_capacity);
+    ptr_extent_ -= static_cast<std::size_t>(entry.ptr_capacity);
+    output_extent_ -= kOutputSlots;
+
+    entries_.pop_back();
+    entry_in_use_.pop_back();
+  }
+
+  h_eval_order_.resize(eval_extent_);
+  h_conn_from_.resize(conn_extent_);
+  h_conn_weights_.resize(conn_extent_);
+  h_conn_ptr_.resize(ptr_extent_);
+  h_out_indices_.resize(output_extent_);
+}
+
+bool InferenceCache::should_repack() const {
+  if (free_entries_.empty()) {
+    return false;
+  }
+
+  const bool sparse_nodes = active_node_count_ > 0 &&
+                            static_cast<float>(node_extent_) > static_cast<float>(active_node_count_) * kRepackSlackRatio;
+  const bool sparse_conns = active_conn_count_ > 0 &&
+                            static_cast<float>(conn_extent_) > static_cast<float>(active_conn_count_) * kRepackSlackRatio;
+  const bool sparse_ptrs = active_ptr_count_ > 0 &&
+                           static_cast<float>(ptr_extent_) > static_cast<float>(active_ptr_count_) * kRepackSlackRatio;
+  const bool many_free_entries = free_entries_.size() * 3 >= entries_.size();
+  return sparse_nodes || sparse_conns || sparse_ptrs || many_free_entries;
+}
+
+bool InferenceCache::build_from(const NetworkCache &network_cache, std::size_t count, cudaStream_t stream) {
   MOONAI_PROFILE_SCOPE("inference_cache_build");
 
   entries_.clear();
+  entry_in_use_.clear();
   slot_to_entry_.clear();
   free_entries_.clear();
   launch_descriptors_.clear();
@@ -353,13 +485,18 @@ void InferenceCache::build_from(const NetworkCache &network_cache, std::size_t c
   pending_entry_uploads_.clear();
   entry_upload_pending_.clear();
 
+  active_node_count_ = 0;
   node_extent_ = 0;
+  active_eval_count_ = 0;
   eval_extent_ = 0;
+  active_conn_count_ = 0;
   conn_extent_ = 0;
+  active_ptr_count_ = 0;
   ptr_extent_ = 0;
   output_extent_ = 0;
 
   entries_.reserve(count);
+  entry_in_use_.reserve(count);
   slot_to_entry_.reserve(count);
   entry_upload_pending_.reserve(count);
 
@@ -368,7 +505,7 @@ void InferenceCache::build_from(const NetworkCache &network_cache, std::size_t c
     if (!compiled) {
       spdlog::error("Missing compiled network for slot {}", slot);
       clear();
-      return;
+      return false;
     }
 
     const uint32_t entry_index = acquire_entry(*compiled);
@@ -378,16 +515,26 @@ void InferenceCache::build_from(const NetworkCache &network_cache, std::size_t c
   rebuild_launch_descriptors();
 
   if (needs_reallocation(node_extent_, eval_extent_, conn_extent_, ptr_extent_, output_extent_, slot_to_entry_.size())) {
-    allocate_device_memory(grow_capacity(node_capacity_, node_extent_), grow_capacity(eval_capacity_, eval_extent_),
-                           grow_capacity(conn_capacity_, conn_extent_), grow_capacity(ptr_capacity_, ptr_extent_),
-                           grow_capacity(output_capacity_, output_extent_),
-                           grow_capacity(entity_capacity_, slot_to_entry_.size()));
+    if (!allocate_device_memory(grow_capacity(node_capacity_, node_extent_), grow_capacity(eval_capacity_, eval_extent_),
+                                grow_capacity(conn_capacity_, conn_extent_), grow_capacity(ptr_capacity_, ptr_extent_),
+                                grow_capacity(output_capacity_, output_extent_),
+                                grow_capacity(entity_capacity_, slot_to_entry_.size()))) {
+      clear();
+      return false;
+    }
   }
 
-  upload_full(stream);
+  if (!upload_full(stream)) {
+    clear();
+    return false;
+  }
   if (!launch_descriptors_.empty()) {
-    CUDA_CHECK(cudaMemcpyAsync(d_descriptors_, launch_descriptors_.data(),
-                               launch_descriptors_.size() * sizeof(NetworkDescriptor), cudaMemcpyHostToDevice, stream));
+    if (!CUDA_CHECK(cudaMemcpyAsync(d_descriptors_, launch_descriptors_.data(),
+                                    launch_descriptors_.size() * sizeof(NetworkDescriptor), cudaMemcpyHostToDevice,
+                                    stream))) {
+      clear();
+      return false;
+    }
   }
 
   pending_entry_uploads_.clear();
@@ -395,6 +542,7 @@ void InferenceCache::build_from(const NetworkCache &network_cache, std::size_t c
   dirty_ = false;
   launch_dirty_ = false;
   full_upload_required_ = false;
+  return true;
 }
 
 void InferenceCache::add_entity(uint32_t slot, const CompiledNetwork &compiled) {
@@ -422,11 +570,19 @@ void InferenceCache::swap_remove_entity(uint32_t removed_slot, uint32_t last_slo
     return;
   }
 
-  free_entries_.push_back(slot_to_entry_[removed_slot]);
+  const uint32_t removed_entry = slot_to_entry_[removed_slot];
+  const Entry &entry = entries_[removed_entry];
+  active_node_count_ -= static_cast<std::size_t>(entry.descriptor.num_nodes);
+  active_eval_count_ -= static_cast<std::size_t>(entry.descriptor.num_eval);
+  active_conn_count_ -= static_cast<std::size_t>(entry.conn_used);
+  active_ptr_count_ -= static_cast<std::size_t>(entry.ptr_used);
+  entry_in_use_[removed_entry] = 0;
+  free_entries_.push_back(removed_entry);
   if (removed_slot != last_slot) {
     slot_to_entry_[removed_slot] = slot_to_entry_[last_slot];
   }
   slot_to_entry_.pop_back();
+  trim_free_tail();
   launch_dirty_ = true;
 }
 
@@ -436,31 +592,45 @@ bool InferenceCache::prepare_for_launch(const NetworkCache &network_cache, std::
   }
 
   if (dirty_ || slot_to_entry_.size() != count) {
-    build_from(network_cache, count, stream);
-    return !dirty_;
+    return build_from(network_cache, count, stream);
+  }
+
+  if (should_repack()) {
+    return build_from(network_cache, count, stream);
   }
 
   if (needs_reallocation(node_extent_, eval_extent_, conn_extent_, ptr_extent_, output_extent_, count)) {
-    allocate_device_memory(grow_capacity(node_capacity_, node_extent_), grow_capacity(eval_capacity_, eval_extent_),
-                           grow_capacity(conn_capacity_, conn_extent_), grow_capacity(ptr_capacity_, ptr_extent_),
-                           grow_capacity(output_capacity_, output_extent_), grow_capacity(entity_capacity_, count));
+    if (!allocate_device_memory(grow_capacity(node_capacity_, node_extent_), grow_capacity(eval_capacity_, eval_extent_),
+                                grow_capacity(conn_capacity_, conn_extent_), grow_capacity(ptr_capacity_, ptr_extent_),
+                                grow_capacity(output_capacity_, output_extent_),
+                                grow_capacity(entity_capacity_, count))) {
+      clear();
+      return false;
+    }
     full_upload_required_ = true;
   }
 
   if (full_upload_required_) {
-    upload_full(stream);
+    if (!upload_full(stream)) {
+      clear();
+      return false;
+    }
     std::fill(entry_upload_pending_.begin(), entry_upload_pending_.end(), 0);
     pending_entry_uploads_.clear();
-  } else {
-    upload_pending(stream);
+  } else if (!upload_pending(stream)) {
+    clear();
+    return false;
   }
 
   if (launch_dirty_ || full_upload_required_) {
     rebuild_launch_descriptors();
     if (!launch_descriptors_.empty()) {
-      CUDA_CHECK(cudaMemcpyAsync(d_descriptors_, launch_descriptors_.data(),
-                                 launch_descriptors_.size() * sizeof(NetworkDescriptor), cudaMemcpyHostToDevice,
-                                 stream));
+      if (!CUDA_CHECK(cudaMemcpyAsync(d_descriptors_, launch_descriptors_.data(),
+                                      launch_descriptors_.size() * sizeof(NetworkDescriptor), cudaMemcpyHostToDevice,
+                                      stream))) {
+        clear();
+        return false;
+      }
     }
   }
 
@@ -481,7 +651,9 @@ bool InferenceCache::launch_inference_async(const float *sensor_inputs, float *b
   }
 
   if (node_extent_ > 0) {
-    CUDA_CHECK(cudaMemsetAsync(d_node_values_, 0, node_extent_ * sizeof(float), stream));
+    if (!CUDA_CHECK(cudaMemsetAsync(d_node_values_, 0, node_extent_ * sizeof(float), stream))) {
+      return false;
+    }
   }
 
   const int num_blocks = (static_cast<int>(count) + kBlockSize - 1) / kBlockSize;

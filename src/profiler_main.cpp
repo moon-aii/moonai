@@ -89,17 +89,25 @@ private:
 
   std::vector<StreamEventPair> pending_stream_events_;
   int next_stream_event_index_;
+
+  void destroy_pending_stream_events();
 };
 
 Profiler::Profiler() : next_stream_event_index_(0) {}
 
-Profiler::~Profiler() {
+void Profiler::destroy_pending_stream_events() {
   for (auto &event : pending_stream_events_) {
     if (event.start)
       cudaEventDestroy(event.start);
     if (event.end)
       cudaEventDestroy(event.end);
   }
+  pending_stream_events_.clear();
+  next_stream_event_index_ = 0;
+}
+
+Profiler::~Profiler() {
+  destroy_pending_stream_events();
 }
 
 ScopedTimer::ScopedTimer(const char *event_name, cudaStream_t stream)
@@ -127,12 +135,11 @@ ScopedTimer::~ScopedTimer() {
 }
 
 void Profiler::start_run(const AppConfig &cfg) {
+  destroy_pending_stream_events();
   cfg_ = cfg;
   frame_trees_.clear();
   active_stack_.clear();
   pending_root_.reset();
-  pending_stream_events_.clear();
-  next_stream_event_index_ = 0;
 }
 
 void Profiler::begin_scope(const char *event_name) {
@@ -237,6 +244,9 @@ void Profiler::merge_stream_timings() {
 }
 
 std::vector<std::unique_ptr<ScopeNode>> Profiler::finish_run() {
+  destroy_pending_stream_events();
+  active_stack_.clear();
+  pending_root_.reset();
   return std::move(frame_trees_);
 }
 
@@ -264,7 +274,7 @@ void print_profiler_usage(const char *program_name) {
               "Usage: %s [OPTIONS]\n"
               "\n"
               "Options:\n"
-              "      --frames <n>          Number of frames per run (default: 300)\n"
+              "      --frames <n>          Number of frames per run (default: 30)\n"
               "      --output-dir <path>   Output directory for profiler JSON\n"
               "      --name <name>         Suite name in output file\n"
               "  -h, --help                Show this help message\n",
@@ -331,6 +341,7 @@ struct RunData {
   std::vector<std::unique_ptr<moonai::profiler::ScopeNode>> frames;
   double avg_frame_ms = 0.0;
   double run_total_ms = 0.0;
+  std::string status = "completed";
   std::string disposition;
 };
 
@@ -349,25 +360,24 @@ RunData run_profiler(const moonai::AppConfig &cfg) {
   auto &profiler = profiler::Profiler::instance();
   profiler.start_run(cfg);
 
+  RunData result;
+  result.seed = cfg.sim_config.seed;
+
   const auto run_start = std::chrono::steady_clock::now();
 
   App app(cfg);
   bool completed = app.run();
+  result.frames = profiler.finish_run();
 
   if (!completed) {
     spdlog::info("Run stopped early, skipping profile generation");
-    RunData skipped;
-    skipped.seed = static_cast<std::uint64_t>(cfg.sim_config.seed);
-    return skipped;
+    result.status = "incomplete";
+    return result;
   }
-
-  RunData result;
-  result.seed = cfg.sim_config.seed;
 
   const auto run_ns =
       std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - run_start).count();
   result.run_total_ms = ns_to_ms(run_ns);
-  result.frames = profiler.finish_run();
 
   // Calculate average frame time
   if (!result.frames.empty()) {
@@ -503,53 +513,70 @@ void write_manifest(std::vector<RunData> runs, const std::filesystem::path &outp
   metadata["generated_at_utc"] = utc_timestamp();
   manifest["metadata"] = metadata;
 
-  // Filter runs that have frames (completed successfully) and sort by
-  // avg_frame_ms
-  std::vector<RunData> completed;
+  std::vector<RunData *> completed;
   for (auto &run : runs) {
-    if (!run.frames.empty()) {
-      completed.push_back(std::move(run));
+    if (run.status == "completed" && !run.frames.empty()) {
+      completed.push_back(&run);
+    } else {
+      run.disposition = run.status;
     }
-  }
-
-  if (completed.empty()) {
-    spdlog::error("No completed runs to write");
-    return;
   }
 
   std::sort(completed.begin(), completed.end(),
-            [](const RunData &a, const RunData &b) { return a.avg_frame_ms < b.avg_frame_ms; });
+            [](const RunData *a, const RunData *b) { return a->avg_frame_ms < b->avg_frame_ms; });
 
   // Mark dispositions
   if (completed.size() > 2) {
-    completed[0].disposition = "dropped_fastest";
-    completed.back().disposition = "dropped_slowest";
+    completed[0]->disposition = "dropped_fastest";
+    completed.back()->disposition = "dropped_slowest";
     for (size_t i = 1; i < completed.size() - 1; ++i) {
-      completed[i].disposition = "kept";
+      completed[i]->disposition = "kept";
     }
   } else {
-    for (auto &run : completed) {
-      run.disposition = "kept";
+    for (auto *run : completed) {
+      run->disposition = "kept";
     }
   }
 
-  // Build runs list with dispositions (do this before moving kept runs)
   nlohmann::json run_array = nlohmann::json::array();
-  for (const auto &run : completed) {
+  for (const auto &run : runs) {
     nlohmann::json run_obj;
     run_obj["seed"] = run.seed;
     run_obj["avg_frame_ms"] = run.avg_frame_ms;
+    run_obj["status"] = run.status;
     run_obj["disposition"] = run.disposition;
     run_array.push_back(run_obj);
   }
   manifest["runs"] = run_array;
 
-  // Collect kept runs (move frames from completed to kept)
   std::vector<RunData> kept;
-  for (auto &run : completed) {
+  for (auto &run : runs) {
     if (run.disposition == "kept") {
       kept.push_back(std::move(run));
     }
+  }
+
+  if (kept.empty()) {
+    manifest["summary"] = {
+        {"avg_frame_ms", 0.0},
+        {"stddev_ms", 0.0},
+        {"min_frame_ms", 0.0},
+        {"max_frame_ms", 0.0},
+    };
+    manifest["frame_timeline_ms"] = nlohmann::json::array();
+
+    std::filesystem::create_directories(output_path.parent_path());
+    std::ofstream file(output_path);
+    if (!file.is_open()) {
+      spdlog::error("Failed to open profiler output '{}'", output_path.string());
+      return;
+    }
+    file << manifest.dump(2) << '\n';
+    if (!file)
+      spdlog::error("Failed to write profiler output '{}'", output_path.string());
+    else
+      spdlog::info("Profiler output written to: {}", output_path.string());
+    return;
   }
 
   // Summary statistics from kept runs
