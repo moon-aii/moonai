@@ -40,7 +40,8 @@ public:
   InferenceCache(InferenceCache &&) = delete;
   InferenceCache &operator=(InferenceCache &&) = delete;
 
-  void build_from(const NetworkCache &network_cache, const std::vector<std::pair<uint32_t, int>> &entities_with_slots);
+  void build_from(const NetworkCache &network_cache, const std::vector<std::pair<uint32_t, int>> &entities_with_slots,
+                  cudaStream_t stream);
 
   bool launch_inference_async(const float *sensor_inputs, float *brain_outputs, std::size_t count, cudaStream_t stream);
 
@@ -71,7 +72,6 @@ private:
   int *d_out_indices_ = nullptr;
   NetworkDescriptor *d_descriptors_ = nullptr;
 
-  std::vector<float> h_node_values_;
   std::vector<int> h_eval_order_;
   std::vector<int> h_conn_from_;
   std::vector<float> h_conn_weights_;
@@ -86,6 +86,7 @@ private:
 
   bool dirty_ = true;
   std::size_t entity_capacity_ = 0;
+  std::size_t active_node_count_ = 0;
   std::size_t node_capacity_ = 0;
   std::size_t eval_capacity_ = 0;
   std::size_t conn_capacity_ = 0;

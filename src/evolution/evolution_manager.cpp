@@ -392,10 +392,14 @@ bool launch_population_inference(AgentRegistry &registry, evolution::InferenceCa
   std::vector<std::pair<uint32_t, int>> entities_with_slots;
   entities_with_slots.reserve(count);
 
-  const uint32_t entity_count = static_cast<uint32_t>(count);
-  for (uint32_t entity = 0; entity < entity_count; ++entity) {
-    if (registry.network_cache.has(entity)) {
-      entities_with_slots.emplace_back(entity, static_cast<int>(entity));
+  {
+    MOONAI_PROFILE_SCOPE("inference_collect_entities");
+
+    const uint32_t entity_count = static_cast<uint32_t>(count);
+    for (uint32_t entity = 0; entity < entity_count; ++entity) {
+      if (registry.network_cache.has(entity)) {
+        entities_with_slots.emplace_back(entity, static_cast<int>(entity));
+      }
     }
   }
 
@@ -403,12 +407,15 @@ bool launch_population_inference(AgentRegistry &registry, evolution::InferenceCa
     return true;
   }
 
-  if (cache.is_dirty() || cache.entity_mapping().size() != entities_with_slots.size() ||
-      !std::equal(cache.entity_mapping().begin(), cache.entity_mapping().end(), entities_with_slots.begin(),
-                  [](uint32_t entity, const std::pair<uint32_t, int> &entity_with_index) {
-                    return entity == entity_with_index.first;
-                  })) {
-    cache.build_from(registry.network_cache, entities_with_slots);
+  {
+    MOONAI_PROFILE_SCOPE("inference_cache_check");
+    if (cache.is_dirty() || cache.entity_mapping().size() != entities_with_slots.size() ||
+        !std::equal(cache.entity_mapping().begin(), cache.entity_mapping().end(), entities_with_slots.begin(),
+                    [](uint32_t entity, const std::pair<uint32_t, int> &entity_with_index) {
+                      return entity == entity_with_index.first;
+                    })) {
+      cache.build_from(registry.network_cache, entities_with_slots, stream);
+    }
   }
 
   return cache.launch_inference_async(buffer.device_sensor_inputs(), buffer.device_brain_outputs(),
@@ -417,18 +424,22 @@ bool launch_population_inference(AgentRegistry &registry, evolution::InferenceCa
 
 } // namespace
 bool EvolutionManager::launch_inference(AppState &state, simulation::Batch &batch) {
-  MOONAI_PROFILE_SCOPE("neural_inference", batch.stream());
-
-  if (!launch_population_inference(state.predator, state.predator.inference_cache, batch.predator_buffer(),
-                                   state.predator.size(), batch.stream())) {
-    batch.mark_error();
-    return false;
+  {
+    MOONAI_PROFILE_SCOPE("predator_inference");
+    if (!launch_population_inference(state.predator, state.predator.inference_cache, batch.predator_buffer(),
+                                     state.predator.size(), batch.stream())) {
+      batch.mark_error();
+      return false;
+    }
   }
 
-  if (!launch_population_inference(state.prey, state.prey.inference_cache, batch.prey_buffer(), state.prey.size(),
-                                   batch.stream())) {
-    batch.mark_error();
-    return false;
+  {
+    MOONAI_PROFILE_SCOPE("prey_inference");
+    if (!launch_population_inference(state.prey, state.prey.inference_cache, batch.prey_buffer(), state.prey.size(),
+                                     batch.stream())) {
+      batch.mark_error();
+      return false;
+    }
   }
 
   return true;

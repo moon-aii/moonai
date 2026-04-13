@@ -12,7 +12,7 @@ struct SimulationConfig {
 
   int predator_count = 600;
   int prey_count = 11400;
-  int food_count = 24000;
+  int food_count = 30000;
 
   float predator_speed = 0.6f;
   float prey_speed = 0.66f;

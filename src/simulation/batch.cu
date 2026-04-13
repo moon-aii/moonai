@@ -717,13 +717,6 @@ void Batch::launch_build_sensors_async(const StepParams &params, std::size_t pre
           grid_cols_, grid_rows_, grid_cell_size_, params.world_width, params.world_height, params.vision_range,
           params.max_energy, params.prey_speed);
     }
-    if (predator_count > 0) {
-      CUDA_CHECK(
-          cudaMemsetAsync(predator_buffer_.device_brain_outputs(), 0, predator_count * 2 * sizeof(float), stream));
-    }
-    if (prey_count > 0) {
-      CUDA_CHECK(cudaMemsetAsync(prey_buffer_.device_brain_outputs(), 0, prey_count * 2 * sizeof(float), stream));
-    }
   }
 
   check_launch_error();

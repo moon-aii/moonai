@@ -58,6 +58,7 @@ struct StreamEventPair {
   cudaEvent_t start;
   cudaEvent_t end;
   cudaStream_t stream;
+  ScopeNode *owner = nullptr;
 };
 
 class Profiler {
@@ -179,6 +180,7 @@ int Profiler::record_stream_event_start(const char *name, cudaStream_t stream) {
   StreamEventPair &pair = pending_stream_events_[index];
   pair.name = name;
   pair.stream = stream;
+  pair.owner = active_stack_.empty() ? nullptr : active_stack_.back();
 
   cudaEventCreate(&pair.start);
   cudaEventRecord(pair.start, stream);
@@ -212,8 +214,14 @@ void Profiler::merge_stream_timings() {
       auto stream_node = std::make_unique<ScopeNode>();
       stream_node->name = std::string(pair.name) + "_stream";
       stream_node->duration_ns = static_cast<std::int64_t>(elapsed_ms * NS_TO_MS);
-      stream_node->parent = active_stack_.back();
-      active_stack_.back()->children.push_back(std::move(stream_node));
+      ScopeNode *owner = pair.owner;
+      if (!owner && !active_stack_.empty()) {
+        owner = active_stack_.back();
+      }
+      if (owner) {
+        stream_node->parent = owner;
+        owner->children.push_back(std::move(stream_node));
+      }
     }
 
     cudaEventDestroy(pair.start);

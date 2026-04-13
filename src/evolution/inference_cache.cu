@@ -1,3 +1,4 @@
+#include "core/profiler_macros.hpp"
 #include "core/types.hpp"
 #include "evolution/inference_cache.hpp"
 #include "evolution/network_cache.hpp"
@@ -18,7 +19,7 @@ constexpr int kOutputSlots = OUTPUT_COUNT;
 constexpr int kSensorInputs = SENSOR_COUNT;
 
 __device__ __forceinline__ float activate(float x) {
-  return tanhf(x);
+  return __tanhf(x);
 }
 
 #define CUDA_CHECK(call)                                                                                               \
@@ -52,10 +53,6 @@ __global__ void kernel_neural_inference(const NetworkDescriptor *__restrict__ de
   const float *my_weights = conn_weights + desc.conn_off;
   const int *my_conn_ptr_local = conn_ptr + desc.ptr_off;
   const int *my_out = out_indices + desc.out_off;
-
-  for (int i = 0; i < desc.num_nodes; ++i) {
-    my_nodes[i] = 0.0f;
-  }
 
   const float *my_inputs = sensor_inputs + slot * kSensorInputs;
   for (int i = 0; i < desc.num_inputs; ++i) {
@@ -153,6 +150,7 @@ void InferenceCache::free_device_memory() {
     d_network_to_slot_ = nullptr;
   }
   entity_capacity_ = 0;
+  active_node_count_ = 0;
   node_capacity_ = 0;
   eval_capacity_ = 0;
   conn_capacity_ = 0;
@@ -161,15 +159,18 @@ void InferenceCache::free_device_memory() {
 }
 
 void InferenceCache::build_from(const NetworkCache &network_cache,
-                                const std::vector<std::pair<uint32_t, int>> &entities_with_slots) {
+                                const std::vector<std::pair<uint32_t, int>> &entities_with_slots,
+                                cudaStream_t stream) {
+  MOONAI_PROFILE_SCOPE("inference_cache_build");
+
   if (entities_with_slots.empty()) {
+    active_node_count_ = 0;
     dirty_ = false;
     return;
   }
 
   spdlog::debug("Building inference cache for {} entities", entities_with_slots.size());
 
-  h_node_values_.clear();
   h_eval_order_.clear();
   h_conn_from_.clear();
   h_conn_weights_.clear();
@@ -200,8 +201,8 @@ void InferenceCache::build_from(const NetworkCache &network_cache,
     h_network_to_slot_.push_back(slot);
 
     NetworkDescriptor descriptor;
-    descriptor.num_inputs = network->num_input_nodes();
-    descriptor.num_outputs = network->num_output_nodes();
+    descriptor.num_inputs = network->num_inputs();
+    descriptor.num_outputs = network->num_outputs();
     descriptor.num_nodes = network->num_nodes();
     descriptor.num_eval = descriptor.num_nodes - descriptor.num_inputs - 1;
     descriptor.node_off = current_node_off;
@@ -212,27 +213,17 @@ void InferenceCache::build_from(const NetworkCache &network_cache,
     descriptor.padding0 = 0;
     descriptor.padding = 0;
 
-    const auto &node_index_map = network->node_index_map();
-    std::vector<int> eval_order;
-    eval_order.reserve(network->eval_order().size());
-    for (uint32_t node_id : network->eval_order()) {
-      const auto it = node_index_map.find(node_id);
-      if (it == node_index_map.end()) {
-        spdlog::warn("Skipping missing node {} in inference eval order", node_id);
-        continue;
-      }
-      eval_order.push_back(it->second);
-    }
+    const auto &eval_order = network->eval_order_indices();
     descriptor.num_eval = static_cast<int>(eval_order.size());
+    const auto &incoming = network->incoming();
 
     int ptr = 0;
     for (int node_idx : eval_order) {
       h_conn_ptr_.push_back(ptr);
 
-      const auto incoming = network->get_incoming_connections(node_idx);
-      for (const auto &conn : incoming) {
-        h_conn_from_.push_back(conn.from_node);
-        h_conn_weights_.push_back(conn.weight);
+      for (const auto &[from_idx, weight] : incoming[static_cast<std::size_t>(node_idx)]) {
+        h_conn_from_.push_back(from_idx);
+        h_conn_weights_.push_back(weight);
         ++ptr;
       }
     }
@@ -242,8 +233,7 @@ void InferenceCache::build_from(const NetworkCache &network_cache,
       h_eval_order_.push_back(node_idx);
     }
 
-    const std::vector<int> output_indices = network->get_output_indices();
-    for (int idx : output_indices) {
+    for (int idx : network->output_indices()) {
       h_out_indices_.push_back(idx);
     }
     while (h_out_indices_.size() < static_cast<std::size_t>(current_out_off + kOutputSlots)) {
@@ -259,36 +249,41 @@ void InferenceCache::build_from(const NetworkCache &network_cache,
     h_descriptors_.push_back(descriptor);
   }
 
-  h_node_values_.resize(current_node_off, 0.0f);
+  active_node_count_ = static_cast<std::size_t>(current_node_off);
 
   if (needs_reallocation(current_node_off, current_eval_off, current_conn_off, h_descriptors_.size())) {
     allocate_device_memory(current_node_off, current_eval_off, current_conn_off, h_descriptors_.size());
   }
 
-  if (!h_descriptors_.empty()) {
-    CUDA_CHECK(cudaMemcpy(d_descriptors_, h_descriptors_.data(), h_descriptors_.size() * sizeof(NetworkDescriptor),
-                          cudaMemcpyHostToDevice));
-  }
-  if (!h_eval_order_.empty()) {
-    CUDA_CHECK(
-        cudaMemcpy(d_eval_order_, h_eval_order_.data(), h_eval_order_.size() * sizeof(int), cudaMemcpyHostToDevice));
-  }
-  if (!h_conn_from_.empty()) {
-    CUDA_CHECK(
-        cudaMemcpy(d_conn_from_, h_conn_from_.data(), h_conn_from_.size() * sizeof(int), cudaMemcpyHostToDevice));
-    CUDA_CHECK(cudaMemcpy(d_conn_weights_, h_conn_weights_.data(), h_conn_weights_.size() * sizeof(float),
-                          cudaMemcpyHostToDevice));
-  }
-  if (!h_conn_ptr_.empty()) {
-    CUDA_CHECK(cudaMemcpy(d_conn_ptr_, h_conn_ptr_.data(), h_conn_ptr_.size() * sizeof(int), cudaMemcpyHostToDevice));
-  }
-  if (!h_out_indices_.empty()) {
-    CUDA_CHECK(
-        cudaMemcpy(d_out_indices_, h_out_indices_.data(), h_out_indices_.size() * sizeof(int), cudaMemcpyHostToDevice));
-  }
-  if (!h_network_to_slot_.empty()) {
-    CUDA_CHECK(cudaMemcpy(d_network_to_slot_, h_network_to_slot_.data(), h_network_to_slot_.size() * sizeof(int),
-                          cudaMemcpyHostToDevice));
+  {
+    MOONAI_PROFILE_SCOPE("inference_cache_upload", stream);
+
+    if (!h_descriptors_.empty()) {
+      CUDA_CHECK(cudaMemcpyAsync(d_descriptors_, h_descriptors_.data(),
+                                 h_descriptors_.size() * sizeof(NetworkDescriptor), cudaMemcpyHostToDevice, stream));
+    }
+    if (!h_eval_order_.empty()) {
+      CUDA_CHECK(cudaMemcpyAsync(d_eval_order_, h_eval_order_.data(), h_eval_order_.size() * sizeof(int),
+                                 cudaMemcpyHostToDevice, stream));
+    }
+    if (!h_conn_from_.empty()) {
+      CUDA_CHECK(cudaMemcpyAsync(d_conn_from_, h_conn_from_.data(), h_conn_from_.size() * sizeof(int),
+                                 cudaMemcpyHostToDevice, stream));
+      CUDA_CHECK(cudaMemcpyAsync(d_conn_weights_, h_conn_weights_.data(), h_conn_weights_.size() * sizeof(float),
+                                 cudaMemcpyHostToDevice, stream));
+    }
+    if (!h_conn_ptr_.empty()) {
+      CUDA_CHECK(cudaMemcpyAsync(d_conn_ptr_, h_conn_ptr_.data(), h_conn_ptr_.size() * sizeof(int),
+                                 cudaMemcpyHostToDevice, stream));
+    }
+    if (!h_out_indices_.empty()) {
+      CUDA_CHECK(cudaMemcpyAsync(d_out_indices_, h_out_indices_.data(), h_out_indices_.size() * sizeof(int),
+                                 cudaMemcpyHostToDevice, stream));
+    }
+    if (!h_network_to_slot_.empty()) {
+      CUDA_CHECK(cudaMemcpyAsync(d_network_to_slot_, h_network_to_slot_.data(),
+                                 h_network_to_slot_.size() * sizeof(int), cudaMemcpyHostToDevice, stream));
+    }
   }
 
   dirty_ = false;
@@ -307,10 +302,13 @@ bool InferenceCache::launch_inference_async(const float *sensor_inputs, float *b
     return false;
   }
 
-  const int total_nodes = static_cast<int>(h_node_values_.size());
-  CUDA_CHECK(cudaMemsetAsync(d_node_values_, 0, total_nodes * sizeof(float), stream));
+  if (active_node_count_ > 0) {
+    CUDA_CHECK(cudaMemsetAsync(d_node_values_, 0, active_node_count_ * sizeof(float), stream));
+  }
 
   const int num_blocks = (static_cast<int>(count) + kBlockSize - 1) / kBlockSize;
+
+  MOONAI_PROFILE_SCOPE("inference_kernel", stream);
 
   kernel_neural_inference<<<num_blocks, kBlockSize, 0, stream>>>(
       d_descriptors_, d_node_values_, d_eval_order_, d_conn_from_, d_conn_weights_, d_conn_ptr_, d_out_indices_,
