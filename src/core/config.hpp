@@ -20,10 +20,10 @@ struct SimulationConfig {
   float interaction_range = 1.0f;
   float mate_range = 30.0f;
 
-  float food_respawn_rate = 0.006f;
+  float food_respawn_rate = 0.003f;
   float energy_drain_per_step = 0.03f;
   float energy_gain_from_kill = 72.0f;
-  float energy_gain_from_food = 30.0f;
+  float energy_gain_from_food = 60.0f;
   float initial_energy = 120.0f;
   float reproduction_energy_threshold = 240.0f;
   float reproduction_energy_cost = 60.0f;
