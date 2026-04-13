@@ -339,8 +339,6 @@ void InferenceCache::rebuild_launch_descriptors() {
 }
 
 bool InferenceCache::upload_full(cudaStream_t stream) {
-  MOONAI_PROFILE_SCOPE("inference_cache_upload", stream);
-
   if (!h_eval_order_.empty()) {
     if (!CUDA_CHECK(cudaMemcpyAsync(d_eval_order_, h_eval_order_.data(), h_eval_order_.size() * sizeof(int),
                                     cudaMemcpyHostToDevice, stream))) {
@@ -470,8 +468,6 @@ bool InferenceCache::should_repack() const {
 }
 
 bool InferenceCache::build_from(const NetworkCache &network_cache, std::size_t count, cudaStream_t stream) {
-  MOONAI_PROFILE_SCOPE("inference_cache_build");
-
   entries_.clear();
   entry_in_use_.clear();
   slot_to_entry_.clear();

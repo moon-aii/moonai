@@ -389,11 +389,8 @@ bool launch_population_inference(AgentRegistry &registry, evolution::InferenceCa
     return true;
   }
 
-  {
-    MOONAI_PROFILE_SCOPE("inference_cache_check");
-    if (!cache.prepare_for_launch(registry.network_cache, count, stream)) {
-      return false;
-    }
+  if (!cache.prepare_for_launch(registry.network_cache, count, stream)) {
+    return false;
   }
 
   return cache.launch_inference_async(buffer.device_sensor_inputs(), buffer.device_brain_outputs(), count, stream);
