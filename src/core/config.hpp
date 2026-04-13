@@ -16,18 +16,18 @@ struct SimulationConfig {
 
   float predator_speed = 0.6f;
   float prey_speed = 0.66f;
-  float vision_range = 12.0f;
+  float vision_range = 50.0f;
   float interaction_range = 1.0f;
   float mate_range = 30.0f;
 
   float food_respawn_rate = 0.003f;
-  float energy_drain_per_step = 0.03f;
+  float energy_drain_per_step = 0.036f;
   float energy_gain_from_kill = 72.0f;
   float energy_gain_from_food = 60.0f;
   float initial_energy = 120.0f;
   float reproduction_energy_threshold = 240.0f;
   float reproduction_energy_cost = 60.0f;
-  float offspring_initial_energy = 100.0f;
+  float offspring_initial_energy = 120.0f;
   float birth_spawn_radius = 30.0f;
 
   float mutation_rate = 0.6f;
