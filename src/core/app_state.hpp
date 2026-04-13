@@ -11,7 +11,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <memory>
 #include <vector>
 
 namespace moonai {
@@ -52,7 +51,7 @@ struct AgentRegistry {
   std::vector<Species> species;
   std::vector<Genome> genomes;
   NetworkCache network_cache;
-  std::unique_ptr<evolution::InferenceCache> inference_cache;
+  evolution::InferenceCache inference_cache;
 
   uint32_t create();
   bool valid(uint32_t entity) const;
@@ -141,7 +140,7 @@ struct AppState {
   MetricsState metrics;
   RuntimeState runtime;
   StepBuffers step_buffers;
-  std::unique_ptr<simulation::Batch> batch;
+  simulation::Batch batch;
 };
 
 } // namespace moonai

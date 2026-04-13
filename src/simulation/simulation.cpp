@@ -12,20 +12,6 @@ namespace moonai::simulation {
 
 namespace {
 
-inline std::size_t next_power_of_2(std::size_t n) {
-  if (n == 0) {
-    return 1;
-  }
-  n--;
-  n |= n >> 1;
-  n |= n >> 2;
-  n |= n >> 4;
-  n |= n >> 8;
-  n |= n >> 16;
-  n |= n >> 32;
-  return n + 1;
-}
-
 void collect_step_events(AppState &state, Batch &batch, const std::vector<uint8_t> &was_food_active) {
   MOONAI_PROFILE_SCOPE("collect_step_events");
 
@@ -153,41 +139,6 @@ void apply_results(AppState &state, Batch &batch) {
   }
 }
 
-void ensure_capacity(std::unique_ptr<Batch> &batch, std::size_t predator_count, std::size_t prey_count,
-                     std::size_t food_count) {
-  MOONAI_PROFILE_SCOPE("ensure_capacity");
-
-  const bool needs_batch = !batch;
-  const bool predators_exceeded = batch && predator_count > batch->predator_capacity();
-  const bool prey_exceeded = batch && prey_count > batch->prey_capacity();
-  const bool food_exceeded = batch && food_count > batch->food_capacity();
-  const bool needs_resize = predators_exceeded || prey_exceeded || food_exceeded;
-
-  if (!needs_batch && !needs_resize) {
-    return;
-  }
-
-  const std::size_t current_predator_capacity = batch ? batch->predator_capacity() : 0;
-  const std::size_t current_prey_capacity = batch ? batch->prey_capacity() : 0;
-  const std::size_t current_food_capacity = batch ? batch->food_capacity() : 0;
-
-  const std::size_t new_predator_capacity =
-      needs_batch || predators_exceeded
-          ? next_power_of_2(current_predator_capacity == 0 ? predator_count
-                                                           : std::max(predator_count, current_predator_capacity * 2))
-          : current_predator_capacity;
-  const std::size_t new_prey_capacity =
-      needs_batch || prey_exceeded
-          ? next_power_of_2(current_prey_capacity == 0 ? prey_count : std::max(prey_count, current_prey_capacity * 2))
-          : current_prey_capacity;
-  const std::size_t new_food_capacity =
-      needs_batch || food_exceeded
-          ? next_power_of_2(current_food_capacity == 0 ? food_count : std::max(food_count, current_food_capacity * 2))
-          : current_food_capacity;
-
-  batch = std::make_unique<Batch>(new_predator_capacity, new_prey_capacity, new_food_capacity);
-}
-
 StepParams build_step_params(const SimulationConfig &config) {
   StepParams params;
   params.world_width = static_cast<float>(config.grid_size);
@@ -219,24 +170,23 @@ bool prepare_step(AppState &state, const SimulationConfig &config) {
   const std::size_t prey_count = state.prey.size();
   const std::size_t food_count = state.food.size();
 
-  if (state.batch && !state.batch->ok()) {
+  if (!state.batch.ok()) {
     spdlog::error("Simulation batch is in an error state");
     return false;
   }
 
-  ensure_capacity(state.batch, predator_count, prey_count, food_count);
-  if (!state.batch || !state.batch->ok()) {
+  state.batch.ensure_capacity(predator_count, prey_count, food_count);
+  if (!state.batch.ok()) {
     spdlog::error("Failed to initialize the simulation batch");
-    state.batch.reset();
     return false;
   }
 
-  pack_state(state, *state.batch);
+  pack_state(state, state.batch);
 
   const StepParams params = build_step_params(config);
 
-  state.batch->upload_async(predator_count, prey_count, food_count);
-  state.batch->launch_build_sensors_async(params, predator_count, prey_count, food_count);
+  state.batch.upload_async(predator_count, prey_count, food_count);
+  state.batch.launch_build_sensors_async(params, predator_count, prey_count, food_count);
 
   return true;
 }
@@ -244,8 +194,8 @@ bool prepare_step(AppState &state, const SimulationConfig &config) {
 bool resolve_step(AppState &state, const SimulationConfig &config) {
   MOONAI_PROFILE_SCOPE("resolve_step");
 
-  if (!state.batch) {
-    spdlog::error("Simulation batch is not initialized for resolve step");
+  if (!state.batch.ok()) {
+    spdlog::error("Simulation batch is in an error state before resolve step");
     return false;
   }
 
@@ -254,18 +204,17 @@ bool resolve_step(AppState &state, const SimulationConfig &config) {
   const std::size_t food_count = state.food.size();
   const StepParams params = build_step_params(config);
 
-  state.batch->launch_post_inference_async(params, predator_count, prey_count, food_count);
-  state.batch->download_async(predator_count, prey_count, food_count);
-  state.batch->synchronize();
+  state.batch.launch_post_inference_async(params, predator_count, prey_count, food_count);
+  state.batch.download_async(predator_count, prey_count, food_count);
+  state.batch.synchronize();
 
-  if (!state.batch->ok()) {
+  if (!state.batch.ok()) {
     spdlog::error("Simulation step failed");
-    state.batch.reset();
     return false;
   }
 
-  apply_results(state, *state.batch);
-  collect_step_events(state, *state.batch, state.step_buffers.was_food_active);
+  apply_results(state, state.batch);
+  collect_step_events(state, state.batch, state.step_buffers.was_food_active);
 
   return true;
 }

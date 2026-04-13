@@ -61,6 +61,7 @@ void AgentRegistry::clear() {
 
 void AgentRegistry::compact() {
   std::size_t i = 0;
+  bool compacted = false;
   while (i < size()) {
     if (alive[i] != 0) {
       ++i;
@@ -92,10 +93,11 @@ void AgentRegistry::compact() {
     }
 
     pop_back();
+    compacted = true;
+  }
 
-    if (inference_cache) {
-      inference_cache->invalidate();
-    }
+  if (compacted) {
+    inference_cache.invalidate();
   }
 }
 

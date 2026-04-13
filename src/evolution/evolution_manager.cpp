@@ -47,9 +47,7 @@ using moonai::SENSOR_COUNT;
 namespace {
 
 void invalidate_inference_cache(AgentRegistry &registry) {
-  if (registry.inference_cache) {
-    registry.inference_cache->invalidate();
-  }
+  registry.inference_cache.invalidate();
 }
 
 class DenseReproductionGrid {
@@ -135,13 +133,7 @@ private:
 
 bool EvolutionManager::run_inference(AppState &state) {
   MOONAI_PROFILE_SCOPE("evolution_run_inference");
-
-  if (!state.batch) {
-    spdlog::error("Simulation batch is not initialized for neural inference");
-    return false;
-  }
-
-  return launch_inference(state, *state.batch);
+  return launch_inference(state, state.batch);
 }
 
 Genome EvolutionManager::create_initial_genome(AgentRegistry &registry, Random &rng) const {
@@ -325,15 +317,8 @@ void EvolutionManager::refresh_species(AppState &state) {
 }
 
 void EvolutionManager::initialize_inference(AppState &state) {
-  if (!state.predator.inference_cache) {
-    state.predator.inference_cache = std::make_unique<evolution::InferenceCache>();
-  }
-  if (!state.prey.inference_cache) {
-    state.prey.inference_cache = std::make_unique<evolution::InferenceCache>();
-  }
-
-  state.predator.inference_cache->invalidate();
-  state.prey.inference_cache->invalidate();
+  state.predator.inference_cache.invalidate();
+  state.prey.inference_cache.invalidate();
 }
 
 void EvolutionManager::reproduce_population(AppState &state, AgentRegistry &registry) {
@@ -430,18 +415,13 @@ bool launch_population_inference(AgentRegistry &registry, evolution::InferenceCa
 bool EvolutionManager::launch_inference(AppState &state, simulation::Batch &batch) {
   MOONAI_PROFILE_SCOPE("neural_inference", batch.stream());
 
-  if (!state.predator.inference_cache || !state.prey.inference_cache) {
-    spdlog::error("Inference caches are not initialized");
-    return false;
-  }
-
-  if (!launch_population_inference(state.predator, *state.predator.inference_cache, batch.predator_buffer(),
+  if (!launch_population_inference(state.predator, state.predator.inference_cache, batch.predator_buffer(),
                                    state.predator.size(), batch.stream())) {
     batch.mark_error();
     return false;
   }
 
-  if (!launch_population_inference(state.prey, *state.prey.inference_cache, batch.prey_buffer(), state.prey.size(),
+  if (!launch_population_inference(state.prey, state.prey.inference_cache, batch.prey_buffer(), state.prey.size(),
                                    batch.stream())) {
     batch.mark_error();
     return false;

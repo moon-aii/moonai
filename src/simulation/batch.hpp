@@ -27,6 +27,7 @@ struct StepParams {
 
 class Batch {
 public:
+  Batch();
   Batch(std::size_t max_predators, std::size_t max_prey, std::size_t max_food);
   ~Batch();
 
@@ -63,6 +64,7 @@ public:
   void download_async(std::size_t predator_count, std::size_t prey_count, std::size_t food_count);
   void synchronize();
   void mark_error();
+  void ensure_capacity(std::size_t predator_count, std::size_t prey_count, std::size_t food_count);
 
   [[nodiscard]] bool ok() const noexcept {
     return !had_error_;

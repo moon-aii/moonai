@@ -234,7 +234,7 @@ std::vector<std::unique_ptr<ScopeNode>> Profiler::finish_run() {
 namespace {
 
 struct ProfilerArgs {
-  int frames = 300;
+  int frames = 30;
   int speed_multiplier = 128;
   std::vector<std::uint64_t> seeds = {61, 62, 63, 64, 65, 66};
   std::string output_dir = "output/profiles";

@@ -90,6 +90,29 @@ void PopulationBuffer::free_buffers() {
     cudaFree(d_sensor_inputs_);
   if (d_brain_outputs_)
     cudaFree(d_brain_outputs_);
+
+  h_pos_x_ = nullptr;
+  h_pos_y_ = nullptr;
+  h_vel_x_ = nullptr;
+  h_vel_y_ = nullptr;
+  h_energy_ = nullptr;
+  h_age_ = nullptr;
+  h_alive_ = nullptr;
+  h_kill_counts_ = nullptr;
+  h_claimed_by_ = nullptr;
+  h_brain_outputs_ = nullptr;
+
+  d_pos_x_ = nullptr;
+  d_pos_y_ = nullptr;
+  d_vel_x_ = nullptr;
+  d_vel_y_ = nullptr;
+  d_energy_ = nullptr;
+  d_age_ = nullptr;
+  d_alive_ = nullptr;
+  d_kill_counts_ = nullptr;
+  d_claimed_by_ = nullptr;
+  d_sensor_inputs_ = nullptr;
+  d_brain_outputs_ = nullptr;
 }
 
 void PopulationBuffer::upload_async(std::size_t count, cudaStream_t stream) {
@@ -130,6 +153,16 @@ void PopulationBuffer::download_async(std::size_t count, cudaStream_t stream) {
   CUDA_CHECK(cudaMemcpyAsync(h_kill_counts_, d_kill_counts_, u32_bytes, cudaMemcpyDeviceToHost, stream));
   CUDA_CHECK(cudaMemcpyAsync(h_claimed_by_, d_claimed_by_, int_bytes, cudaMemcpyDeviceToHost, stream));
   CUDA_CHECK(cudaMemcpyAsync(h_brain_outputs_, d_brain_outputs_, brain_bytes, cudaMemcpyDeviceToHost, stream));
+}
+
+void PopulationBuffer::reset(std::size_t capacity) {
+  if (capacity == capacity_) {
+    return;
+  }
+
+  free_buffers();
+  capacity_ = capacity;
+  allocate_buffers();
 }
 
 FoodBuffer::FoodBuffer(std::size_t max_food) : capacity_(max_food) {
@@ -178,6 +211,16 @@ void FoodBuffer::free_buffers() {
     cudaFree(d_active_);
   if (d_consumed_by_)
     cudaFree(d_consumed_by_);
+
+  h_pos_x_ = nullptr;
+  h_pos_y_ = nullptr;
+  h_active_ = nullptr;
+  h_consumed_by_ = nullptr;
+
+  d_pos_x_ = nullptr;
+  d_pos_y_ = nullptr;
+  d_active_ = nullptr;
+  d_consumed_by_ = nullptr;
 }
 
 void FoodBuffer::upload_async(std::size_t count, cudaStream_t stream) {
@@ -208,6 +251,16 @@ void FoodBuffer::download_async(std::size_t count, cudaStream_t stream) {
   CUDA_CHECK(cudaMemcpyAsync(h_pos_y_, d_pos_y_, float_bytes, cudaMemcpyDeviceToHost, stream));
   CUDA_CHECK(cudaMemcpyAsync(h_active_, d_active_, u32_bytes, cudaMemcpyDeviceToHost, stream));
   CUDA_CHECK(cudaMemcpyAsync(h_consumed_by_, d_consumed_by_, int_bytes, cudaMemcpyDeviceToHost, stream));
+}
+
+void FoodBuffer::reset(std::size_t capacity) {
+  if (capacity == capacity_) {
+    return;
+  }
+
+  free_buffers();
+  capacity_ = capacity;
+  allocate_buffers();
 }
 
 } // namespace moonai::simulation

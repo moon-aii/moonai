@@ -18,6 +18,20 @@ constexpr float kMaxDensity = 10.0f;
 constexpr float kMissingTargetSentinel = 2.0f;
 constexpr int kUnclaimed = 0x7f7f7f7f;
 
+std::size_t next_power_of_2(std::size_t n) {
+  if (n == 0) {
+    return 1;
+  }
+  n--;
+  n |= n >> 1;
+  n |= n >> 2;
+  n |= n >> 4;
+  n |= n >> 8;
+  n |= n >> 16;
+  n |= n >> 32;
+  return n + 1;
+}
+
 __device__ float clampf(float value, float min_value, float max_value) {
   return fminf(fmaxf(value, min_value), max_value);
 }
@@ -474,6 +488,8 @@ __global__ void kernel_apply_movement(float *__restrict__ pos_x, float *__restri
 
 } // namespace
 
+Batch::Batch() : Batch(0, 0, 0) {}
+
 Batch::Batch(std::size_t max_predators, std::size_t max_prey, std::size_t max_food)
     : predator_buffer_(max_predators), prey_buffer_(max_prey), food_buffer_(max_food) {
   init_cuda_resources();
@@ -566,6 +582,29 @@ void Batch::ensure_spatial_grid_capacity(std::size_t cell_count) {
   CUDA_CHECK(cudaMalloc(&d_food_grid_entries_, food_buffer_.capacity() * sizeof(FoodEntry)));
 
   grid_cell_capacity_ = cell_count;
+}
+
+void Batch::ensure_capacity(std::size_t predator_count, std::size_t prey_count, std::size_t food_count) {
+  const bool predators_exceeded = predator_count > predator_buffer_.capacity();
+  const bool prey_exceeded = prey_count > prey_buffer_.capacity();
+  const bool food_exceeded = food_count > food_buffer_.capacity();
+
+  if (!predators_exceeded && !prey_exceeded && !food_exceeded) {
+    return;
+  }
+
+  const std::size_t new_predator_capacity =
+      predators_exceeded ? next_power_of_2(std::max(predator_count, predator_buffer_.capacity() * 2))
+                         : predator_buffer_.capacity();
+  const std::size_t new_prey_capacity =
+      prey_exceeded ? next_power_of_2(std::max(prey_count, prey_buffer_.capacity() * 2)) : prey_buffer_.capacity();
+  const std::size_t new_food_capacity =
+      food_exceeded ? next_power_of_2(std::max(food_count, food_buffer_.capacity() * 2)) : food_buffer_.capacity();
+
+  predator_buffer_.reset(new_predator_capacity);
+  prey_buffer_.reset(new_prey_capacity);
+  food_buffer_.reset(new_food_capacity);
+  free_spatial_grid_buffers();
 }
 
 void Batch::upload_async(std::size_t predator_count, std::size_t prey_count, std::size_t food_count) {

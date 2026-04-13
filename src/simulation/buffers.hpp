@@ -90,6 +90,7 @@ public:
 
   void upload_async(std::size_t count, cudaStream_t stream);
   void download_async(std::size_t count, cudaStream_t stream);
+  void reset(std::size_t capacity);
 
   [[nodiscard]] std::size_t capacity() const noexcept {
     return capacity_;
@@ -166,6 +167,7 @@ public:
 
   void upload_async(std::size_t count, cudaStream_t stream);
   void download_async(std::size_t count, cudaStream_t stream);
+  void reset(std::size_t capacity);
 
   [[nodiscard]] std::size_t capacity() const noexcept {
     return capacity_;
