@@ -30,8 +30,8 @@ public:
 private:
   const char *event_name_;
   cudaStream_t stream_;
-  int gpu_event_index_; // -1 if no GPU event
-  bool has_cpu_scope_;  // false when stream provided (GPU-only mode)
+  int stream_event_index_; // -1 if no stream event
+  bool has_cpu_scope_;     // false when stream provided (stream-only mode)
 };
 
 } // namespace profiler

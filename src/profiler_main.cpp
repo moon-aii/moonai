@@ -53,7 +53,7 @@ struct ScopeNode {
   ScopeNode *parent = nullptr;
 };
 
-struct GpuEventPair {
+struct StreamEventPair {
   const char *name;
   cudaEvent_t start;
   cudaEvent_t end;
@@ -71,9 +71,9 @@ public:
   void begin_scope(const char *event_name);
   void end_scope(const char *event_name);
 
-  int record_gpu_event_start(const char *name, cudaStream_t stream);
-  void record_gpu_event_end(int event_index);
-  void merge_gpu_timings();
+  int record_stream_event_start(const char *name, cudaStream_t stream);
+  void record_stream_event_end(int event_index);
+  void merge_stream_timings();
 
   std::vector<std::unique_ptr<ScopeNode>> finish_run();
 
@@ -86,14 +86,14 @@ private:
   std::vector<ScopeNode *> active_stack_;
   std::unique_ptr<ScopeNode> pending_root_;
 
-  std::vector<GpuEventPair> pending_gpu_events_;
-  int next_gpu_event_index_;
+  std::vector<StreamEventPair> pending_stream_events_;
+  int next_stream_event_index_;
 };
 
-Profiler::Profiler() : next_gpu_event_index_(0) {}
+Profiler::Profiler() : next_stream_event_index_(0) {}
 
 Profiler::~Profiler() {
-  for (auto &event : pending_gpu_events_) {
+  for (auto &event : pending_stream_events_) {
     if (event.start)
       cudaEventDestroy(event.start);
     if (event.end)
@@ -102,9 +102,9 @@ Profiler::~Profiler() {
 }
 
 ScopedTimer::ScopedTimer(const char *event_name, cudaStream_t stream)
-    : event_name_(event_name), stream_(stream), gpu_event_index_(-1), has_cpu_scope_(stream == nullptr) {
+    : event_name_(event_name), stream_(stream), stream_event_index_(-1), has_cpu_scope_(stream == nullptr) {
   if (stream) {
-    gpu_event_index_ = Profiler::instance().record_gpu_event_start(event_name, stream);
+    stream_event_index_ = Profiler::instance().record_stream_event_start(event_name, stream);
   }
   if (has_cpu_scope_) {
     Profiler::instance().begin_scope(event_name);
@@ -112,12 +112,12 @@ ScopedTimer::ScopedTimer(const char *event_name, cudaStream_t stream)
 }
 
 ScopedTimer::~ScopedTimer() {
-  if (std::strcmp(event_name_, "gpu_synchronize") == 0) {
-    Profiler::instance().merge_gpu_timings();
+  if (std::strcmp(event_name_, "synchronize") == 0) {
+    Profiler::instance().merge_stream_timings();
   }
 
-  if (gpu_event_index_ >= 0) {
-    Profiler::instance().record_gpu_event_end(gpu_event_index_);
+  if (stream_event_index_ >= 0) {
+    Profiler::instance().record_stream_event_end(stream_event_index_);
   }
 
   if (has_cpu_scope_) {
@@ -130,8 +130,8 @@ void Profiler::start_run(const AppConfig &cfg) {
   frame_trees_.clear();
   active_stack_.clear();
   pending_root_.reset();
-  pending_gpu_events_.clear();
-  next_gpu_event_index_ = 0;
+  pending_stream_events_.clear();
+  next_stream_event_index_ = 0;
 }
 
 void Profiler::begin_scope(const char *event_name) {
@@ -169,14 +169,14 @@ void Profiler::end_scope(const char *event_name) {
   }
 }
 
-int Profiler::record_gpu_event_start(const char *name, cudaStream_t stream) {
-  int index = next_gpu_event_index_++;
+int Profiler::record_stream_event_start(const char *name, cudaStream_t stream) {
+  int index = next_stream_event_index_++;
 
-  if (index >= static_cast<int>(pending_gpu_events_.size())) {
-    pending_gpu_events_.resize(index + 1);
+  if (index >= static_cast<int>(pending_stream_events_.size())) {
+    pending_stream_events_.resize(index + 1);
   }
 
-  GpuEventPair &pair = pending_gpu_events_[index];
+  StreamEventPair &pair = pending_stream_events_[index];
   pair.name = name;
   pair.stream = stream;
 
@@ -187,20 +187,20 @@ int Profiler::record_gpu_event_start(const char *name, cudaStream_t stream) {
   return index;
 }
 
-void Profiler::record_gpu_event_end(int event_index) {
-  assert(event_index >= 0 && event_index < static_cast<int>(pending_gpu_events_.size()));
+void Profiler::record_stream_event_end(int event_index) {
+  assert(event_index >= 0 && event_index < static_cast<int>(pending_stream_events_.size()));
 
-  GpuEventPair &pair = pending_gpu_events_[event_index];
+  StreamEventPair &pair = pending_stream_events_[event_index];
   cudaEventCreate(&pair.end);
   cudaEventRecord(pair.end, pair.stream);
 }
 
-void Profiler::merge_gpu_timings() {
-  if (pending_gpu_events_.empty()) {
+void Profiler::merge_stream_timings() {
+  if (pending_stream_events_.empty()) {
     return;
   }
 
-  for (const auto &pair : pending_gpu_events_) {
+  for (const auto &pair : pending_stream_events_) {
     if (!pair.start || !pair.end) {
       continue;
     }
@@ -209,19 +209,19 @@ void Profiler::merge_gpu_timings() {
     cudaError_t err = cudaEventElapsedTime(&elapsed_ms, pair.start, pair.end);
 
     if (err == cudaSuccess && elapsed_ms > 0.0f) {
-      auto gpu_node = std::make_unique<ScopeNode>();
-      gpu_node->name = std::string(pair.name) + "_gpu";
-      gpu_node->duration_ns = static_cast<std::int64_t>(elapsed_ms * NS_TO_MS);
-      gpu_node->parent = active_stack_.back();
-      active_stack_.back()->children.push_back(std::move(gpu_node));
+      auto stream_node = std::make_unique<ScopeNode>();
+      stream_node->name = std::string(pair.name) + "_stream";
+      stream_node->duration_ns = static_cast<std::int64_t>(elapsed_ms * NS_TO_MS);
+      stream_node->parent = active_stack_.back();
+      active_stack_.back()->children.push_back(std::move(stream_node));
     }
 
     cudaEventDestroy(pair.start);
     cudaEventDestroy(pair.end);
   }
 
-  pending_gpu_events_.clear();
-  next_gpu_event_index_ = 0;
+  pending_stream_events_.clear();
+  next_stream_event_index_ = 0;
 }
 
 std::vector<std::unique_ptr<ScopeNode>> Profiler::finish_run() {
@@ -487,7 +487,6 @@ void write_manifest(std::vector<RunData> runs, const std::filesystem::path &outp
   nlohmann::json metadata;
   metadata["suite_name"] = cfg.experiment_name;
   metadata["frame_count"] = cfg.sim_config.max_steps / cfg.speed_multiplier;
-  metadata["backend"] = "cuda";
   metadata["platform"] = moonai::AppConfig::platform;
   metadata["generated_at_utc"] = utc_timestamp();
   manifest["metadata"] = metadata;

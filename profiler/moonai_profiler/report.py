@@ -132,10 +132,7 @@ def _build_section(suite: ProfileSuite) -> dict:
         "metadata": {
             "suite_name": suite.metadata.get("suite_name", "N/A"),
             "frame_count": suite.metadata.get("frame_count", "N/A"),
-            "report_interval_steps": suite.metadata.get("report_interval_steps", "N/A"),
-            "backend": suite.metadata.get("backend", "cuda"),
             "platform": suite.metadata.get("platform", "N/A"),
-            "openmp_compiled": suite.metadata.get("openmp_compiled", False),
             "generated_at_utc": suite.metadata.get("generated_at_utc", "N/A"),
         },
     }

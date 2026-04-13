@@ -12,10 +12,9 @@ namespace moonai {
 
 struct AppState;
 struct AgentRegistry;
-namespace gpu {
-class GpuBatch;
-class GpuNetworkCache;
-} // namespace gpu
+namespace simulation {
+class Batch;
+}
 
 class EvolutionManager {
 public:
@@ -25,7 +24,7 @@ public:
   void initialize(AppState &state, int num_inputs, int num_outputs);
 
   void seed_initial_population(AppState &state);
-  void initialize_gpu(AppState &state);
+  void initialize_inference(AppState &state);
 
   bool run_inference(AppState &state);
   void post_step(AppState &state);
@@ -39,7 +38,7 @@ private:
                             Vec2 spawn_position);
   void initialize_population(AgentRegistry &registry) const;
   void refresh_population_species(AgentRegistry &registry) const;
-  bool launch_gpu_neural(AppState &state, gpu::GpuBatch &gpu_batch);
+  bool launch_inference(AppState &state, simulation::Batch &batch);
   void reproduce_population(AppState &state, AgentRegistry &registry);
 
   const SimulationConfig &config_;

@@ -6,7 +6,7 @@ set(MOONAI_EVOLUTION_SOURCES
     mutation.cpp
     crossover.cpp
     network_cache.cpp
-    backends/cuda/gpu_network_cache.cu
+    inference_cache.cu
 )
 
 add_library(moonai_evolution STATIC ${MOONAI_EVOLUTION_SOURCES})

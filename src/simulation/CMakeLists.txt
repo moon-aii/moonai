@@ -1,9 +1,7 @@
 set(MOONAI_SIMULATION_SOURCES
     simulation.cpp
-    common.cpp
-    gpu.cpp
-    backends/cuda/gpu_data_buffer.cu
-    backends/cuda/gpu_batch.cu
+    buffers.cu
+    batch.cu
 )
 
 add_library(moonai_simulation STATIC ${MOONAI_SIMULATION_SOURCES})

@@ -1,6 +1,6 @@
 #include "core/profiler_macros.hpp"
-#include "simulation/backends/cuda/cuda_utils.cuh"
-#include "simulation/backends/cuda/gpu_batch.hpp"
+#include "simulation/batch.hpp"
+#include "simulation/checks.cuh"
 
 #include <thrust/execution_policy.h>
 #include <thrust/scan.h>
@@ -9,7 +9,7 @@
 #include <cmath>
 #include <spdlog/spdlog.h>
 
-namespace moonai::gpu {
+namespace moonai::simulation {
 
 namespace {
 
@@ -61,7 +61,7 @@ __global__ void kernel_count_population_cells(const float *__restrict__ pos_x, c
 
 __global__ void kernel_scatter_population_cells(const float *__restrict__ pos_x, const float *__restrict__ pos_y,
                                                 const uint32_t *__restrict__ alive, int *__restrict__ cell_offsets,
-                                                GpuPopulationEntry *__restrict__ entries, int population_count,
+                                                PopulationEntry *__restrict__ entries, int population_count,
                                                 int grid_cols, int grid_rows, float cell_size) {
   const int idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx >= population_count || alive[idx] == 0) {
@@ -71,7 +71,7 @@ __global__ void kernel_scatter_population_cells(const float *__restrict__ pos_x,
   const int cx = cell_coord(pos_x[idx], cell_size, grid_cols);
   const int cy = cell_coord(pos_y[idx], cell_size, grid_rows);
   const int slot = atomicAdd(&cell_offsets[cy * grid_cols + cx], 1);
-  entries[slot] = GpuPopulationEntry{static_cast<unsigned int>(idx), pos_x[idx], pos_y[idx], 0.0f};
+  entries[slot] = PopulationEntry{static_cast<unsigned int>(idx), pos_x[idx], pos_y[idx], 0.0f};
 }
 
 __global__ void kernel_count_food_cells(const float *__restrict__ food_pos_x, const float *__restrict__ food_pos_y,
@@ -89,8 +89,8 @@ __global__ void kernel_count_food_cells(const float *__restrict__ food_pos_x, co
 
 __global__ void kernel_scatter_food_cells(const float *__restrict__ food_pos_x, const float *__restrict__ food_pos_y,
                                           const uint32_t *__restrict__ food_active, int *__restrict__ cell_offsets,
-                                          GpuFoodEntry *__restrict__ entries, int food_count, int grid_cols,
-                                          int grid_rows, float cell_size) {
+                                          FoodEntry *__restrict__ entries, int food_count, int grid_cols, int grid_rows,
+                                          float cell_size) {
   const int idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx >= food_count || food_active[idx] == 0) {
     return;
@@ -99,7 +99,7 @@ __global__ void kernel_scatter_food_cells(const float *__restrict__ food_pos_x, 
   const int cx = cell_coord(food_pos_x[idx], cell_size, grid_cols);
   const int cy = cell_coord(food_pos_y[idx], cell_size, grid_rows);
   const int slot = atomicAdd(&cell_offsets[cy * grid_cols + cx], 1);
-  entries[slot] = GpuFoodEntry{static_cast<unsigned int>(idx), food_pos_x[idx], food_pos_y[idx], 0.0f};
+  entries[slot] = FoodEntry{static_cast<unsigned int>(idx), food_pos_x[idx], food_pos_y[idx], 0.0f};
 }
 
 template <bool SelfIsPredator>
@@ -108,9 +108,9 @@ kernel_build_sensors(const float *__restrict__ self_pos_x, const float *__restri
                      const float *__restrict__ self_vel_x, const float *__restrict__ self_vel_y,
                      const uint32_t *__restrict__ self_alive, const float *__restrict__ self_energy,
                      const int *__restrict__ predator_cell_offsets,
-                     const GpuPopulationEntry *__restrict__ predator_entries, const int *__restrict__ prey_cell_offsets,
-                     const GpuPopulationEntry *__restrict__ prey_entries, const int *__restrict__ food_cell_offsets,
-                     const GpuFoodEntry *__restrict__ food_entries, float *__restrict__ sensor_inputs, int self_count,
+                     const PopulationEntry *__restrict__ predator_entries, const int *__restrict__ prey_cell_offsets,
+                     const PopulationEntry *__restrict__ prey_entries, const int *__restrict__ food_cell_offsets,
+                     const FoodEntry *__restrict__ food_entries, float *__restrict__ sensor_inputs, int self_count,
                      int grid_cols, int grid_rows, float grid_cell_size, float world_width, float world_height,
                      float vision_range, float max_energy, float agent_speed) {
   const int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -174,7 +174,7 @@ kernel_build_sensors(const float *__restrict__ self_pos_x, const float *__restri
 
       const int cell = cy * grid_cols + cx;
       for (int slot = predator_cell_offsets[cell]; slot < predator_cell_offsets[cell + 1]; ++slot) {
-        const GpuPopulationEntry entry = predator_entries[slot];
+        const PopulationEntry entry = predator_entries[slot];
         if (SelfIsPredator && static_cast<int>(entry.id) == idx) {
           continue;
         }
@@ -195,7 +195,7 @@ kernel_build_sensors(const float *__restrict__ self_pos_x, const float *__restri
       }
 
       for (int slot = prey_cell_offsets[cell]; slot < prey_cell_offsets[cell + 1]; ++slot) {
-        const GpuPopulationEntry entry = prey_entries[slot];
+        const PopulationEntry entry = prey_entries[slot];
         if (!SelfIsPredator && static_cast<int>(entry.id) == idx) {
           continue;
         }
@@ -294,7 +294,7 @@ __global__ void kernel_update_vitals(float *__restrict__ energy, int *__restrict
 
 __global__ void kernel_claim_food(const float *__restrict__ prey_pos_x, const float *__restrict__ prey_pos_y,
                                   const uint32_t *__restrict__ prey_alive, const int *__restrict__ food_cell_offsets,
-                                  const GpuFoodEntry *__restrict__ food_entries, int *__restrict__ food_consumed_by,
+                                  const FoodEntry *__restrict__ food_entries, int *__restrict__ food_consumed_by,
                                   int prey_count, int grid_cols, int grid_rows, float grid_cell_size,
                                   float pickup_range) {
   const int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -362,9 +362,9 @@ __global__ void kernel_finalize_food(float *__restrict__ prey_energy, const uint
 __global__ void kernel_claim_combat(const float *__restrict__ predator_pos_x, const float *__restrict__ predator_pos_y,
                                     const uint32_t *__restrict__ predator_alive,
                                     const int *__restrict__ prey_cell_offsets,
-                                    const GpuPopulationEntry *__restrict__ prey_entries,
-                                    int *__restrict__ prey_claimed_by, int predator_count, int grid_cols, int grid_rows,
-                                    float grid_cell_size, float interaction_range) {
+                                    const PopulationEntry *__restrict__ prey_entries, int *__restrict__ prey_claimed_by,
+                                    int predator_count, int grid_cols, int grid_rows, float grid_cell_size,
+                                    float interaction_range) {
   const int idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx >= predator_count || predator_alive[idx] == 0) {
     return;
@@ -396,7 +396,7 @@ __global__ void kernel_claim_combat(const float *__restrict__ predator_pos_x, co
 
       const int cell = cy * grid_cols + cx;
       for (int slot = prey_cell_offsets[cell]; slot < prey_cell_offsets[cell + 1]; ++slot) {
-        const GpuPopulationEntry entry = prey_entries[slot];
+        const PopulationEntry entry = prey_entries[slot];
         float dx = entry.pos_x - px;
         float dy = entry.pos_y - py;
         const float dist_sq = dx * dx + dy * dy;
@@ -474,27 +474,27 @@ __global__ void kernel_apply_movement(float *__restrict__ pos_x, float *__restri
 
 } // namespace
 
-GpuBatch::GpuBatch(std::size_t max_predators, std::size_t max_prey, std::size_t max_food)
+Batch::Batch(std::size_t max_predators, std::size_t max_prey, std::size_t max_food)
     : predator_buffer_(max_predators), prey_buffer_(max_prey), food_buffer_(max_food) {
   init_cuda_resources();
 }
 
-GpuBatch::~GpuBatch() {
+Batch::~Batch() {
   cleanup_cuda_resources();
 }
 
-void GpuBatch::init_cuda_resources() {
+void Batch::init_cuda_resources() {
   cudaStream_t stream = nullptr;
   const cudaError_t err = cudaStreamCreate(&stream);
   if (err != cudaSuccess) {
-    spdlog::error("GPU stream creation failed: {}", cudaGetErrorString(err));
+    spdlog::error("CUDA stream creation failed: {}", cudaGetErrorString(err));
     had_error_ = true;
     return;
   }
   stream_ = stream;
 }
 
-void GpuBatch::cleanup_cuda_resources() {
+void Batch::cleanup_cuda_resources() {
   free_spatial_grid_buffers();
   if (stream_) {
     cudaStreamDestroy(static_cast<cudaStream_t>(stream_));
@@ -502,7 +502,7 @@ void GpuBatch::cleanup_cuda_resources() {
   }
 }
 
-void GpuBatch::free_spatial_grid_buffers() {
+void Batch::free_spatial_grid_buffers() {
   if (d_predator_cell_counts_)
     cudaFree(d_predator_cell_counts_);
   if (d_predator_cell_offsets_)
@@ -543,7 +543,7 @@ void GpuBatch::free_spatial_grid_buffers() {
   grid_cell_capacity_ = 0;
 }
 
-void GpuBatch::ensure_spatial_grid_capacity(std::size_t cell_count) {
+void Batch::ensure_spatial_grid_capacity(std::size_t cell_count) {
   if (cell_count <= grid_cell_capacity_) {
     return;
   }
@@ -553,23 +553,23 @@ void GpuBatch::ensure_spatial_grid_capacity(std::size_t cell_count) {
   CUDA_CHECK(cudaMalloc(&d_predator_cell_counts_, (cell_count + 1) * sizeof(int)));
   CUDA_CHECK(cudaMalloc(&d_predator_cell_offsets_, (cell_count + 1) * sizeof(int)));
   CUDA_CHECK(cudaMalloc(&d_predator_cell_write_offsets_, cell_count * sizeof(int)));
-  CUDA_CHECK(cudaMalloc(&d_predator_grid_entries_, predator_buffer_.capacity() * sizeof(GpuPopulationEntry)));
+  CUDA_CHECK(cudaMalloc(&d_predator_grid_entries_, predator_buffer_.capacity() * sizeof(PopulationEntry)));
 
   CUDA_CHECK(cudaMalloc(&d_prey_cell_counts_, (cell_count + 1) * sizeof(int)));
   CUDA_CHECK(cudaMalloc(&d_prey_cell_offsets_, (cell_count + 1) * sizeof(int)));
   CUDA_CHECK(cudaMalloc(&d_prey_cell_write_offsets_, cell_count * sizeof(int)));
-  CUDA_CHECK(cudaMalloc(&d_prey_grid_entries_, prey_buffer_.capacity() * sizeof(GpuPopulationEntry)));
+  CUDA_CHECK(cudaMalloc(&d_prey_grid_entries_, prey_buffer_.capacity() * sizeof(PopulationEntry)));
 
   CUDA_CHECK(cudaMalloc(&d_food_cell_counts_, (cell_count + 1) * sizeof(int)));
   CUDA_CHECK(cudaMalloc(&d_food_cell_offsets_, (cell_count + 1) * sizeof(int)));
   CUDA_CHECK(cudaMalloc(&d_food_cell_write_offsets_, cell_count * sizeof(int)));
-  CUDA_CHECK(cudaMalloc(&d_food_grid_entries_, food_buffer_.capacity() * sizeof(GpuFoodEntry)));
+  CUDA_CHECK(cudaMalloc(&d_food_grid_entries_, food_buffer_.capacity() * sizeof(FoodEntry)));
 
   grid_cell_capacity_ = cell_count;
 }
 
-void GpuBatch::upload_async(std::size_t predator_count, std::size_t prey_count, std::size_t food_count) {
-  MOONAI_PROFILE_SCOPE("gpu_upload");
+void Batch::upload_async(std::size_t predator_count, std::size_t prey_count, std::size_t food_count) {
+  MOONAI_PROFILE_SCOPE("upload");
 
   const cudaStream_t stream = static_cast<cudaStream_t>(stream_);
   predator_buffer_.upload_async(predator_count, stream);
@@ -577,8 +577,8 @@ void GpuBatch::upload_async(std::size_t predator_count, std::size_t prey_count, 
   food_buffer_.upload_async(food_count, stream);
 }
 
-void GpuBatch::download_async(std::size_t predator_count, std::size_t prey_count, std::size_t food_count) {
-  MOONAI_PROFILE_SCOPE("gpu_download_enqueue");
+void Batch::download_async(std::size_t predator_count, std::size_t prey_count, std::size_t food_count) {
+  MOONAI_PROFILE_SCOPE("download_enqueue");
 
   const cudaStream_t stream = static_cast<cudaStream_t>(stream_);
   predator_buffer_.download_async(predator_count, stream);
@@ -586,9 +586,9 @@ void GpuBatch::download_async(std::size_t predator_count, std::size_t prey_count
   food_buffer_.download_async(food_count, stream);
 }
 
-void GpuBatch::launch_build_sensors_async(const GpuStepParams &params, std::size_t predator_count,
-                                          std::size_t prey_count, std::size_t food_count) {
-  MOONAI_PROFILE_SCOPE("gpu_launch_sensors");
+void Batch::launch_build_sensors_async(const StepParams &params, std::size_t predator_count, std::size_t prey_count,
+                                       std::size_t food_count) {
+  MOONAI_PROFILE_SCOPE("launch_sensors");
 
   grid_cell_size_ = std::max(params.vision_range, 1.0f);
   grid_cols_ = std::max(1, static_cast<int>(std::ceil(params.world_width / grid_cell_size_)));
@@ -602,7 +602,7 @@ void GpuBatch::launch_build_sensors_async(const GpuStepParams &params, std::size
   const int food_blocks = (static_cast<int>(food_count) + kThreadsPerBlock - 1) / kThreadsPerBlock;
 
   {
-    MOONAI_PROFILE_SCOPE("gpu_grid_build", stream);
+    MOONAI_PROFILE_SCOPE("build_grid", stream);
     CUDA_CHECK(cudaMemsetAsync(d_predator_cell_counts_, 0, (cell_count + 1) * sizeof(int), stream));
     CUDA_CHECK(cudaMemsetAsync(d_prey_cell_counts_, 0, (cell_count + 1) * sizeof(int), stream));
     CUDA_CHECK(cudaMemsetAsync(d_food_cell_counts_, 0, (cell_count + 1) * sizeof(int), stream));
@@ -658,7 +658,7 @@ void GpuBatch::launch_build_sensors_async(const GpuStepParams &params, std::size
   }
 
   {
-    MOONAI_PROFILE_SCOPE("gpu_sensor_kernel", stream);
+    MOONAI_PROFILE_SCOPE("sensor_kernel", stream);
     if (predator_count > 0) {
       kernel_build_sensors<true><<<predator_blocks, kThreadsPerBlock, 0, stream>>>(
           predator_buffer_.device_positions_x(), predator_buffer_.device_positions_y(),
@@ -690,9 +690,9 @@ void GpuBatch::launch_build_sensors_async(const GpuStepParams &params, std::size
   check_launch_error();
 }
 
-void GpuBatch::launch_post_inference_async(const GpuStepParams &params, std::size_t predator_count,
-                                           std::size_t prey_count, std::size_t food_count) {
-  MOONAI_PROFILE_SCOPE("gpu_post_inference_async");
+void Batch::launch_post_inference_async(const StepParams &params, std::size_t predator_count, std::size_t prey_count,
+                                        std::size_t food_count) {
+  MOONAI_PROFILE_SCOPE("post_inference");
 
   const cudaStream_t stream = static_cast<cudaStream_t>(stream_);
   const int predator_blocks = (static_cast<int>(predator_count) + kThreadsPerBlock - 1) / kThreadsPerBlock;
@@ -753,25 +753,25 @@ void GpuBatch::launch_post_inference_async(const GpuStepParams &params, std::siz
   check_launch_error();
 }
 
-void GpuBatch::synchronize() {
-  MOONAI_PROFILE_SCOPE("gpu_synchronize");
+void Batch::synchronize() {
+  MOONAI_PROFILE_SCOPE("synchronize");
   const cudaError_t err = cudaStreamSynchronize(static_cast<cudaStream_t>(stream_));
   if (err != cudaSuccess) {
-    spdlog::error("GPU synchronize failed: {}", cudaGetErrorString(err));
+    spdlog::error("CUDA synchronize failed: {}", cudaGetErrorString(err));
     had_error_ = true;
   }
 }
 
-void GpuBatch::mark_error() {
+void Batch::mark_error() {
   had_error_ = true;
 }
 
-void GpuBatch::check_launch_error() {
+void Batch::check_launch_error() {
   const cudaError_t err = cudaGetLastError();
   if (err != cudaSuccess) {
-    spdlog::error("GPU kernel launch failed: {}", cudaGetErrorString(err));
+    spdlog::error("Kernel launch failed: {}", cudaGetErrorString(err));
     mark_error();
   }
 }
 
-} // namespace moonai::gpu
+} // namespace moonai::simulation

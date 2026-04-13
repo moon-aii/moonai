@@ -93,8 +93,8 @@ void AgentRegistry::compact() {
 
     pop_back();
 
-    if (gpu_network_cache) {
-      gpu_network_cache->invalidate();
+    if (inference_cache) {
+      inference_cache->invalidate();
     }
   }
 }

@@ -2,12 +2,12 @@
 
 #include "core/config.hpp"
 #include "core/random.hpp"
-#include "evolution/backends/cuda/gpu_network_cache.hpp"
 #include "evolution/genome.hpp"
+#include "evolution/inference_cache.hpp"
 #include "evolution/mutation.hpp"
 #include "evolution/network_cache.hpp"
 #include "evolution/species.hpp"
-#include "simulation/backends/cuda/gpu_batch.hpp"
+#include "simulation/batch.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -52,7 +52,7 @@ struct AgentRegistry {
   std::vector<Species> species;
   std::vector<Genome> genomes;
   NetworkCache network_cache;
-  std::unique_ptr<gpu::GpuNetworkCache> gpu_network_cache;
+  std::unique_ptr<evolution::InferenceCache> inference_cache;
 
   uint32_t create();
   bool valid(uint32_t entity) const;
@@ -141,7 +141,7 @@ struct AppState {
   MetricsState metrics;
   RuntimeState runtime;
   StepBuffers step_buffers;
-  std::unique_ptr<gpu::GpuBatch> gpu_batch;
+  std::unique_ptr<simulation::Batch> batch;
 };
 
 } // namespace moonai

@@ -2,10 +2,10 @@
 #include "core/app_state.hpp"
 #include "core/profiler_macros.hpp"
 #include "core/types.hpp"
-#include "evolution/backends/cuda/gpu_network_cache.hpp"
 #include "evolution/crossover.hpp"
+#include "evolution/inference_cache.hpp"
 #include "evolution/mutation.hpp"
-#include "simulation/backends/cuda/gpu_batch.hpp"
+#include "simulation/batch.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -15,7 +15,7 @@ namespace moonai {
 
 namespace {
 
-void invalidate_gpu_cache(AgentRegistry &registry);
+void invalidate_inference_cache(AgentRegistry &registry);
 
 } // namespace
 
@@ -29,7 +29,7 @@ void EvolutionManager::initialize_population(AgentRegistry &registry) const {
   registry.species.clear();
   registry.genomes.clear();
   registry.network_cache.clear();
-  invalidate_gpu_cache(registry);
+  invalidate_inference_cache(registry);
 }
 
 void EvolutionManager::initialize(AppState &state, int num_inputs, int num_outputs) {
@@ -46,9 +46,9 @@ using moonai::SENSOR_COUNT;
 
 namespace {
 
-void invalidate_gpu_cache(AgentRegistry &registry) {
-  if (registry.gpu_network_cache) {
-    registry.gpu_network_cache->invalidate();
+void invalidate_inference_cache(AgentRegistry &registry) {
+  if (registry.inference_cache) {
+    registry.inference_cache->invalidate();
   }
 }
 
@@ -136,12 +136,12 @@ private:
 bool EvolutionManager::run_inference(AppState &state) {
   MOONAI_PROFILE_SCOPE("evolution_run_inference");
 
-  if (!state.gpu_batch) {
-    spdlog::error("GPU batch is not initialized for neural inference");
+  if (!state.batch) {
+    spdlog::error("Simulation batch is not initialized for neural inference");
     return false;
   }
 
-  return launch_gpu_neural(state, *state.gpu_batch);
+  return launch_inference(state, *state.batch);
 }
 
 Genome EvolutionManager::create_initial_genome(AgentRegistry &registry, Random &rng) const {
@@ -227,8 +227,8 @@ void EvolutionManager::seed_initial_population(AppState &state) {
     seed_prey();
   }
 
-  invalidate_gpu_cache(state.predator);
-  invalidate_gpu_cache(state.prey);
+  invalidate_inference_cache(state.predator);
+  invalidate_inference_cache(state.prey);
 }
 
 uint32_t EvolutionManager::create_offspring(AppState &state, AgentRegistry &registry, uint32_t parent_a,
@@ -263,7 +263,7 @@ uint32_t EvolutionManager::create_offspring(AppState &state, AgentRegistry &regi
   registry.energy[parent_a] -= config_.reproduction_energy_cost;
   registry.energy[parent_b] -= config_.reproduction_energy_cost;
 
-  invalidate_gpu_cache(registry);
+  invalidate_inference_cache(registry);
 
   return idx;
 }
@@ -324,16 +324,16 @@ void EvolutionManager::refresh_species(AppState &state) {
   refresh_population_species(state.prey);
 }
 
-void EvolutionManager::initialize_gpu(AppState &state) {
-  if (!state.predator.gpu_network_cache) {
-    state.predator.gpu_network_cache = std::make_unique<gpu::GpuNetworkCache>();
+void EvolutionManager::initialize_inference(AppState &state) {
+  if (!state.predator.inference_cache) {
+    state.predator.inference_cache = std::make_unique<evolution::InferenceCache>();
   }
-  if (!state.prey.gpu_network_cache) {
-    state.prey.gpu_network_cache = std::make_unique<gpu::GpuNetworkCache>();
+  if (!state.prey.inference_cache) {
+    state.prey.inference_cache = std::make_unique<evolution::InferenceCache>();
   }
 
-  state.predator.gpu_network_cache->invalidate();
-  state.prey.gpu_network_cache->invalidate();
+  state.predator.inference_cache->invalidate();
+  state.prey.inference_cache->invalidate();
 }
 
 void EvolutionManager::reproduce_population(AppState &state, AgentRegistry &registry) {
@@ -398,53 +398,52 @@ void EvolutionManager::post_step(AppState &state) {
 
 namespace {
 
-bool launch_population_gpu_neural(AgentRegistry &registry, gpu::GpuNetworkCache &gpu_cache,
-                                  gpu::GpuPopulationBuffer &buffer, std::size_t count, cudaStream_t stream) {
-  std::vector<std::pair<uint32_t, int>> network_entities_with_indices;
-  network_entities_with_indices.reserve(count);
+bool launch_population_inference(AgentRegistry &registry, evolution::InferenceCache &cache,
+                                 simulation::PopulationBuffer &buffer, std::size_t count, cudaStream_t stream) {
+  std::vector<std::pair<uint32_t, int>> entities_with_slots;
+  entities_with_slots.reserve(count);
 
   const uint32_t entity_count = static_cast<uint32_t>(count);
   for (uint32_t entity = 0; entity < entity_count; ++entity) {
     if (registry.network_cache.has(entity)) {
-      network_entities_with_indices.emplace_back(entity, static_cast<int>(entity));
+      entities_with_slots.emplace_back(entity, static_cast<int>(entity));
     }
   }
 
-  if (network_entities_with_indices.empty()) {
+  if (entities_with_slots.empty()) {
     return true;
   }
 
-  if (gpu_cache.is_dirty() || gpu_cache.entity_mapping().size() != network_entities_with_indices.size() ||
-      !std::equal(gpu_cache.entity_mapping().begin(), gpu_cache.entity_mapping().end(),
-                  network_entities_with_indices.begin(),
+  if (cache.is_dirty() || cache.entity_mapping().size() != entities_with_slots.size() ||
+      !std::equal(cache.entity_mapping().begin(), cache.entity_mapping().end(), entities_with_slots.begin(),
                   [](uint32_t entity, const std::pair<uint32_t, int> &entity_with_index) {
                     return entity == entity_with_index.first;
                   })) {
-    gpu_cache.build_from(registry.network_cache, network_entities_with_indices);
+    cache.build_from(registry.network_cache, entities_with_slots);
   }
 
-  return gpu_cache.launch_inference_async(buffer.device_sensor_inputs(), buffer.device_brain_outputs(),
-                                          network_entities_with_indices.size(), stream);
+  return cache.launch_inference_async(buffer.device_sensor_inputs(), buffer.device_brain_outputs(),
+                                      entities_with_slots.size(), stream);
 }
 
 } // namespace
-bool EvolutionManager::launch_gpu_neural(AppState &state, gpu::GpuBatch &gpu_batch) {
-  MOONAI_PROFILE_SCOPE("gpu_neural", gpu_batch.stream());
+bool EvolutionManager::launch_inference(AppState &state, simulation::Batch &batch) {
+  MOONAI_PROFILE_SCOPE("neural_inference", batch.stream());
 
-  if (!state.predator.gpu_network_cache || !state.prey.gpu_network_cache) {
-    spdlog::error("GPU neural caches not initialized");
+  if (!state.predator.inference_cache || !state.prey.inference_cache) {
+    spdlog::error("Inference caches are not initialized");
     return false;
   }
 
-  if (!launch_population_gpu_neural(state.predator, *state.predator.gpu_network_cache, gpu_batch.predator_buffer(),
-                                    state.predator.size(), gpu_batch.stream())) {
-    gpu_batch.mark_error();
+  if (!launch_population_inference(state.predator, *state.predator.inference_cache, batch.predator_buffer(),
+                                   state.predator.size(), batch.stream())) {
+    batch.mark_error();
     return false;
   }
 
-  if (!launch_population_gpu_neural(state.prey, *state.prey.gpu_network_cache, gpu_batch.prey_buffer(),
-                                    state.prey.size(), gpu_batch.stream())) {
-    gpu_batch.mark_error();
+  if (!launch_population_inference(state.prey, *state.prey.inference_cache, batch.prey_buffer(), state.prey.size(),
+                                   batch.stream())) {
+    batch.mark_error();
     return false;
   }
 
