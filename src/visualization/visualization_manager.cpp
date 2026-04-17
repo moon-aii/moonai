@@ -97,6 +97,8 @@ void VisualizationManager::render(FrameSnapshot frame) {
   if (frame_.overlay_stats.step != last_chart_step_) {
     overlay_.push_population(frame_.overlay_stats.alive_predator, frame_.overlay_stats.alive_prey,
                              frame_.overlay_stats.active_food);
+    overlay_.push_complexity(frame_.overlay_stats.avg_predator_complexity, frame_.overlay_stats.avg_prey_complexity);
+    overlay_.push_energy(frame_.overlay_stats.avg_predator_energy, frame_.overlay_stats.avg_prey_energy);
     last_chart_step_ = frame_.overlay_stats.step;
   }
 

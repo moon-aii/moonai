@@ -6,11 +6,8 @@ set(MOONAI_EVOLUTION_SOURCES
     mutation.cpp
     crossover.cpp
     network_cache.cpp
+    inference_cache.cu
 )
-
-if(MOONAI_ENABLE_CUDA)
-    list(APPEND MOONAI_EVOLUTION_SOURCES backends/cuda/gpu_network_cache.cu)
-endif()
 
 add_library(moonai_evolution STATIC ${MOONAI_EVOLUTION_SOURCES})
 
@@ -22,9 +19,7 @@ target_link_libraries(moonai_evolution PUBLIC
     moonai_simulation
 )
 
-if(MOONAI_ENABLE_CUDA)
-    set_property(TARGET moonai_evolution PROPERTY CUDA_ARCHITECTURES native)
-endif()
+set_property(TARGET moonai_evolution PROPERTY CUDA_ARCHITECTURES native)
 
 if(MOONAI_BUILD_PROFILER)
     add_library(moonai_evolution_profiler STATIC ${MOONAI_EVOLUTION_SOURCES})
@@ -36,7 +31,5 @@ if(MOONAI_BUILD_PROFILER)
     )
     target_compile_definitions(moonai_evolution_profiler PUBLIC MOONAI_BUILD_PROFILER)
 
-    if(MOONAI_ENABLE_CUDA)
-        set_property(TARGET moonai_evolution_profiler PROPERTY CUDA_ARCHITECTURES native)
-    endif()
+    set_property(TARGET moonai_evolution_profiler PROPERTY CUDA_ARCHITECTURES native)
 endif()

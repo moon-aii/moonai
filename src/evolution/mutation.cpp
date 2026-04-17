@@ -7,8 +7,14 @@
 namespace moonai {
 
 void InnovationTracker::init_from_population(const std::vector<Genome> &population) {
+  innovation_counter_ = 0;
+  node_counter_ = 0;
+  innovation_cache_.clear();
+  split_node_cache_.clear();
+
   for (const auto &genome : population) {
     for (const auto &conn : genome.connections()) {
+      innovation_cache_[std::make_pair(conn.in_node, conn.out_node)] = conn.innovation;
       if (conn.innovation >= innovation_counter_) {
         innovation_counter_ = conn.innovation + 1;
       }
@@ -36,8 +42,16 @@ std::uint32_t InnovationTracker::next_node_id() {
   return node_counter_++;
 }
 
-void InnovationTracker::reset_mutation_window() {
-  innovation_cache_.clear();
+std::uint32_t InnovationTracker::get_split_node_id(std::uint32_t in_node, std::uint32_t out_node) {
+  const auto key = std::make_pair(in_node, out_node);
+  const auto it = split_node_cache_.find(key);
+  if (it != split_node_cache_.end()) {
+    return it->second;
+  }
+
+  const std::uint32_t node_id = next_node_id();
+  split_node_cache_[key] = node_id;
+  return node_id;
 }
 
 void Mutation::mutate_weights(Genome &genome, Random &rng, float power) {
@@ -129,14 +143,27 @@ void Mutation::add_node(Genome &genome, Random &rng, InnovationTracker &tracker,
   float old_weight = conns[idx].weight;
   conns[idx].enabled = false;
 
-  std::uint32_t new_id = tracker.next_node_id();
-  genome.add_node({new_id, NodeType::Hidden});
+  const std::uint32_t new_id = tracker.get_split_node_id(in_id, out_id);
+  if (!genome.has_node(new_id)) {
+    genome.add_node({new_id, NodeType::Hidden});
+  }
 
-  std::uint32_t innov1 = tracker.get_innovation(in_id, new_id);
-  genome.add_connection({in_id, new_id, 1.0f, true, innov1});
+  auto ensure_connection = [&](std::uint32_t from_id, std::uint32_t to_id, float weight, std::uint32_t innovation) {
+    for (auto &conn : conns) {
+      if (conn.in_node == from_id && conn.out_node == to_id) {
+        conn.enabled = true;
+        return;
+      }
+    }
 
-  std::uint32_t innov2 = tracker.get_innovation(new_id, out_id);
-  genome.add_connection({new_id, out_id, old_weight, true, innov2});
+    genome.add_connection({from_id, to_id, weight, true, innovation});
+  };
+
+  const std::uint32_t innov1 = tracker.get_innovation(in_id, new_id);
+  ensure_connection(in_id, new_id, 1.0f, innov1);
+
+  const std::uint32_t innov2 = tracker.get_innovation(new_id, out_id);
+  ensure_connection(new_id, out_id, old_weight, innov2);
 }
 
 void Mutation::delete_connection(Genome &genome, Random &rng) {

@@ -140,12 +140,26 @@ void NeuralNetwork::build_evaluation_order() {
   std::sort(cycle_nodes.begin(), cycle_nodes.end());
   evaluation_order_.insert(evaluation_order_.end(), cycle_nodes.begin(), cycle_nodes.end());
 
+  evaluation_order_indices_.clear();
+  evaluation_order_indices_.reserve(evaluation_order_.size());
+  for (const auto node_id : evaluation_order_) {
+    evaluation_order_indices_.push_back(node_index_.at(node_id));
+  }
+
   incoming_.assign(nodes_.size(), {});
   for (const auto &conn : connections_) {
     auto it_to = node_index_.find(conn.to);
     auto it_from = node_index_.find(conn.from);
     if (it_to != node_index_.end() && it_from != node_index_.end()) {
       incoming_[it_to->second].emplace_back(it_from->second, conn.weight);
+    }
+  }
+
+  output_indices_.clear();
+  output_indices_.reserve(static_cast<std::size_t>(num_outputs_));
+  for (size_t i = 0; i < nodes_.size(); ++i) {
+    if (nodes_[i].type == NodeType::Output) {
+      output_indices_.push_back(static_cast<int>(i));
     }
   }
 }
@@ -185,13 +199,7 @@ std::vector<NeuralNetwork::IncomingConnection> NeuralNetwork::get_incoming_conne
 }
 
 std::vector<int> NeuralNetwork::get_output_indices() const {
-  std::vector<int> indices;
-  for (size_t i = 0; i < nodes_.size(); ++i) {
-    if (nodes_[i].type == NodeType::Output) {
-      indices.push_back(static_cast<int>(i));
-    }
-  }
-  return indices;
+  return output_indices_;
 }
 
 } // namespace moonai

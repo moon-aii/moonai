@@ -1,4 +1,4 @@
-#include "data/logger.hpp"
+#include "metrics/logger.hpp"
 
 #include "core/app_state.hpp"
 #include "evolution/genome.hpp"
@@ -67,9 +67,10 @@ bool Logger::initialize(const SimulationConfig &config) {
     return false;
   }
   stats_file_ << "# master_seed=" << seed_ << "\n";
-  stats_file_ << "step,predator_count,prey_count,births,deaths,"
-                 "predator_species,prey_species,avg_complexity,avg_predator_energy,"
-                 "avg_prey_energy\n";
+  stats_file_ << "step,predator_count,prey_count,predator_births,prey_births,predator_deaths,prey_deaths,"
+                 "predator_species,prey_species,avg_predator_complexity,avg_prey_complexity,avg_predator_energy,"
+                 "avg_prey_energy,max_predator_generation,avg_predator_generation,max_prey_generation,"
+                 "avg_prey_generation\n";
 
   species_file_.open(run_dir_ + "/species.csv");
   if (species_file_.is_open()) {
@@ -90,10 +91,13 @@ void Logger::log_report(const MetricsSnapshot &metrics) {
   if (!stats_file_.is_open()) {
     return;
   }
-  stats_file_ << metrics.step << ',' << metrics.predator_count << ',' << metrics.prey_count << ',' << metrics.births
-              << ',' << metrics.deaths << ',' << metrics.predator_species << ',' << metrics.prey_species << ','
-              << metrics.avg_genome_complexity << ',' << metrics.avg_predator_energy << ',' << metrics.avg_prey_energy
-              << '\n';
+  stats_file_ << metrics.step << ',' << metrics.predator_count << ',' << metrics.prey_count << ','
+              << metrics.predator_births << ',' << metrics.prey_births << ',' << metrics.predator_deaths << ','
+              << metrics.prey_deaths << ',' << metrics.predator_species << ',' << metrics.prey_species << ','
+              << metrics.avg_predator_complexity << ',' << metrics.avg_prey_complexity << ','
+              << metrics.avg_predator_energy << ',' << metrics.avg_prey_energy << ',' << metrics.max_predator_generation
+              << ',' << metrics.avg_predator_generation << ',' << metrics.max_prey_generation << ','
+              << metrics.avg_prey_generation << '\n';
 }
 
 void Logger::log_best_genome(int step, const Genome &genome) {

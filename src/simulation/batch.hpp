@@ -1,7 +1,7 @@
 #pragma once
 
-#include "simulation/backends/cuda/gpu_data_buffer.hpp"
-#include "simulation/backends/cuda/gpu_types.hpp"
+#include "simulation/buffers.hpp"
+#include "simulation/layout.hpp"
 
 #include <cstddef>
 
@@ -9,9 +9,9 @@
 typedef struct CUstream_st *cudaStream_t;
 #endif
 
-namespace moonai::gpu {
+namespace moonai::simulation {
 
-struct GpuStepParams {
+struct StepParams {
   float world_width = 0.0f;
   float world_height = 0.0f;
   float energy_drain_per_step = 0.0f;
@@ -25,44 +25,46 @@ struct GpuStepParams {
   float prey_speed = 0.66f;
 };
 
-class GpuBatch {
+class Batch {
 public:
-  GpuBatch(std::size_t max_predators, std::size_t max_prey, std::size_t max_food);
-  ~GpuBatch();
+  Batch();
+  Batch(std::size_t max_predators, std::size_t max_prey, std::size_t max_food);
+  ~Batch();
 
-  GpuBatch(const GpuBatch &) = delete;
-  GpuBatch &operator=(const GpuBatch &) = delete;
-  GpuBatch(GpuBatch &&) = delete;
-  GpuBatch &operator=(GpuBatch &&) = delete;
+  Batch(const Batch &) = delete;
+  Batch &operator=(const Batch &) = delete;
+  Batch(Batch &&) = delete;
+  Batch &operator=(Batch &&) = delete;
 
-  [[nodiscard]] GpuPopulationBuffer &predator_buffer() {
+  [[nodiscard]] PopulationBuffer &predator_buffer() {
     return predator_buffer_;
   }
-  [[nodiscard]] const GpuPopulationBuffer &predator_buffer() const {
+  [[nodiscard]] const PopulationBuffer &predator_buffer() const {
     return predator_buffer_;
   }
-  [[nodiscard]] GpuPopulationBuffer &prey_buffer() {
+  [[nodiscard]] PopulationBuffer &prey_buffer() {
     return prey_buffer_;
   }
-  [[nodiscard]] const GpuPopulationBuffer &prey_buffer() const {
+  [[nodiscard]] const PopulationBuffer &prey_buffer() const {
     return prey_buffer_;
   }
-  [[nodiscard]] GpuFoodBuffer &food_buffer() {
+  [[nodiscard]] FoodBuffer &food_buffer() {
     return food_buffer_;
   }
-  [[nodiscard]] const GpuFoodBuffer &food_buffer() const {
+  [[nodiscard]] const FoodBuffer &food_buffer() const {
     return food_buffer_;
   }
 
-  void launch_build_sensors_async(const GpuStepParams &params, std::size_t predator_count, std::size_t prey_count,
+  void launch_build_sensors_async(const StepParams &params, std::size_t predator_count, std::size_t prey_count,
                                   std::size_t food_count);
-  void launch_post_inference_async(const GpuStepParams &params, std::size_t predator_count, std::size_t prey_count,
+  void launch_post_inference_async(const StepParams &params, std::size_t predator_count, std::size_t prey_count,
                                    std::size_t food_count);
 
   void upload_async(std::size_t predator_count, std::size_t prey_count, std::size_t food_count);
   void download_async(std::size_t predator_count, std::size_t prey_count, std::size_t food_count);
   void synchronize();
   void mark_error();
+  void ensure_capacity(std::size_t predator_count, std::size_t prey_count, std::size_t food_count);
 
   [[nodiscard]] bool ok() const noexcept {
     return !had_error_;
@@ -82,24 +84,24 @@ public:
   }
 
 private:
-  GpuPopulationBuffer predator_buffer_;
-  GpuPopulationBuffer prey_buffer_;
-  GpuFoodBuffer food_buffer_;
+  PopulationBuffer predator_buffer_;
+  PopulationBuffer prey_buffer_;
+  FoodBuffer food_buffer_;
 
   int *d_predator_cell_counts_ = nullptr;
   int *d_predator_cell_offsets_ = nullptr;
   int *d_predator_cell_write_offsets_ = nullptr;
-  GpuPopulationEntry *d_predator_grid_entries_ = nullptr;
+  PopulationEntry *d_predator_grid_entries_ = nullptr;
 
   int *d_prey_cell_counts_ = nullptr;
   int *d_prey_cell_offsets_ = nullptr;
   int *d_prey_cell_write_offsets_ = nullptr;
-  GpuPopulationEntry *d_prey_grid_entries_ = nullptr;
+  PopulationEntry *d_prey_grid_entries_ = nullptr;
 
   int *d_food_cell_counts_ = nullptr;
   int *d_food_cell_offsets_ = nullptr;
   int *d_food_cell_write_offsets_ = nullptr;
-  GpuFoodEntry *d_food_grid_entries_ = nullptr;
+  FoodEntry *d_food_grid_entries_ = nullptr;
 
   std::size_t grid_cell_capacity_ = 0;
   int grid_cols_ = 0;
@@ -116,4 +118,4 @@ private:
   void check_launch_error();
 };
 
-} // namespace moonai::gpu
+} // namespace moonai::simulation

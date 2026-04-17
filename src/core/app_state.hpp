@@ -3,18 +3,14 @@
 #include "core/config.hpp"
 #include "core/random.hpp"
 #include "evolution/genome.hpp"
+#include "evolution/inference_cache.hpp"
 #include "evolution/mutation.hpp"
 #include "evolution/network_cache.hpp"
 #include "evolution/species.hpp"
-
-#ifdef MOONAI_ENABLE_CUDA
-#include "evolution/backends/cuda/gpu_network_cache.hpp"
-#include "simulation/backends/cuda/gpu_batch.hpp"
-#endif
+#include "simulation/batch.hpp"
 
 #include <cstddef>
 #include <cstdint>
-#include <memory>
 #include <vector>
 
 namespace moonai {
@@ -49,15 +45,13 @@ struct AgentRegistry {
   std::vector<uint8_t> alive;
   std::vector<uint32_t> species_id;
   std::vector<uint32_t> entity_id;
-  std::vector<int> consumption;
+  std::vector<int> generation;
 
   InnovationTracker innovation_tracker;
   std::vector<Species> species;
   std::vector<Genome> genomes;
   NetworkCache network_cache;
-#ifdef MOONAI_ENABLE_CUDA
-  std::unique_ptr<gpu::GpuNetworkCache> gpu_network_cache;
-#endif
+  evolution::InferenceCache inference_cache;
 
   uint32_t create();
   bool valid(uint32_t entity) const;
@@ -79,40 +73,20 @@ struct MetricsSnapshot {
   int active_food = 0;
   int kills = 0;
   int food_eaten = 0;
-  int births = 0;
-  int deaths = 0;
+  int predator_births = 0;
+  int prey_births = 0;
+  int predator_deaths = 0;
+  int prey_deaths = 0;
   int predator_species = 0;
   int prey_species = 0;
-  float avg_genome_complexity = 0.0f;
+  float avg_predator_complexity = 0.0f;
+  float avg_prey_complexity = 0.0f;
   float avg_predator_energy = 0.0f;
   float avg_prey_energy = 0.0f;
-
-  void clear() {
-    *this = {};
-  }
-
-  void clear_events() {
-    kills = 0;
-    food_eaten = 0;
-    births = 0;
-    deaths = 0;
-  }
-
-  void add_events(const MetricsSnapshot &other) {
-    kills += other.kills;
-    food_eaten += other.food_eaten;
-    births += other.births;
-    deaths += other.deaths;
-  }
-};
-
-struct MetricsState {
-  MetricsSnapshot live;
-  MetricsSnapshot step_delta;
-  MetricsSnapshot report_window;
-  MetricsSnapshot totals;
-  MetricsSnapshot last_report;
-  bool has_last_report = false;
+  int max_predator_generation = 0;
+  float avg_predator_generation = 0.0f;
+  int max_prey_generation = 0;
+  float avg_prey_generation = 0.0f;
 };
 
 struct RuntimeState {
@@ -121,7 +95,6 @@ struct RuntimeState {
   Random rng;
   uint32_t next_agent_id = 1;
   int step = 0;
-  bool gpu_enabled = false;
 };
 
 struct StepBuffers {
@@ -144,13 +117,10 @@ struct AppState {
   AgentRegistry prey;
   Food food;
 
-  MetricsState metrics;
+  MetricsSnapshot metrics;
   RuntimeState runtime;
   StepBuffers step_buffers;
-
-#ifdef MOONAI_ENABLE_CUDA
-  std::unique_ptr<gpu::GpuBatch> gpu_batch;
-#endif
+  simulation::Batch batch;
 };
 
 } // namespace moonai

@@ -43,8 +43,6 @@ venv/
 output/
 *.csv
 !analysis/**/*.csv
-.direnv/
-.agents/
 
 # OS files
 .DS_Store

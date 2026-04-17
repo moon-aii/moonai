@@ -3,12 +3,14 @@ cmake_minimum_required(VERSION 3.21)
 # ── Project ──────────────────────────────────────────────────────────────────
 project(MoonAI
     VERSION 0.1.0
-    LANGUAGES CXX
+    LANGUAGES CXX CUDA
 )
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_CUDA_STANDARD 17)
+set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Compiler warnings for all build types (Debug, Release, CI, local)
@@ -26,51 +28,26 @@ endif()
 # ── Options ──────────────────────────────────────────────────────────────────
 option(MOONAI_BUILD_TESTS    "Build unit tests"                 ON)
 option(MOONAI_BUILD_PROFILER "Build profiler executable"        OFF)
-set(MOONAI_CUDA "AUTO" CACHE STRING "CUDA build mode: AUTO, ON, or OFF")
-set_property(CACHE MOONAI_CUDA PROPERTY STRINGS AUTO ON OFF)
 
-# ── CUDA auto-detection ───────────────────────────────────────────────────────
-# AUTO uses nvcc when present. OFF forces CPU-only CI/release builds.
-if(MOONAI_CUDA STREQUAL "OFF")
-    set(MOONAI_ENABLE_CUDA OFF)
-    message(STATUS "CUDA disabled by MOONAI_CUDA=OFF — building CPU-only.")
-else()
-    include(CheckLanguage)
-    check_language(CUDA)
-
-    if(CMAKE_CUDA_COMPILER)
-        enable_language(CUDA)
-        set(CMAKE_CUDA_STANDARD 17)
-        set(CMAKE_CUDA_STANDARD_REQUIRED ON)
-        set(MOONAI_ENABLE_CUDA ON)
-        message(STATUS "CUDA enabled: ${CMAKE_CUDA_COMPILER}")
-    elseif(MOONAI_CUDA STREQUAL "ON")
-        message(FATAL_ERROR "MOONAI_CUDA=ON but no CUDA compiler was found")
-    else()
-        set(MOONAI_ENABLE_CUDA OFF)
-        message(STATUS "CUDA not found — building CPU-only.")
-    endif()
-endif()
+message(STATUS "CUDA compiler: ${CMAKE_CUDA_COMPILER}")
 
 add_library(moonai_build_config INTERFACE)
 
-if(MOONAI_ENABLE_CUDA)
-    target_compile_definitions(moonai_build_config INTERFACE MOONAI_ENABLE_CUDA)
-    target_include_directories(moonai_build_config INTERFACE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
-endif()
-
 # ── Dependencies ─────────────────────────────────────────────────────────────
+find_package(CUDAToolkit REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 find_package(SFML 3 COMPONENTS Graphics Window System REQUIRED)
 find_package(sol2 CONFIG REQUIRED)
 find_package(Lua REQUIRED)
 
+target_link_libraries(moonai_build_config INTERFACE CUDA::cudart)
+
 # ── Subsystem libraries ─────────────────────────────────────────────────────
 add_subdirectory(src/core)
 add_subdirectory(src/simulation)
 add_subdirectory(src/evolution)
-add_subdirectory(src/data)
+add_subdirectory(src/metrics)
 add_subdirectory(src/visualization)
 add_subdirectory(src/app)
 
@@ -83,6 +60,7 @@ if(MOONAI_BUILD_PROFILER)
   add_executable(moonai_profiler src/profiler_main.cpp)
 
   target_link_libraries(moonai_profiler PRIVATE moonai_app_profiler)
+  target_compile_definitions(moonai_profiler PRIVATE MOONAI_BUILD_PROFILER)
 endif()
 
 # ── Copy runtime assets to build directory ───────────────────────────────────

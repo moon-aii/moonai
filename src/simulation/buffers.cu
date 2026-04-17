@@ -1,17 +1,17 @@
-#include "simulation/backends/cuda/cuda_utils.cuh"
-#include "simulation/backends/cuda/gpu_data_buffer.hpp"
+#include "simulation/buffers.hpp"
+#include "simulation/checks.cuh"
 
-namespace moonai::gpu {
+namespace moonai::simulation {
 
-GpuPopulationBuffer::GpuPopulationBuffer(std::size_t max_agents) : capacity_(max_agents) {
+PopulationBuffer::PopulationBuffer(std::size_t max_agents) : capacity_(max_agents) {
   allocate_buffers();
 }
 
-GpuPopulationBuffer::~GpuPopulationBuffer() {
+PopulationBuffer::~PopulationBuffer() {
   free_buffers();
 }
 
-void GpuPopulationBuffer::allocate_buffers() {
+void PopulationBuffer::allocate_buffers() {
   if (capacity_ == 0) {
     return;
   }
@@ -46,7 +46,7 @@ void GpuPopulationBuffer::allocate_buffers() {
   CUDA_CHECK(cudaMalloc(&d_brain_outputs_, brain_bytes));
 }
 
-void GpuPopulationBuffer::free_buffers() {
+void PopulationBuffer::free_buffers() {
   if (h_pos_x_)
     cudaFreeHost(h_pos_x_);
   if (h_pos_y_)
@@ -90,9 +90,32 @@ void GpuPopulationBuffer::free_buffers() {
     cudaFree(d_sensor_inputs_);
   if (d_brain_outputs_)
     cudaFree(d_brain_outputs_);
+
+  h_pos_x_ = nullptr;
+  h_pos_y_ = nullptr;
+  h_vel_x_ = nullptr;
+  h_vel_y_ = nullptr;
+  h_energy_ = nullptr;
+  h_age_ = nullptr;
+  h_alive_ = nullptr;
+  h_kill_counts_ = nullptr;
+  h_claimed_by_ = nullptr;
+  h_brain_outputs_ = nullptr;
+
+  d_pos_x_ = nullptr;
+  d_pos_y_ = nullptr;
+  d_vel_x_ = nullptr;
+  d_vel_y_ = nullptr;
+  d_energy_ = nullptr;
+  d_age_ = nullptr;
+  d_alive_ = nullptr;
+  d_kill_counts_ = nullptr;
+  d_claimed_by_ = nullptr;
+  d_sensor_inputs_ = nullptr;
+  d_brain_outputs_ = nullptr;
 }
 
-void GpuPopulationBuffer::upload_async(std::size_t count, cudaStream_t stream) {
+void PopulationBuffer::upload_async(std::size_t count, cudaStream_t stream) {
   if (count == 0 || count > capacity_) {
     return;
   }
@@ -110,7 +133,7 @@ void GpuPopulationBuffer::upload_async(std::size_t count, cudaStream_t stream) {
   CUDA_CHECK(cudaMemcpyAsync(d_alive_, h_alive_, u32_bytes, cudaMemcpyHostToDevice, stream));
 }
 
-void GpuPopulationBuffer::download_async(std::size_t count, cudaStream_t stream) {
+void PopulationBuffer::download_async(std::size_t count, cudaStream_t stream) {
   if (count == 0 || count > capacity_) {
     return;
   }
@@ -129,19 +152,28 @@ void GpuPopulationBuffer::download_async(std::size_t count, cudaStream_t stream)
   CUDA_CHECK(cudaMemcpyAsync(h_alive_, d_alive_, u32_bytes, cudaMemcpyDeviceToHost, stream));
   CUDA_CHECK(cudaMemcpyAsync(h_kill_counts_, d_kill_counts_, u32_bytes, cudaMemcpyDeviceToHost, stream));
   CUDA_CHECK(cudaMemcpyAsync(h_claimed_by_, d_claimed_by_, int_bytes, cudaMemcpyDeviceToHost, stream));
-  // Sensor inputs are device-only, not downloaded
   CUDA_CHECK(cudaMemcpyAsync(h_brain_outputs_, d_brain_outputs_, brain_bytes, cudaMemcpyDeviceToHost, stream));
 }
 
-GpuFoodBuffer::GpuFoodBuffer(std::size_t max_food) : capacity_(max_food) {
+void PopulationBuffer::reset(std::size_t capacity) {
+  if (capacity == capacity_) {
+    return;
+  }
+
+  free_buffers();
+  capacity_ = capacity;
   allocate_buffers();
 }
 
-GpuFoodBuffer::~GpuFoodBuffer() {
+FoodBuffer::FoodBuffer(std::size_t max_food) : capacity_(max_food) {
+  allocate_buffers();
+}
+
+FoodBuffer::~FoodBuffer() {
   free_buffers();
 }
 
-void GpuFoodBuffer::allocate_buffers() {
+void FoodBuffer::allocate_buffers() {
   if (capacity_ == 0) {
     return;
   }
@@ -161,7 +193,7 @@ void GpuFoodBuffer::allocate_buffers() {
   CUDA_CHECK(cudaMalloc(&d_consumed_by_, int_bytes));
 }
 
-void GpuFoodBuffer::free_buffers() {
+void FoodBuffer::free_buffers() {
   if (h_pos_x_)
     cudaFreeHost(h_pos_x_);
   if (h_pos_y_)
@@ -179,9 +211,19 @@ void GpuFoodBuffer::free_buffers() {
     cudaFree(d_active_);
   if (d_consumed_by_)
     cudaFree(d_consumed_by_);
+
+  h_pos_x_ = nullptr;
+  h_pos_y_ = nullptr;
+  h_active_ = nullptr;
+  h_consumed_by_ = nullptr;
+
+  d_pos_x_ = nullptr;
+  d_pos_y_ = nullptr;
+  d_active_ = nullptr;
+  d_consumed_by_ = nullptr;
 }
 
-void GpuFoodBuffer::upload_async(std::size_t count, cudaStream_t stream) {
+void FoodBuffer::upload_async(std::size_t count, cudaStream_t stream) {
   if (count == 0 || count > capacity_) {
     return;
   }
@@ -196,7 +238,7 @@ void GpuFoodBuffer::upload_async(std::size_t count, cudaStream_t stream) {
   CUDA_CHECK(cudaMemcpyAsync(d_consumed_by_, h_consumed_by_, int_bytes, cudaMemcpyHostToDevice, stream));
 }
 
-void GpuFoodBuffer::download_async(std::size_t count, cudaStream_t stream) {
+void FoodBuffer::download_async(std::size_t count, cudaStream_t stream) {
   if (count == 0 || count > capacity_) {
     return;
   }
@@ -211,4 +253,14 @@ void GpuFoodBuffer::download_async(std::size_t count, cudaStream_t stream) {
   CUDA_CHECK(cudaMemcpyAsync(h_consumed_by_, d_consumed_by_, int_bytes, cudaMemcpyDeviceToHost, stream));
 }
 
-} // namespace moonai::gpu
+void FoodBuffer::reset(std::size_t capacity) {
+  if (capacity == capacity_) {
+    return;
+  }
+
+  free_buffers();
+  capacity_ = capacity;
+  allocate_buffers();
+}
+
+} // namespace moonai::simulation

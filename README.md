@@ -32,12 +32,11 @@ The platform enables researchers to:
 ## Key Features
 
 - **Entity-Component-System Architecture** - Data-oriented design with sparse-set ECS, cache-friendly SoA memory layouts, and 5-10x performance improvement
-- **Domain-Owned CUDA Backends** - CUDA code lives with the subsystem it accelerates (`simulation/backends/cuda` and `evolution/backends/cuda`), while CPU-only builds compile the CUDA path out cleanly
 - **NEAT Implementation** - Evolves both topology and weights of neural networks simultaneously
 - **Real-Time Visualization** - SFML-based rendering with interactive controls and live NN activation display
-- **GPU Acceleration** - CUDA backend for sensing, neural inference, and simulation systems on GPU at large populations; available in both visual and headless modes with runtime CPU fallback
+- **GPU Acceleration** - CUDA backend for sensing, neural inference, and simulation systems in both visual and headless modes
 - **Cross-Platform** - Runs on Linux and Windows with matched features and stable runtime behavior
-- **Reproducible Experiments** - Seeded RNG with deterministic behavior within each execution backend; CPU and GPU runs are kept numerically close but are not bit-exact twins
+- **Reproducible Experiments** - Seeded RNG with deterministic behavior within the CUDA execution path on a fixed runtime environment
 - **Lua Configuration** - Define named experiments and parameter sweeps in `config.lua` without recompilation
 - **Data Export** - CSV/JSON output (including optional per-step trajectories) compatible with Python analysis tools
 
@@ -94,7 +93,7 @@ ECS solves these with:
 |-----------|---------|---------|-------------|
 | `src/core/` | OOP | `moonai_core` | Foundation code: shared types, config, Lua runtime, deterministic helpers, seeded RNG |
 | `src/app/` | OOP | `moonai_app` | Application orchestration, main loop, runtime lifecycle, top-level step flow |
-| `src/data/` | OOP | `moonai_data` | Metrics aggregation, CSV/JSON logging, report snapshots |
+| `src/metrics/` | OOP | `moonai_metrics` | Metrics aggregation, CSV/JSON logging, report snapshots |
 | `src/simulation/` | **ECS** | `moonai_simulation` | Sparse-set registry, SoA components, movement/sensing/combat/energy systems, spatial grid, and simulation CUDA backend |
 | `src/evolution/` | OOP | `moonai_evolution` | NEAT genome, neural network, NetworkCache, speciation, mutation, crossover, and neural inference CUDA backend |
 | `src/visualization/` | OOP | `moonai_visualization` | SFML window, renderer, and UI overlay |
@@ -119,7 +118,7 @@ MoonAI achieves high performance through data-oriented ECS architecture:
 | vcpkg | latest | Yes |
 | just | any | Recommended |
 | SFML | 3.x | Yes (via vcpkg) |
-| CUDA Toolkit | 11.0+ | Optional (`MOONAI_CUDA=AUTO` detects it, `MOONAI_CUDA=OFF` forces CPU-only) |
+| CUDA Toolkit | 11.0+ | Yes |
 | Python | 3.10+ with uv | For analysis only |
 
 ## Quick Start
@@ -152,16 +151,6 @@ cmake --preset linux-debug
 cmake --build build/linux-debug --parallel
 ```
 
-Force a CPU-only build:
-```bash
-cmake -B build/linux-debug-cpu \
-  -G Ninja \
-  -DCMAKE_BUILD_TYPE=Debug \
-  -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
-  -DMOONAI_CUDA=OFF
-cmake --build build/linux-debug-cpu --parallel
-```
-
 Run `just --list` to see all available commands.
 
 ### 4. Run the simulation
@@ -172,22 +161,17 @@ just run
 
 ## Build
 
-There is one build type — it always bundles SFML visualization. CUDA support is controlled at configure time:
+There is one build type — it always bundles SFML visualization and requires CUDA at configure time:
 
 | Command | Description |
 |---------|-------------|
 | `just build` | Debug build |
 | `just release` | Optimized release build |
 
-`MOONAI_CUDA=AUTO` is the default and enables CUDA when `nvcc` is available. `MOONAI_CUDA=ON` requires CUDA and fails configure if it is unavailable. `MOONAI_CUDA=OFF` builds a CPU-only binary and compiles CUDA-specific code paths out entirely.
-
-Official GitHub CI and release binaries use `MOONAI_CUDA=OFF`. CUDA support is available from source builds on CUDA-capable machines.
-
 ### CMake Options
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `MOONAI_CUDA` | `AUTO` | `AUTO` detects CUDA, `ON` requires it, `OFF` forces CPU-only and compiles out CUDA paths |
 | `MOONAI_BUILD_TESTS` | `ON` | Build unit tests |
 | `MOONAI_BUILD_PROFILER` | `OFF` | Build profiler executable |
 
@@ -204,7 +188,7 @@ Official GitHub CI and release binaries use `MOONAI_CUDA=OFF`. CUDA support is a
 | Right-click drag | Pan camera |
 | Scroll wheel | Zoom |
 
-When an agent is selected, its **vision range** (semi-transparent circle), **sensor lines** (connections to nearby agents and food), and **stats panel** (bottom-left) are automatically displayed. The agent controller currently receives 12 inputs: nearest predator/prey/food as normalized `dx, dy`, energy, velocity `x/y`, and local predator/prey/food density. The **Network panel** (top-right) shows its topology with nodes colored by live activation value: blue (inactive, −1) → gray (zero) → orange (active, +1).
+When an agent is selected, its **vision range** (semi-transparent circle), **sensor lines** (connections to nearby agents and food), and **stats panel** (bottom-left) are automatically displayed. The agent controller currently receives 35 inputs: the 5 closest predators, prey, and food items as signed proximity-weighted `dx, dy` pairs, plus self energy, velocity `x/y`, and signed wall proximity on `x/y`. Missing targets are encoded as `0`, and closer objects produce larger absolute values in `[-1, 1]`. The **Network panel** (top-right) shows its topology with nodes colored by live activation value: blue (inactive, −1) → gray (zero) → orange (active, +1).
 
 ## Configuration
 
@@ -247,7 +231,7 @@ experiments["default"] = moonai_defaults  -- auto-selected by 'just run'
 return experiments
 ```
 
-A single-entry file auto-selects without `--experiment`. The `default` entry (2000 agents) serves as the everyday run config with GPU auto-enabled.
+A single-entry file auto-selects without `--experiment`. The `default` entry (2000 agents) serves as the everyday run config.
 
 ### CLI flags
 
@@ -257,7 +241,6 @@ A single-entry file auto-selects without `--experiment`. The `default` entry (20
 | `-n, --steps <n>` | Override max steps (`0` = infinite) |
 | `--headless` | Run without visualization |
 | `-v, --verbose` | Enable debug logging |
-| `--no-gpu` | Force CPU path even when CUDA is available |
 | `--experiment <name>` | Select one experiment by name |
 | `--all` | Run all experiments sequentially (headless only) |
 | `--list` | List experiment names and exit |
@@ -270,8 +253,6 @@ A single-entry file auto-selects without `--experiment`. The `default` entry (20
 ```bash
 just run                                              # GUI with default config
 just run -- --headless                                # Headless mode
-just run -- --no-gpu                                  # Force CPU-only
-just run -- --headless --no-gpu                       # Server mode (no display/GPU)
 just run -- --experiment mut_low_seed42 --headless    # One experiment
 just run-release -- --all --headless                  # Full batch (release build)
 ```
@@ -300,7 +281,7 @@ just list-experiments       # shows all experiments in config.lua
 
 **3. Run experiments**
 ```bash
-just experiment-run         # 66 conditions × 5 seeds × 200 report windows → output/
+just experiment-run         # 275 seeded runs + default entry → output/
 ```
 
 **4. Set up Python and generate analysis**
@@ -316,7 +297,7 @@ Each run writes to `output/{experiment_name}/` (named experiments) or `output/YY
 | File | Contents |
 |------|----------|
 | `config.json` | Full config snapshot for this run |
-| `stats.csv` | One row per report window: `step, predator_count, prey_count, births, deaths, predator_species, prey_species, avg_complexity, avg_predator_energy, avg_prey_energy` |
+| `stats.csv` | One row per report interval sample with current state plus cumulative event totals: `step, predator_count, prey_count, predator_births, prey_births, predator_deaths, prey_deaths, predator_species, prey_species, avg_predator_complexity, avg_prey_complexity, avg_predator_energy, avg_prey_energy, max_predator_generation, avg_predator_generation, max_prey_generation, avg_prey_generation` |
 | `species.csv` | One row per species per generation: `step, population, species_id, size, avg_complexity` |
 | `genomes.json` | Representative genome snapshots (nodes + connections JSON) |
 
@@ -357,7 +338,7 @@ The analysis code is structured as a small package under `analysis/moonai_analys
 
 ### Experiment conditions
 
-66 conditions defined in `config.lua` across 9 groups, each × 5 seeds = **330 deterministic runs**.
+55 conditions defined in `config.lua` across 9 groups, each × 5 seeds = **275 seeded runs**, plus the unseeded `default` entry.
 
 The default baseline is 2000 agents (500 predators, 1500 prey) on a 3000×3000 square world with 1500 steps per report window. Scaled experiments use `scale_base()` to maintain agent density by proportionally adjusting world size and food count.
 
@@ -375,7 +356,6 @@ The default baseline is 2000 agents (500 predators, 1500 prey) on a 3000×3000 s
 
 Experiments with 5K+ agents require significant compute. Recommendations:
 
-- **GPU strongly recommended** for populations >= 2000 (auto-enabled when CUDA is available)
 - **Release build** (`just release`) for 2-5x faster simulation
 - **Headless mode** (`--headless`) disables gui for maximum throughput
 - **Memory**: ~4 GB RAM for 10K agents, ~8 GB for 20K agents
@@ -392,7 +372,6 @@ The profiler executable is available but not built by default (set `MOONAI_BUILD
 just profile-run                                     # Run with defaults (300 frames, 6 seeds)
 just profile-run --frames 300                        # Custom frame count
 just profile-run --name mytest --output-dir results  # Custom name and output
-just profile-run --frames 300 --no-gpu               # Custom frame count, disable GPU
 ```
 
 **CLI Arguments:**
@@ -402,7 +381,6 @@ just profile-run --frames 300 --no-gpu               # Custom frame count, disab
 | `--frames N` | 300 | Number of frames to capture per run |
 | `--name <name>` | profile | Experiment name (used in output filename) |
 | `--output-dir <path>` | output/profiles | Output directory |
-| `--no-gpu` | false | Disable GPU acceleration |
 
 Each profiler run writes a single JSON file to `output/profiles/`:
 
@@ -456,13 +434,13 @@ MoonAI follows the **LLVM coding style** (2-space indentation, LLVM brace breaki
   - 2-space indentation
   - 120 column limit
   - Attached braces
-  - Right-aligned pointers/references
+  - Left-aligned pointers/references
 
 #### Code Style Conventions
 
 | Convention | Rule |
 |------------|------|
-| Namespace | `moonai` (CUDA internals: `moonai::gpu`) |
+| Namespace | `moonai` |
 | Include paths | Relative to `src/`: `#include "core/types.hpp"` |
 | Header guards | `#pragma once` |
 | Member variables | Trailing underscore: `speed_`, `position_` |
@@ -485,11 +463,9 @@ moonai/
 │   ├── profiler_main.cpp       # Profiler executable entry point
 │   ├── app/                    # Application orchestration layer
 │   ├── core/                   # Foundation code: types, config, Lua runtime, RNG
-│   ├── data/                   # Metrics aggregation and CSV/JSON logging
+│   ├── metrics/                # Metrics aggregation and CSV/JSON logging
 │   ├── simulation/             # ECS-based simulation core
-│   │   └── backends/cuda/      # CUDA backend for simulation systems
 │   ├── evolution/              # NEAT evolution implementation
-│   │   └── backends/cuda/      # CUDA backend for neural inference/cache
 │   └── visualization/          # SFML rendering and UI
 ├── tests/                      # Google Test unit tests
 ├── analysis/                   # Python simulation analysis package

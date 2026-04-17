@@ -10,10 +10,6 @@ struct Vec2 {
   float x = 0.0f;
   float y = 0.0f;
 
-  Vec2 operator-(const Vec2 &other) const {
-    return {x - other.x, y - other.y};
-  }
-
   float length() const {
     return std::sqrt(x * x + y * y);
   }
@@ -22,7 +18,7 @@ struct Vec2 {
 constexpr uint32_t INVALID_ENTITY = std::numeric_limits<uint32_t>::max();
 
 // Agent neural network topology constants
-inline constexpr int SENSOR_COUNT = 14;
+inline constexpr int SENSOR_COUNT = 35;
 inline constexpr int OUTPUT_COUNT = 2;
 
 } // namespace moonai

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/types.hpp"
+
 #include <cstddef>
 #include <cstdint>
 
@@ -9,17 +11,17 @@
 typedef struct CUstream_st *cudaStream_t;
 #endif
 
-namespace moonai::gpu {
+namespace moonai::simulation {
 
-class GpuPopulationBuffer {
+class PopulationBuffer {
 public:
-  explicit GpuPopulationBuffer(std::size_t max_agents);
-  ~GpuPopulationBuffer();
+  explicit PopulationBuffer(std::size_t max_agents);
+  ~PopulationBuffer();
 
-  GpuPopulationBuffer(const GpuPopulationBuffer &) = delete;
-  GpuPopulationBuffer &operator=(const GpuPopulationBuffer &) = delete;
-  GpuPopulationBuffer(GpuPopulationBuffer &&) = delete;
-  GpuPopulationBuffer &operator=(GpuPopulationBuffer &&) = delete;
+  PopulationBuffer(const PopulationBuffer &) = delete;
+  PopulationBuffer &operator=(const PopulationBuffer &) = delete;
+  PopulationBuffer(PopulationBuffer &&) = delete;
+  PopulationBuffer &operator=(PopulationBuffer &&) = delete;
 
   [[nodiscard]] float *host_positions_x() const noexcept {
     return h_pos_x_;
@@ -88,6 +90,7 @@ public:
 
   void upload_async(std::size_t count, cudaStream_t stream);
   void download_async(std::size_t count, cudaStream_t stream);
+  void reset(std::size_t capacity);
 
   [[nodiscard]] std::size_t capacity() const noexcept {
     return capacity_;
@@ -122,19 +125,19 @@ private:
 
   std::size_t capacity_;
 
-  static constexpr int kSensorInputsPerEntity = 12;
-  static constexpr int kBrainOutputsPerEntity = 2;
+  static constexpr int kSensorInputsPerEntity = SENSOR_COUNT;
+  static constexpr int kBrainOutputsPerEntity = OUTPUT_COUNT;
 };
 
-class GpuFoodBuffer {
+class FoodBuffer {
 public:
-  explicit GpuFoodBuffer(std::size_t max_food);
-  ~GpuFoodBuffer();
+  explicit FoodBuffer(std::size_t max_food);
+  ~FoodBuffer();
 
-  GpuFoodBuffer(const GpuFoodBuffer &) = delete;
-  GpuFoodBuffer &operator=(const GpuFoodBuffer &) = delete;
-  GpuFoodBuffer(GpuFoodBuffer &&) = delete;
-  GpuFoodBuffer &operator=(GpuFoodBuffer &&) = delete;
+  FoodBuffer(const FoodBuffer &) = delete;
+  FoodBuffer &operator=(const FoodBuffer &) = delete;
+  FoodBuffer(FoodBuffer &&) = delete;
+  FoodBuffer &operator=(FoodBuffer &&) = delete;
 
   [[nodiscard]] float *host_positions_x() const noexcept {
     return h_pos_x_;
@@ -164,6 +167,7 @@ public:
 
   void upload_async(std::size_t count, cudaStream_t stream);
   void download_async(std::size_t count, cudaStream_t stream);
+  void reset(std::size_t capacity);
 
   [[nodiscard]] std::size_t capacity() const noexcept {
     return capacity_;
@@ -186,4 +190,4 @@ private:
   std::size_t capacity_;
 };
 
-} // namespace moonai::gpu
+} // namespace moonai::simulation
