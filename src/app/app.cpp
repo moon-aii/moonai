@@ -174,29 +174,23 @@ bool App::run() {
       }
     }
 
-    if (failed) {
-      break;
-    }
-
     if (!cfg_.headless) {
       visualization_->render(build_frame_snapshot(state_, cfg_));
     }
   }
 
   logger_.flush();
-
-  if (failed) {
-    spdlog::error("Simulation step failed");
-    return false;
-  }
-
-  if (!completed) {
-    spdlog::info("Simulation stopped by user (window closed)");
-  }
-
   spdlog::info("Output saved to: {}", logger_.run_dir());
 
-  return completed;
+  if (failed) {
+    spdlog::error("Simulation step failed.");
+  } else if (!completed) {
+    spdlog::info("Simulation stopped by user (window closed).");
+  } else {
+    spdlog::info("Simulation ended with 'max_steps'.");
+  }
+
+  return !failed;
 }
 
 } // namespace moonai

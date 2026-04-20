@@ -74,7 +74,7 @@ void VisualizationManager::render(FrameSnapshot frame) {
   {
     MOONAI_PROFILE_SCOPE("render_world");
     renderer_.draw_background(*window_, frame_.world_width, frame_.world_height);
-    renderer_.draw_grid(*window_, frame_.world_width, frame_.world_height, 500.0f);
+    renderer_.draw_grid(*window_, frame_.world_width, frame_.world_height, 300.0f);
     renderer_.draw_boundaries(*window_, frame_.world_width, frame_.world_height);
     renderer_.draw_food(*window_, frame_.foods);
   }

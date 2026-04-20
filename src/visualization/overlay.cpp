@@ -360,7 +360,7 @@ void UIOverlay::draw(sf::RenderTarget &target, const OverlayStats &stats, const 
     draw_text(target, buf, sx, sy, 14, sf::Color(ui::TITLE_R, ui::TITLE_G, ui::TITLE_B));
     sy += line_h;
 
-    std::snprintf(buf, sizeof(buf), "Energy: %.1f  Age: %d", stats.selected_energy, stats.selected_age);
+    std::snprintf(buf, sizeof(buf), "Energy: %.2f  Age: %d", stats.selected_energy, stats.selected_age);
     draw_text(target, buf, sx, sy, 13);
     sy += line_h;
 
@@ -428,7 +428,7 @@ void UIOverlay::draw_right_column(sf::RenderTarget &target, const OverlayStats &
 
   // Stats widget: Population counts, species, energy, complexity, events, and generation
   draw_stats_widget(target, stats, x, y, PANEL_WIDTH, 400.0f);
-  y += 400.0f + MARGIN;
+  y += 384.0f + MARGIN;
 
   // Population chart
   draw_population_chart(target, x, y, PANEL_WIDTH, 180.0f);
@@ -513,7 +513,7 @@ void UIOverlay::draw_stats_widget(sf::RenderTarget &target, const OverlayStats &
   draw_text(target, buf, tx, ty, 13, sf::Color::White);
   ty += line_h;
 
-  std::snprintf(buf, sizeof(buf), "  Energy: %.1f", stats.avg_predator_energy);
+  std::snprintf(buf, sizeof(buf), "  Energy: %.2f", stats.avg_predator_energy);
   draw_text(target, buf, tx, ty, 13, sf::Color::White);
   ty += line_h;
 
@@ -546,7 +546,7 @@ void UIOverlay::draw_stats_widget(sf::RenderTarget &target, const OverlayStats &
   draw_text(target, buf, tx, ty, 13, sf::Color::White);
   ty += line_h;
 
-  std::snprintf(buf, sizeof(buf), "  Energy: %.1f", stats.avg_prey_energy);
+  std::snprintf(buf, sizeof(buf), "  Energy: %.2f", stats.avg_prey_energy);
   draw_text(target, buf, tx, ty, 13, sf::Color::White);
   ty += line_h;
 
@@ -696,7 +696,7 @@ void UIOverlay::draw_energy_chart(sf::RenderTarget &target, float x, float y, fl
   float inner_h = h - 28.0f;
 
   // Find max energy for scaling
-  float max_energy = 100.0f;
+  float max_energy = 2.0f;
   for (const auto &t : energy_history_) {
     max_energy = std::max(max_energy, std::max(std::get<0>(t), std::get<1>(t)));
   }
