@@ -26,7 +26,7 @@ jobs:
       - name: Assemble site
         run: |
           mkdir -p _site
-          cp -r web/. _site/
+          cp -r docs/web/. _site/
           mkdir -p _site/docs/reports
           cp docs/reports/*.pdf _site/docs/reports/
 

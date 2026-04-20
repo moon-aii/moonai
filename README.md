@@ -454,7 +454,8 @@ moonai/
 ├── tests/                      # Google Test unit tests
 ├── analysis/                   # Python simulation analysis package
 ├── profiler/                   # Python profiler analysis package
-├── docs/reports/               # Project documents
-├── web/                        # GitHub Pages website
+├── docs/                       # Documentation
+│   ├── web/                    # GitHub Pages website
+│   └── reports/                # Project reports
 └── .github/workflows/          # CI/CD pipelines
 ```
