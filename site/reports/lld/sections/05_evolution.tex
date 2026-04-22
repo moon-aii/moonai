@@ -1,0 +1,409 @@
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Evolution Package (\texttt{src/evolution/})}
+\label{sec:evolution}
+% ─────────────────────────────────────────────────────────────────────────────
+
+The evolution package implements the NEAT algorithm: genome representation, neural
+network construction and inference, speciation, mutation, crossover, and the generation
+evaluation loop.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{evolution_classes}
+  \caption{Evolution package class diagram.}
+  \label{fig:evo}
+\end{figure}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsection{\texttt{NodeType} (enum class)}
+
+\begin{lstlisting}
+enum class NodeType { Input, Hidden, Output, Bias };
+\end{lstlisting}
+
+\texttt{Bias} nodes have a fixed activation of 1.0 and appear in every initial genome.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsection{\texttt{NodeGene} and \texttt{ConnectionGene} (structs)}
+
+\begin{table}[H]
+\centering\small
+\caption{Gene struct fields}
+\begin{tabularx}{\textwidth}{@{}lllX@{}}
+\toprule
+\textbf{Struct} & \textbf{Field} & \textbf{Type} & \textbf{Description} \\
+\midrule
+\texttt{NodeGene}       & \texttt{id}         & \texttt{uint32\_t} & Global node identifier \\
+                        & \texttt{type}       & \texttt{NodeType}  & Input/Hidden/Output/Bias \\
+\midrule
+\texttt{ConnectionGene} & \texttt{in\_node}   & \texttt{uint32\_t} & Source node id \\
+                        & \texttt{out\_node}  & \texttt{uint32\_t} & Target node id \\
+                        & \texttt{weight}     & \texttt{float}     & Synaptic weight \\
+                        & \texttt{enabled}    & \texttt{bool}      & False = structurally present but not expressed \\
+                        & \texttt{innovation} & \texttt{uint32\_t} & Historical marking for alignment during crossover \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsection{\texttt{Genome} (class)}
+
+Encodes a variable-topology neural network as gene lists.
+
+\begin{table}[H]
+\centering\small
+\caption{\texttt{Genome} interface}
+\begin{tabularx}{\textwidth}{@{}p{8.4cm}X@{}}
+\toprule
+\textbf{Method} & \textbf{Description} \\
+\midrule
+\texttt{Genome(num\_inputs, num\_outputs)} & Create minimal genome (inputs + bias + outputs; no hidden) \\
+\texttt{add\_node(node)} & Append \texttt{NodeGene} \\
+\texttt{add\_connection(conn)} & Append \texttt{ConnectionGene} \\
+\texttt{has\_connection(from, to)} & Check structural connectivity \\
+\texttt{has\_node(id)} & Membership test \\
+\texttt{max\_node\_id()} & Largest node id in genome \\
+\texttt{nodes()} & Gene list accessors \\
+\texttt{connections()} & Gene list accessors \\
+\texttt{fitness() / set\_fitness(f)} & Raw fitness from evaluation \\
+\texttt{adjusted\_fitness() / set\_adjusted\_fitness(f)} & Shared fitness (divided by species size) \\
+\texttt{num\_inputs(), num\_outputs()} & Topology constants \\
+\texttt{complexity()} & \texttt{nodes\_.size() + enabled\_connection\_count} \\
+\texttt{compatibility\_distance(a,b,c1,c2,c3)} & Static; compatibility metric (see below) \\
+\texttt{to\_json()} & Serialize to JSON string \\
+\texttt{from\_json(str)} & Static factory from JSON string \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsubsection{Compatibility Distance Algorithm}
+
+Defined by Stanley \& Miikkulainen~\cite{stanley2002}:
+\[
+  \delta = \frac{c_1 \cdot E + c_2 \cdot D}{\max(N_1, N_2)} + c_3 \cdot \bar{W}
+\]
+where $E$ = excess gene count, $D$ = disjoint gene count, $\bar{W}$ = mean weight
+difference of matching genes, and $N_i$ = genome size.  Genes are aligned by innovation
+number.
+
+\subsubsection{JSON Serialization Format}
+
+\begin{lstlisting}[language={},caption={Genome JSON schema}]
+{
+  "nodes": [{"id": 0, "type": "input"}, ...],
+  "connections": [
+    {"in": 0, "out": 16, "weight": 0.42, "enabled": true, "innovation": 3}, ...
+  ]
+}
+\end{lstlisting}
+
+\textbf{Private members:} \texttt{nodes\_}, \texttt{connections\_},
+\texttt{num\_inputs\_}, \texttt{num\_outputs\_}, \texttt{fitness\_},
+\texttt{adjusted\_fitness\_}.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsection{\texttt{NeuralNetwork} (class)}
+
+Builds a runnable feedforward network from a \texttt{Genome}.
+
+\subsubsection{Construction Algorithm}
+\begin{enumerate}[nosep]
+  \item Build \texttt{nodes\_} list from enabled nodes in genome.
+  \item Topological sort: Kahn's algorithm on the enabled connection DAG.  DFS cycle
+    detection is applied to any new hidden connections before insertion.  Result stored
+    in \texttt{evaluation\_order\_} (list of \texttt{uint32\_t} node ids in activation
+    order).
+  \item Precompute \texttt{incoming\_[i]}: for each node at eval-order index $i$,
+    collect all \texttt{(source\_idx, weight)} pairs from enabled connections.
+  \item Allocate \texttt{values\_} float vector of length \texttt{nodes\_.size()}.
+\end{enumerate}
+
+\subsubsection{\texttt{activate(inputs)} Algorithm}
+\begin{enumerate}[nosep]
+  \item Copy \texttt{inputs} into \texttt{values\_} at input node indices.
+  \item Set bias node value to 1.0.
+  \item Iterate \texttt{evaluation\_order\_}:
+    \[
+      v_i = f\!\left(\sum_{(j,w) \in \mathit{incoming}[i]} w \cdot v_j\right)
+    \]
+    where $f$ is the configured activation function.
+  \item Return output node values in order.
+\end{enumerate}
+
+\subsubsection{Activation Functions}
+
+\begin{lstlisting}
+enum class ActivationFn { Sigmoid, Tanh, ReLU };
+\end{lstlisting}
+
+\begin{table}[H]
+\centering\small
+\caption{Activation function formulas}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Name} & \textbf{Formula} & \textbf{Output range} \\
+\midrule
+\texttt{Sigmoid} & $1/(1+e^{-x})$ & $(0,1)$ \\
+\texttt{Tanh}    & $\tanh(x)$     & $(-1,1)$ \\
+\texttt{ReLU}    & $\max(0,x)$    & $[0,\infty)$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering\small
+\caption{\texttt{NeuralNetwork} interface}
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+\toprule
+\textbf{Method} & \textbf{Description} \\
+\midrule
+\texttt{NeuralNetwork(genome, activation\_fn)} & Construct; run build algorithm \\
+\texttt{activate(inputs)} & Forward pass; returns output activations \\
+\texttt{num\_nodes(), num\_connections()} & Topology counts \\
+\texttt{num\_inputs(), num\_outputs()} & I/O sizes \\
+\texttt{raw\_nodes()} & All node descriptors \\
+\texttt{eval\_order()} & Activation sequence (for GPU packing) \\
+\texttt{incoming()} & Precomputed adjacency \\
+\texttt{node\_index\_map()} & node\_id → value index \\
+\texttt{last\_activations()} & Activations from most recent \texttt{activate()} call \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsection{\texttt{Species} (class)}
+
+Groups genomes by structural similarity.  Manages stagnation detection and adjusted
+fitness for fair reproduction allocation.
+
+\begin{table}[H]
+\centering\small
+\caption{\texttt{Species} private members}
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+\toprule
+\textbf{Member} & \textbf{Description} \\
+\midrule
+\texttt{id\_}                           & Unique species id \\
+\texttt{representative\_}               & Reference genome for compatibility tests \\
+\texttt{members\_}                      & Non-owning pointers into \texttt{EvolutionManager::population\_} \\
+\texttt{average\_fitness\_}             & Mean raw fitness of members \\
+\texttt{total\_adjusted\_fitness\_}     & Sum of adjusted fitnesses \\
+\texttt{best\_fitness\_ever\_}          & Highest fitness seen since species creation \\
+\texttt{generations\_without\_improvement\_} & Incremented each generation max fitness does not improve \\
+\texttt{fitness\_history\_}             & Rolling history of average fitness \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsubsection{Key Algorithms}
+
+\textbf{\texttt{adjust\_fitness()}}: Divides each member's raw fitness by species size
+(explicit fitness sharing):
+\[
+  f'_i = f_i / |\mathit{members}|
+\]
+
+\textbf{\texttt{is\_stagnant(limit)}}: Returns
+\texttt{generations\_without\_improvement\_ >= limit}.
+
+\textbf{\texttt{update\_best\_fitness()}}: If the current maximum member fitness exceeds
+\texttt{best\_fitness\_ever\_}, update it and reset the stagnation counter; otherwise
+increment it.
+
+\textbf{\texttt{update\_representative()}}: Set \texttt{representative\_} to the
+highest-fitness member (used for next-generation compatibility tests).
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsection{\texttt{InnovationTracker} (class)}
+
+Ensures historical markings are consistent within a generation, enabling correct NEAT
+crossover alignment.
+
+\begin{table}[H]
+\centering\small
+\caption{\texttt{InnovationTracker} interface}
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+\toprule
+\textbf{Method} & \textbf{Description} \\
+\midrule
+\texttt{init\_from\_population(population)} & Scan all genomes; set counters to max innovation / node ids found \\
+\texttt{get\_innovation(in, out)} & Look up or create innovation for edge (in→out) within this generation \\
+\texttt{next\_node\_id()} & Return and increment the global node counter \\
+\texttt{reset\_generation()} & Clear \texttt{generation\_innovations\_} (called at start of \texttt{evolve()}) \\
+\texttt{innovation\_count(), node\_count()} & Current counter values \\
+\texttt{set\_counters(innov, node)} & Restore from checkpoint \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\textbf{Private:} \texttt{generation\_innovations\_: map<pair<uint32\_t,uint32\_t>,\allowbreak uint32\_t>}
+— the within-generation map that guarantees the same structural mutation receives the
+same innovation number across all genomes in one generation.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsection{\texttt{Mutation} (static class)}
+
+All methods are \texttt{static}.
+
+\begin{table}[H]
+\centering\small
+\caption{\texttt{Mutation} operator algorithms}
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+\toprule
+\textbf{Method} & \textbf{Algorithm} \\
+\midrule
+\texttt{mutate\_weights(genome, rng, power)} &
+  For each connection: with probability 0.9 apply Gaussian perturbation
+  $w \leftarrow w + \mathcal{N}(0, \mathit{power})$; with probability 0.1 replace
+  with uniform sample from $[-2, 2]$. \\
+\texttt{add\_connection(genome, rng, tracker)} &
+  Sample random unconnected node pair; check no cycle (DFS); assign innovation via
+  \texttt{tracker.get\_innovation()}; initialize weight $\sim \mathcal{U}(-1,1)$. \\
+\texttt{add\_node(genome, rng, tracker, max\_hidden)} &
+  Select random enabled connection; disable it; insert new hidden node
+  (\texttt{tracker.next\_node\_id()}); add connection \texttt{in → new} with weight 1.0;
+  add connection \texttt{new → out} with old weight. \\
+\texttt{toggle\_connection(genome, rng)} &
+  Pick random connection; flip \texttt{enabled} flag. \\
+\texttt{mutate(genome, rng, config, tracker)} &
+  Apply each operator independently: \texttt{mutate\_weights} with
+  \texttt{mutation\_rate}, \texttt{add\_node} with \texttt{add\_node\_rate},
+  \texttt{add\_connection} with \texttt{add\_connection\_rate},
+  \texttt{toggle\_connection} at a fixed low rate. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsection{\texttt{Crossover} (static class)}
+
+\begin{lstlisting}
+static Genome crossover(const Genome& parent_a,
+                        const Genome& parent_b, Random& rng);
+\end{lstlisting}
+
+\textbf{Algorithm:} Align genes by innovation number.
+\begin{enumerate}[nosep]
+  \item \textbf{Matching genes:} Pick from either parent with probability 0.5.
+  \item \textbf{Disjoint / excess genes:} Always inherit from the fitter parent.
+  \item \textbf{Disabled genes:} If disabled in either contributing parent, disable
+    in child with probability 0.75.
+  \item Inherit \texttt{num\_inputs} and \texttt{num\_outputs} from the fitter parent.
+\end{enumerate}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsection{\texttt{EvolutionManager} (class)}
+
+Top-level controller for NEAT: holds the population, networks, species, and orchestrates
+the evaluate → compute\_fitness → evolve cycle.
+
+\begin{table}[H]
+\centering\small
+\caption{\texttt{EvolutionManager} private members}
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+\toprule
+\textbf{Member} & \textbf{Description} \\
+\midrule
+\texttt{config\_}     & Run parameters \\
+\texttt{rng\_}        & Shared RNG (owned by main) \\
+\texttt{tracker\_}    & Innovation numbering \\
+\texttt{population\_} & Full population by value \\
+\texttt{species\_}    & Current species list \\
+\texttt{networks\_}   & One NN per genome \\
+\texttt{generation\_} & Current generation index \\
+\texttt{num\_inputs\_, num\_outputs\_} & Determined at \texttt{initialize()} \\
+\texttt{use\_gpu\_}   & GPU inference enabled \\
+\texttt{gpu\_batch\_} & Device memory (CUDA build only) \\
+\texttt{tick\_callback\_} & Optional per-tick hook \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{table}[H]
+\centering\small
+\caption{\texttt{EvolutionManager} public interface}
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+\toprule
+\textbf{Method} & \textbf{Description} \\
+\midrule
+\texttt{EvolutionManager(config, rng)} & Store config and RNG reference \\
+\texttt{initialize(num\_inputs, num\_outputs)} & Create minimal genomes; build networks \\
+\texttt{evaluate\_generation(sim)} & Run one generation (see below) \\
+\texttt{evolve()} & Speciate → remove stagnant → reproduce \\
+\texttt{compute\_fitness(sim)} & Write fitness into each genome (see below) \\
+\texttt{population()} & Access genome vector \\
+\texttt{generation()} & Current generation number \\
+\texttt{species()} & Current species list \\
+\texttt{networks()} & Built network list \\
+\texttt{set\_tick\_callback(cb)} & Install \texttt{TickCallback} \\
+\texttt{clear\_tick\_callback()} & Remove callback \\
+\texttt{enable\_gpu(flag)} & Toggle GPU inference path \\
+\texttt{gpu\_enabled()} & Query current GPU state \\
+\texttt{save\_checkpoint(path, rng)} & Serialize to JSON (see below) \\
+\texttt{load\_checkpoint(path, rng)} & Restore from checkpoint; false if not found \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsubsection{\texttt{evaluate\_generation()} Algorithm}
+
+\begin{enumerate}[nosep]
+  \item Call \texttt{sim.reset()} and \texttt{sim.initialize()}.
+  \item For each tick $t \in [0, \mathit{generation\_ticks})$:
+    \begin{enumerate}[nosep,label=\alph*.]
+      \item For each alive agent $i$: call \texttt{sim.get\_sensors(i)};
+        run \texttt{networks\_[i]->activate()}; decode output to direction vector;
+        call \texttt{sim.apply\_action(i, direction, dt)}.
+      \item Call \texttt{sim.tick(dt)}.
+      \item If \texttt{tick\_callback\_} is set, invoke it with $(t, \mathit{sim})$.
+    \end{enumerate}
+  \item On GPU path: \texttt{gpu\_batch\_->pack\_inputs()} before agent loop;
+    \texttt{batch\_neural\_inference()} launches CUDA kernel;
+    \texttt{gpu\_batch\_->unpack\_outputs()} retrieves results.
+\end{enumerate}
+
+\subsubsection{\texttt{compute\_fitness()} Algorithm}
+
+For each genome $i$ paired with \texttt{agents\_[i]}:
+\[
+  f_i = w_s \cdot \frac{\mathit{age}}{T} + w_k \cdot \mathit{kills} + w_e \cdot \frac{\mathit{energy}}{E_0}
+        + w_d \cdot \frac{\mathit{dist}}{d_{\max}} - w_c \cdot \mathit{complexity}
+\]
+where $T$ = \texttt{generation\_ticks}, $E_0$ = \texttt{initial\_energy},
+$d_{\max} = \sqrt{w^2+h^2}$, and the $w_*$ constants come from
+\texttt{SimulationConfig}.
+
+\subsubsection{\texttt{evolve()} Algorithm}
+\begin{enumerate}[nosep]
+  \item \texttt{speciate()}: For each genome, find the first compatible species
+    (representative comparison).  No match → new species.  Update
+    \texttt{update\_best\_fitness()} on each species.
+  \item \texttt{remove\_stagnant\_species()}: Remove species where
+    \texttt{is\_stagnant(stagnation\_limit)} is true (except the top-fitness species).
+  \item Compute offspring allocation via largest-remainder method proportional to
+    total adjusted fitness.
+  \item \texttt{reproduce()}: For each species, elitism (top genome survives);
+    remainder via \texttt{Crossover::crossover} + \texttt{Mutation::mutate} using
+    tournament selection within species.
+  \item \texttt{tracker\_.reset\_generation()}.
+  \item \texttt{build\_networks()}.
+  \item Increment \texttt{generation\_}.
+\end{enumerate}
+
+\subsubsection{Checkpoint Format}
+
+JSON file with fields: \texttt{generation}, \texttt{population} (array of genome JSON),
+\texttt{rng\_state} (hex string of engine state), \texttt{species\_stagnation} (array of
+\texttt{\{id, best\_ever, gens\_no\_improvement\}}), \texttt{innovation\_counter},
+\texttt{node\_counter}.
+
+\subsubsection{\texttt{TickCallback} Type Alias}
+
+\begin{lstlisting}
+using TickCallback =
+    std::function<void(int tick, const SimulationManager& sim)>;
+\end{lstlisting}
+
+\texttt{main.cpp} uses this to wire \texttt{Logger::log\_tick}, live visualization
+updates, and per-generation benchmarking probes into the evaluation loop without creating
+any dependency from \texttt{evolution/} on \texttt{data/} or \texttt{visualization/}.
