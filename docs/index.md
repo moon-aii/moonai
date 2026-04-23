@@ -1,31 +1,79 @@
 ---
+title: Home
 hide:
   - navigation
   - toc
 ---
 
-# MoonAI
+<h1 style="text-align: center;">MoonAI</h1>
+<div style="text-align: center;">
+A modular and extensible simulation platform for</br> studying continuous evolutionary algorithms and neural network evolution through predator-prey dynamics.
+A modular research platform for studying evolutionary algorithms and neural network evolution through predator-prey simulation using the NEAT algorithm.
+</div>
 
-A modular and extensible simulation platform for studying continuous evolutionary algorithms and neural network evolution through predator-prey dynamics.
+<div class="grid cards" markdown>
 
-**CMPE 491/492 - Senior Design Project | TED University**
+-   __Team__
 
-**Team:**
+    ---
 
-- Caner Aras
-- Emir Irkılata
-- Oğuzhan Özkaya
+    This project is developed as part of the **CMPE 491/492 Senior Design Project** courses at the **TED University**.
 
-**Supervisor:**
+    ---
 
-- Ayşenur Birtürk
+    **Team**: Caner Aras, Emir Irkılata, Oğuzhan Özkaya
 
-**Jury Members:**
+    **Supervisor**: Ayşenur Birtürk
 
-- Deniz Canturk
-- Mehmet Evren Coskun
+    **Jury Members**: Deniz Cantürk, Mehmet Evren Coşkun
 
-## Overview
+-   __Reports__
+
+    ---
+
+    [:fontawesome-regular-file-lines:{ .middle } Project Proposal](_assets/reports/ProjectProposal.pdf)
+
+    [:fontawesome-regular-file-lines:{ .middle } Project Specification](_assets/reports/ProjectSpecification.pdf)
+
+    [:fontawesome-regular-file-lines:{ .middle } Analysis Report](_assets/reports/AnalysisReport.pdf)
+
+    [:fontawesome-regular-file-lines:{ .middle } High-Level Design Report](_assets/reports/HighLevelDesignReport.pdf)
+
+    [:fontawesome-regular-file-lines:{ .middle } Poster](_assets/reports/Poster.pdf)
+
+    [:fontawesome-regular-file-lines:{ .middle } Low-Level Design Report](_assets/reports/LowLevelDesignReport.pdf)
+
+    [:fontawesome-regular-file-lines:{ .middle } Test Plan Report](_assets/reports/TestPlanReport.pdf)
+
+</div>
+
+---
+
+<h1 style="text-align: center;">Overview</h1>
+
+<div class="grid cards" markdown>
+
+-   __Motivation__
+
+    ---
+
+    Modern artificial intelligence training often requires vast amounts of real-world data and manually designed scenarios, which do not scale efficiently. MoonAI addresses this limitation by providing autonomous, self-generating training environments for studying evolutionary computation without external data dependencies.
+
+
+-   __Objective__
+
+    ---
+
+    Develop a robust simulation environment to research and optimize evolutionary algorithms. By decoupling training from real-world data dependencies, we investigate how genetic representations influence learning efficiency and adaptability in dynamic, complex environments.
+
+
+-   __Approach__
+
+    ---
+
+    The system employs a high-fidelity predator-prey simulation to generate evolutionary and genetic data. This synthetic ecosystem serves as a dynamic benchmark for evaluating evolutionary computation techniques in adaptive behavior modeling.
+
+</div>
 
 MoonAI uses a predator-prey environment as a synthetic benchmark to evaluate evolutionary computation methods. Agents (predators and prey) are controlled by neural networks whose structure and weights evolve continuously through births and deaths using the **NeuroEvolution of Augmenting Topologies (NEAT)** algorithm.
 
@@ -36,28 +84,13 @@ The platform enables researchers to:
 - Generate structured datasets for machine learning research without real-world data
 - Visualize agent behavior and algorithm evolution in real time
 
-### Motivation
+## Reports
 
-Modern artificial intelligence training often requires vast amounts of real-world data and manually designed scenarios, which do not scale efficiently. MoonAI addresses this limitation by providing autonomous, self-generating training environments for studying evolutionary computation without external data dependencies.
+<div class="grid cards" markdown>
 
-### Objective
+- :fontawesome-brands-html5: __HTML__ for content and structure
+- :fontawesome-brands-js: __JavaScript__ for interactivity
+- :fontawesome-brands-css3: __CSS__ for text running out of boxes
+- :fontawesome-brands-internet-explorer: __Internet Explorer__ ... huh?
 
-Develop a robust simulation environment to research and optimize evolutionary algorithms. By decoupling training from real-world data dependencies, we investigate how genetic representations influence learning efficiency and adaptability in dynamic, complex environments.
-
-### Approach
-The system employs a high-fidelity predator-prey simulation to generate evolutionary and genetic data. This synthetic ecosystem serves as a dynamic benchmark for evaluating evolutionary computation techniques in adaptive behavior modeling.
-
-## Features
-
-- **Entity-Component-System Architecture** - Data-oriented design with sparse-set ECS, cache-friendly SoA memory layouts, and 5-10x performance improvement
-- **NEAT Implementation** - Evolves both topology and weights of neural networks simultaneously
-- **Real-Time Visualization** - SFML-based rendering with interactive controls and live NN activation display
-- **GPU Acceleration** - CUDA backend for sensing, neural inference, and simulation systems in both visual and headless modes
-- **Cross-Platform** - Runs on Linux and Windows with matched features and stable runtime behavior
-- **Reproducible Experiments** - Seeded RNG with deterministic behavior within the CUDA execution path on a fixed runtime environment
-- **Lua Configuration** - Define named experiments and parameter sweeps in `config.lua` without recompilation
-- **Data Export** - CSV/JSON output (including optional per-step trajectories) compatible with Python analysis tools
-
-### Real-Time Analytics
-
-Researchers observe emergent behaviors through an SFML-based real-time visualization layer. The system concurrently logs extensive telemetry, including population metrics and genome histories, exporting structured data for rigorous offline analysis using Python-based tools.
+</div>

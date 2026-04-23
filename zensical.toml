@@ -1,6 +1,6 @@
 [project]
 site_name = "MoonAI"
-site_description = "A new project generated from the default template project."
+site_description = "Predator-Prey Neuroevolution Simulation"
 site_author = "Emir Irkılata, Caner Aras, Oğuzhan Özkaya"
 site_url = "https://moon-aii.github.io/moonai/"
 
@@ -10,12 +10,14 @@ repo_url = "https://github.com/moon-aii/moonai"
 copyright = "CMPE 491/492 - Senior Design Project | TED University"
 
 extra_css = ["_assets/extra.css"]
-#extra_javascript = ["javascripts/extra.js"]
+extra_javascript = ["_assets/extra.js"]
 
 nav = [
   { "Home" = "index.md" },
+  { "About" = "about.md" },
+  { "Installation" = "installation.md" },
+  { "Usage" = "usage.md" },
   { "Internals" = [
-    "internals/domain.md",
     "internals/structure.md",
     "internals/architecture.md",
     "internals/standarts.md",
@@ -93,11 +95,15 @@ code = "Source Code Pro"
 scheme = "default"
 toggle.icon = "lucide/sun"
 toggle.name = "Switch to dark mode"
+primary = "custom"
+accent = "custom"
 
 [[project.theme.palette]]
 scheme = "slate"
 toggle.icon = "lucide/moon"
 toggle.name = "Switch to light mode"
+primary = "custom"
+accent = "custom"
 
 # [project.markdown_extensions]
 # markdown_extensions.toc.permalink = ""
