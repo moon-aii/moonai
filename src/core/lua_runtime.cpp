@@ -29,24 +29,25 @@ SimulationConfig table_to_config(const sol::table &tbl) {
   lua_get(tbl, "vision_range", config.vision_range);
   lua_get(tbl, "interaction_range", config.interaction_range);
   lua_get(tbl, "initial_energy", config.initial_energy);
+  lua_get(tbl, "max_energy", config.max_energy);
   lua_get(tbl, "energy_drain_per_step", config.energy_drain_per_step);
   lua_get(tbl, "energy_gain_from_kill", config.energy_gain_from_kill);
   lua_get(tbl, "energy_gain_from_food", config.energy_gain_from_food);
   lua_get(tbl, "food_count", config.food_count);
   lua_get(tbl, "food_respawn_rate", config.food_respawn_rate);
   lua_get(tbl, "mutation_rate", config.mutation_rate);
-  lua_get(tbl, "crossover_rate", config.crossover_rate);
   lua_get(tbl, "weight_mutation_power", config.weight_mutation_power);
   lua_get(tbl, "add_node_rate", config.add_node_rate);
   lua_get(tbl, "add_connection_rate", config.add_connection_rate);
   lua_get(tbl, "delete_connection_rate", config.delete_connection_rate);
   lua_get(tbl, "max_hidden_nodes", config.max_hidden_nodes);
+  lua_get(tbl, "max_age", config.max_age);
   lua_get(tbl, "max_steps", config.max_steps);
   lua_get(tbl, "compatibility_threshold", config.compatibility_threshold);
+  lua_get(tbl, "compatibility_min_normalization", config.compatibility_min_normalization);
   lua_get(tbl, "c1_excess", config.c1_excess);
   lua_get(tbl, "c2_disjoint", config.c2_disjoint);
   lua_get(tbl, "c3_weight", config.c3_weight);
-  lua_get(tbl, "species_update_interval_steps", config.species_update_interval_steps);
   lua_get(tbl, "seed", config.seed);
   lua_get(tbl, "output_dir", config.output_dir);
   lua_get(tbl, "report_interval_steps", config.report_interval_steps);
@@ -54,7 +55,6 @@ SimulationConfig table_to_config(const sol::table &tbl) {
   lua_get(tbl, "reproduction_energy_threshold", config.reproduction_energy_threshold);
   lua_get(tbl, "reproduction_energy_cost", config.reproduction_energy_cost);
   lua_get(tbl, "offspring_initial_energy", config.offspring_initial_energy);
-  lua_get(tbl, "birth_spawn_radius", config.birth_spawn_radius);
   return config;
 }
 
@@ -69,24 +69,25 @@ void inject_defaults(sol::state &lua) {
   t["vision_range"] = d.vision_range;
   t["interaction_range"] = d.interaction_range;
   t["initial_energy"] = d.initial_energy;
+  t["max_energy"] = d.max_energy;
   t["energy_drain_per_step"] = d.energy_drain_per_step;
   t["energy_gain_from_kill"] = d.energy_gain_from_kill;
   t["energy_gain_from_food"] = d.energy_gain_from_food;
   t["food_count"] = d.food_count;
   t["food_respawn_rate"] = d.food_respawn_rate;
   t["mutation_rate"] = d.mutation_rate;
-  t["crossover_rate"] = d.crossover_rate;
   t["weight_mutation_power"] = d.weight_mutation_power;
   t["add_node_rate"] = d.add_node_rate;
   t["add_connection_rate"] = d.add_connection_rate;
   t["delete_connection_rate"] = d.delete_connection_rate;
   t["max_hidden_nodes"] = d.max_hidden_nodes;
+  t["max_age"] = d.max_age;
   t["max_steps"] = d.max_steps;
   t["compatibility_threshold"] = d.compatibility_threshold;
+  t["compatibility_min_normalization"] = d.compatibility_min_normalization;
   t["c1_excess"] = d.c1_excess;
   t["c2_disjoint"] = d.c2_disjoint;
   t["c3_weight"] = d.c3_weight;
-  t["species_update_interval_steps"] = d.species_update_interval_steps;
   t["seed"] = d.seed;
   t["output_dir"] = d.output_dir;
   t["report_interval_steps"] = d.report_interval_steps;
@@ -94,7 +95,6 @@ void inject_defaults(sol::state &lua) {
   t["reproduction_energy_threshold"] = d.reproduction_energy_threshold;
   t["reproduction_energy_cost"] = d.reproduction_energy_cost;
   t["offspring_initial_energy"] = d.offspring_initial_energy;
-  t["birth_spawn_radius"] = d.birth_spawn_radius;
   lua["moonai_defaults"] = t;
 }
 

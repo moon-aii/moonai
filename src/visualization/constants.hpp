@@ -6,9 +6,9 @@ namespace moonai {
 
 // uint32_t sizes
 namespace sizes {
-constexpr float PREDATOR_RADIUS = 4.2f;
-constexpr float PREY_RADIUS = 3.6f;
-constexpr float FOOD_RADIUS = 1.2f;
+constexpr float PREDATOR_RADIUS = 1.2f;
+constexpr float PREY_RADIUS = 1.0f;
+constexpr float FOOD_RADIUS = 0.6f;
 } // namespace sizes
 
 // UI Chart colors (SFML RGB)
@@ -45,11 +45,11 @@ constexpr uint8_t BG_B = 0;
 constexpr uint8_t PANEL_BG_R = 16;
 constexpr uint8_t PANEL_BG_G = 13;
 constexpr uint8_t PANEL_BG_B = 20;
-constexpr uint8_t PANEL_ALPHA = 180;
+constexpr uint8_t PANEL_ALPHA = 120;
 
-constexpr uint8_t PANEL_OUTLINE_R = 78;
-constexpr uint8_t PANEL_OUTLINE_G = 74;
-constexpr uint8_t PANEL_OUTLINE_B = 83;
+constexpr uint8_t PANEL_OUTLINE_R = 35;
+constexpr uint8_t PANEL_OUTLINE_G = 32;
+constexpr uint8_t PANEL_OUTLINE_B = 39;
 
 // Vision range
 constexpr uint8_t VISION_FILL_ALPHA = 15;
@@ -170,20 +170,6 @@ constexpr uint8_t ENERGY_BUCKET_3_B = 180;
 constexpr uint8_t ENERGY_BUCKET_4_R = 220;
 constexpr uint8_t ENERGY_BUCKET_4_G = 220;
 constexpr uint8_t ENERGY_BUCKET_4_B = 220;
-
-// Backdrop
-constexpr uint8_t BACKDROP_A = 180;
-
-// Hover highlight
-constexpr uint8_t HOVER_HIGHLIGHT_R = 60;
-constexpr uint8_t HOVER_HIGHLIGHT_G = 60;
-constexpr uint8_t HOVER_HIGHLIGHT_B = 100;
-constexpr uint8_t HOVER_HIGHLIGHT_A = 150;
-
-// Hint text
-constexpr uint8_t HINT_R = 120;
-constexpr uint8_t HINT_G = 120;
-constexpr uint8_t HINT_B = 140;
 } // namespace ui
 
 } // namespace moonai

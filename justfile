@@ -22,61 +22,60 @@ release-dir := "build" / (os + "-release")
 # Set up Python environments for simulation and profiler analysis
 [group('build')]
 setup-python:
-    cd analysis && uv sync
-    cd profiler && uv sync
+  uv sync
 
 # Configure CMake (run after setup or when CMakeLists change)
 # Pass extra cmake args (e.g., just configure -DVAR=value)
 [group('build')]
 configure *args:
-    cmake --preset {{preset}} {{args}}
+  cmake --preset {{preset}} {{args}}
 
 # Build the project
 [group('build')]
 build:
-    cmake --build {{build-dir}} --parallel
+  cmake --build {{build-dir}} --parallel
 
 # Build in release mode (with LTO, native optimizations, and strict warnings)
 # Pass extra cmake args (e.g., just release -DMOONAI_BUILD_PROFILER=ON)
 [group('build')]
 release *args:
-    just build-type=release configure {{args}}
-    just build-type=release build
+  just build-type=release configure {{args}}
+  just build-type=release build
 
 # ─── Run ────────────────────────────────────────────────────────────────────
 
 # Run the simulation with default config (pass additional args after --)
 [group('run')]
 run *args: build
-    {{build-dir}}/moonai config.lua --experiment default {{args}}
+  {{build-dir}}/moonai config.lua --experiment default {{args}}
 
 # Run the release build with default config (pass additional args after --)
 [default]
 [group('run')]
 run-release *args: release
-    {{release-dir}}/moonai config.lua --experiment default {{args}}
+  {{release-dir}}/moonai config.lua --experiment default {{args}}
 
 # Validate a config file
 [group('run')]
 validate config_path="config.lua": build
-    {{build-dir}}/moonai --validate {{config_path}}
+  {{build-dir}}/moonai --validate {{config_path}}
 
 # ─── Experiments ─────────────────────────────────────────────────────────────
 
 # List all experiments defined in the Lua config
 [group('experiment')]
 list-experiments: build
-    {{build-dir}}/moonai config.lua --list
+  {{build-dir}}/moonai config.lua --list
 
 # Run the full experiment matrix (all conditions × seeds, headless)
 [group('experiment')]
 experiment-run: release
-    {{release-dir}}/moonai config.lua --all --headless
+  {{release-dir}}/moonai config.lua --all --headless
 
 # Generate the self-contained HTML analysis report from output/
 [group('experiment')]
 experiment-analyse:
-    cd analysis && uv run moonai-analysis
+  uv run analysis
 
 # Full experiment pipeline: run all experiments → generate report
 [group('experiment')]
@@ -91,97 +90,102 @@ profile: profile-run profile-analyse
 # Run the built-in profiler with optional arguments
 [group('profile')]
 profile-run *args: (release "-DMOONAI_BUILD_PROFILER=ON")
-    {{release-dir}}/moonai_profiler {{args}}
+  {{release-dir}}/moonai_profiler {{args}}
 
 # Generate the self-contained HTML profiler report from output/profiles/
 [group('profile')]
 profile-analyse:
-    cd profiler && uv run moonai-profiler
+  uv run profiler
 
 # ─── Development ────────────────────────────────────────────────────────────
 
 # Run tests (optional args: --verbose, -R pattern, etc.)
 [group('dev')]
 test *args: build
-    ctest --test-dir {{build-dir}} --output-on-failure {{args}}
+  ctest --test-dir {{build-dir}} --output-on-failure {{args}}
 
 # Run code quality checks: auto-format all C++ files and run static analysis
 [group('dev')]
 lint: configure
-    find src \( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.cu" -o -name "*.cuh" \) | xargs clang-format --style=file -i
-    cppcheck --enable=warning,style,performance \
-        --std=c++17 \
-        --suppress=missingIncludeSystem \
-        --suppress=*:*/vcpkg_installed/* \
-        --project={{build-dir}}/compile_commands.json
-    run-clang-tidy -p {{build-dir}} src/
+  find src \( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.cu" -o -name "*.cuh" \) | xargs clang-format --style=file -i
+  cppcheck --enable=warning,style,performance \
+    --std=c++17 \
+    --suppress=missingIncludeSystem \
+    --suppress=*:*/vcpkg_installed/* \
+    --project={{build-dir}}/compile_commands.json
+  run-clang-tidy -p {{build-dir}} src/
 
 # Generate compile_commands.json for IDE/LSP integration
 [group('dev')]
 compdb:
-    cmake --preset {{preset}} -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-    ln -sf {{build-dir}}/compile_commands.json compile_commands.json
+  cmake --preset {{preset}} -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+  ln -sf {{build-dir}}/compile_commands.json compile_commands.json
 
 # Show project info and detected configuration
 [group('dev')]
 info:
-    @echo "MoonAI Project"
-    @echo "─────────────────────────────"
-    @echo "OS:         {{os}}"
-    @echo "Build type: {{build-type}}"
-    @echo "Preset:     {{preset}}"
-    @echo "Build dir:  {{build-dir}}"
-    @echo "VCPKG_ROOT: ${VCPKG_ROOT:-NOT SET}"
+  @echo "MoonAI Project"
+  @echo "─────────────────────────────"
+  @echo "OS:         {{os}}"
+  @echo "Build type: {{build-type}}"
+  @echo "Preset:     {{preset}}"
+  @echo "Build dir:  {{build-dir}}"
+  @echo "VCPKG_ROOT: ${VCPKG_ROOT:-NOT SET}"
 
 # ─── GPU ────────────────────────────────────────────────────────────────────
 
 # Run Nsight Compute on the hottest GPU kernel with CLI output only (requires sudo for GPU perf counters)
 [group('gpu')]
 ncu: release
-    sudo ncu \
-        --target-processes all \
-        --kernel-name "regex:.*sensor_build_kernel.*" \
-        --launch-skip 0 \
-        --launch-count 1 \
-        --set basic \
-        {{release-dir}}/moonai config.lua --experiment baseline_seed42 --headless --steps 60 --name nsight-baseline
-    @echo "Note: Output files may be owned by root. Run: sudo chown -R $(whoami):$(whoami) output/nsight-baseline*"
+  sudo ncu \
+    --target-processes all \
+    --kernel-name "regex:.*sensor_build_kernel.*" \
+    --launch-skip 0 \
+    --launch-count 1 \
+    --set basic \
+    {{release-dir}}/moonai config.lua --experiment baseline_seed42 --headless --steps 60 --name nsight-baseline
+  @echo "Note: Output files may be owned by root. Run: sudo chown -R $(whoami):$(whoami) output/nsight-baseline*"
 
 # Run a deeper Nsight Compute pass on the hottest GPU kernel (requires sudo for GPU perf counters)
 [group('gpu')]
 ncu-full: release
-    sudo ncu \
-        --target-processes all \
-        --kernel-name "regex:.*sensor_build_kernel.*" \
-        --launch-skip 0 \
-        --launch-count 1 \
-        --set full \
-        {{release-dir}}/moonai config.lua --experiment baseline_seed42 --headless --steps 60 --name nsight-baseline
-    @echo "Note: Output files may be owned by root. Run: sudo chown -R $(whoami):$(whoami) output/nsight-baseline*"
+  sudo ncu \
+    --target-processes all \
+    --kernel-name "regex:.*sensor_build_kernel.*" \
+    --launch-skip 0 \
+    --launch-count 1 \
+    --set full \
+    {{release-dir}}/moonai config.lua --experiment baseline_seed42 --headless --steps 60 --name nsight-baseline
+  @echo "Note: Output files may be owned by root. Run: sudo chown -R $(whoami):$(whoami) output/nsight-baseline*"
 
 # Run Nsight Systems for one profiler suite and print CLI stats (requires sudo for GPU perf counters)
 [group('gpu')]
 nsys: release
-    mkdir -p output/nsight
-    sudo nsys profile \
-        --trace=cuda,nvtx,osrt \
-        --sample=none \
-        --stats=true \
-        --force-overwrite=true \
-        --output=output/nsight/nsys-baseline \
-        {{release-dir}}/moonai config.lua --experiment baseline_seed42 --headless --steps 60 --name nsight-baseline
-    @echo "Note: Output files may be owned by root. Run: sudo chown -R $(whoami):$(whoami) output/nsight*"
+  mkdir -p output/nsight
+  sudo nsys profile \
+    --trace=cuda,nvtx,osrt \
+    --sample=none \
+    --stats=true \
+    --force-overwrite=true \
+    --output=output/nsight/nsys-baseline \
+    {{release-dir}}/moonai config.lua --experiment baseline_seed42 --headless --steps 60 --name nsight-baseline
+  @echo "Note: Output files may be owned by root. Run: sudo chown -R $(whoami):$(whoami) output/nsight*"
 
 # ─── Clean ──────────────────────────────────────────────────────────────────
 
 # Remove build directory
 [group('clean')]
 clean:
-    rm -rf build/
+  rm -rf build/
 
 # Remove all output and generated report artifacts
 [group('clean')]
 clean-outputs:
-    rm -rf output/
-    rm -rf analysis/output/
-    rm -rf profiler/output/
+  rm -rf output/
+
+# ─── Docs ──────────────────────────────────────────────────────────────────
+
+# Clean and start website at localhost
+docs:
+  rm -rf site/
+  zensical serve

@@ -2,7 +2,7 @@
 
 #include "core/profiler_macros.hpp"
 #include "core/types.hpp"
-#include "data/metrics.hpp"
+#include "metrics/metrics.hpp"
 #include "simulation/simulation.hpp"
 #include "visualization/frame_snapshot.hpp"
 #include "visualization/visualization_manager.hpp"
@@ -52,12 +52,9 @@ App::App(AppConfig cfg)
   simulation::initialize(state_, cfg_.sim_config);
   evolution_.initialize(state_, SENSOR_COUNT, OUTPUT_COUNT);
   evolution_.seed_initial_population(state_);
-  state_.runtime.gpu_enabled = cfg_.enable_gpu && AppConfig::cuda_compiled;
-  metrics::refresh_live(state_);
-
-  if (cfg_.enable_gpu && !AppConfig::cuda_compiled) {
-    spdlog::warn("GPU requested, but this build was compiled without CUDA support; using CPU path");
-  }
+  evolution_.refresh_species(state_);
+  evolution_.initialize_inference(state_);
+  metrics::refresh(state_);
 
   logger_.initialize(cfg_.sim_config);
 
@@ -69,17 +66,12 @@ App::App(AppConfig cfg)
     }
   }
 
-  if (state_.runtime.gpu_enabled) {
-    evolution_.enable_gpu(state_, true);
-    spdlog::info("GPU acceleration enabled");
-  }
+  spdlog::info("CUDA initialized");
 
   register_signal_handlers();
 }
 
 bool App::step() {
-  metrics::begin_step(state_);
-
   const auto run_step_once = [&]() {
     if (!simulation::prepare_step(state_, cfg_.sim_config)) {
       return false;
@@ -96,32 +88,20 @@ bool App::step() {
     return true;
   };
 
-  const bool attempted_gpu = state_.runtime.gpu_enabled;
   if (!run_step_once()) {
-    if (!attempted_gpu || state_.runtime.gpu_enabled) {
-      return false;
-    }
-
-    evolution_.enable_gpu(state_, false);
-
-    spdlog::warn("GPU step failed, retrying on CPU");
-    metrics::begin_step(state_);
-    if (!run_step_once()) {
-      return false;
-    }
+    return false;
   }
 
   ++state_.runtime.step;
-  metrics::finalize_step(state_);
+  metrics::refresh(state_);
   return true;
 }
 
 void App::record_and_log() {
   evolution_.refresh_species(state_);
-  metrics::refresh_live(state_);
-  metrics::record_report(state_);
+  metrics::refresh(state_);
 
-  logger_.log_report(state_.metrics.last_report);
+  logger_.log_report(state_.metrics);
 
   const Genome *best_genome = nullptr;
   std::size_t best_complexity = 0;
@@ -141,19 +121,18 @@ void App::record_and_log() {
   }
 
   if (best_genome) {
-    logger_.log_best_genome(state_.metrics.last_report.step, *best_genome);
+    logger_.log_best_genome(state_.metrics.step, *best_genome);
   }
 
-  logger_.log_species(state_.metrics.last_report.step, state_.predator.species, "predator");
-  logger_.log_species(state_.metrics.last_report.step, state_.prey.species, "prey");
+  logger_.log_species(state_.metrics.step, state_.predator.species, "predator");
+  logger_.log_species(state_.metrics.step, state_.prey.species, "prey");
   logger_.flush();
 
-  spdlog::info("Step {:6d}: predators={} prey={} births={} deaths={} "
+  spdlog::info("Step {:6d}: predators={} prey={} pred_births={} prey_births={} pred_deaths={} prey_deaths={} "
                "pred_species={} prey_species={}",
-               state_.metrics.last_report.step, state_.metrics.last_report.predator_count,
-               state_.metrics.last_report.prey_count, state_.metrics.last_report.births,
-               state_.metrics.last_report.deaths, state_.metrics.last_report.predator_species,
-               state_.metrics.last_report.prey_species);
+               state_.metrics.step, state_.metrics.predator_count, state_.metrics.prey_count,
+               state_.metrics.predator_births, state_.metrics.prey_births, state_.metrics.predator_deaths,
+               state_.metrics.prey_deaths, state_.metrics.predator_species, state_.metrics.prey_species);
 }
 
 bool App::run() {
@@ -195,33 +174,23 @@ bool App::run() {
       }
     }
 
-    if (failed) {
-      break;
-    }
-
     if (!cfg_.headless) {
       visualization_->render(build_frame_snapshot(state_, cfg_));
     }
   }
 
-  if (!state_.metrics.has_last_report || state_.metrics.last_report.step != state_.metrics.live.step) {
-    record_and_log();
-  }
-
   logger_.flush();
-
-  if (failed) {
-    spdlog::error("Simulation step failed");
-    return false;
-  }
-
-  if (!completed) {
-    spdlog::info("Simulation stopped by user (window closed)");
-  }
-
   spdlog::info("Output saved to: {}", logger_.run_dir());
 
-  return completed;
+  if (failed) {
+    spdlog::error("Simulation step failed.");
+  } else if (!completed) {
+    spdlog::info("Simulation stopped by user (window closed).");
+  } else {
+    spdlog::info("Simulation ended with 'max_steps'.");
+  }
+
+  return !failed;
 }
 
 } // namespace moonai

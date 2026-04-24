@@ -23,9 +23,6 @@ public:
   int num_nodes() const {
     return static_cast<int>(nodes_.size());
   }
-  int num_connections() const {
-    return static_cast<int>(connections_.size());
-  }
   int num_inputs() const {
     return num_inputs_;
   }
@@ -33,22 +30,20 @@ public:
     return num_outputs_;
   }
 
-  const std::vector<Node> &raw_nodes() const {
-    return nodes_;
-  }
   const std::vector<std::uint32_t> &eval_order() const {
     return evaluation_order_;
+  }
+  const std::vector<int> &eval_order_indices() const {
+    return evaluation_order_indices_;
   }
   const std::vector<std::vector<std::pair<int, float>>> &incoming() const {
     return incoming_;
   }
+  const std::vector<int> &output_indices() const {
+    return output_indices_;
+  }
   const std::unordered_map<std::uint32_t, int> &node_index_map() const {
     return node_index_;
-  }
-
-  // Returns activation values from the most recent activate() call
-  const std::vector<float> &last_activations() const {
-    return values_;
   }
 
   int num_input_nodes() const;
@@ -71,9 +66,11 @@ private:
   std::vector<Node> nodes_;
   std::vector<Connection> connections_;
   std::vector<std::uint32_t> evaluation_order_;
+  std::vector<int> evaluation_order_indices_;
   std::unordered_map<std::uint32_t, int> node_index_;
 
   std::vector<std::vector<std::pair<int, float>>> incoming_;
+  std::vector<int> output_indices_;
 
   std::vector<float> values_;
 

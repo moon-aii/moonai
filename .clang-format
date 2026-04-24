@@ -7,8 +7,8 @@ ColumnLimit: 120
 ContinuationIndentWidth: 4
 BreakBeforeBraces: Attach
 AllowShortFunctionsOnASingleLine: Empty
-PointerAlignment: Right
-ReferenceAlignment: Right
+PointerAlignment: Left
+ReferenceAlignment: Left
 SpaceAfterTemplateKeyword: true
 SpaceBeforeParens: ControlStatements
 SpacesInParentheses: false

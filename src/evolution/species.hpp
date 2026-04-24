@@ -16,7 +16,8 @@ public:
     int complexity = 0;
   };
 
-  bool is_compatible(const Genome &genome, float threshold, float c1, float c2, float c3) const;
+  bool is_compatible(const Genome &genome, float threshold, float c1, float c2, float c3,
+                     float min_normalization = 1.0f) const;
 
   void add_member(uint32_t entity, const Genome &genome);
   void clear_members();

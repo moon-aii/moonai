@@ -8,6 +8,7 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <limits>
 
 using namespace moonai;
 
@@ -27,26 +28,54 @@ TEST(InnovationTrackerTest, DifferentConnectionGetsDifferentInnovation) {
   EXPECT_NE(i1, i2);
 }
 
-TEST(InnovationTrackerTest, ResetClearsGenerationCache) {
+TEST(InnovationTrackerTest, SameSplitReusesNodeId) {
   InnovationTracker tracker;
-  std::uint32_t i1 = tracker.get_innovation(0, 3);
-  tracker.reset_mutation_window();
-  std::uint32_t i2 = tracker.get_innovation(0, 3);
-  EXPECT_NE(i1, i2);
+  const std::uint32_t node_a = tracker.get_split_node_id(0, 3);
+  const std::uint32_t node_b = tracker.get_split_node_id(0, 3);
+
+  EXPECT_EQ(node_a, node_b);
 }
 
-TEST(InnovationTrackerTest, InitFromPopulation) {
-  std::vector<Genome> pop;
-  Genome g(2, 1);
-  g.add_connection({0, 3, 0.5f, true, 5});
-  g.add_node({10, NodeType::Hidden});
-  pop.push_back(std::move(g));
+TEST(InnovationTrackerTest, InitFromPopulationReusesExistingInnovation) {
+  Genome g(1, 1);
+  g.add_connection({0, 2, 0.5f, true, 7});
 
   InnovationTracker tracker;
-  tracker.init_from_population(pop);
+  tracker.init_from_population({g});
 
-  EXPECT_GE(tracker.innovation_count(), 6u);
-  EXPECT_GE(tracker.node_count(), 11u);
+  EXPECT_EQ(tracker.get_innovation(0, 2), 7u);
+}
+
+// ── Config Tests ─────────────────────────────────────────────────────────
+
+TEST(ConfigTest, MaxAgeIsIndependentFromRunLength) {
+  SimulationConfig config;
+  config.max_steps = 500;
+  config.max_age = 0;
+
+  const auto errors = validate_config(config);
+  EXPECT_TRUE(errors.empty());
+}
+
+TEST(ConfigTest, MaxEnergyMustCoverSpawnAndReproductionThreshold) {
+  SimulationConfig config;
+  config.max_energy = 0.25f;
+
+  const auto errors = validate_config(config);
+  EXPECT_FALSE(errors.empty());
+
+  auto has_field = [&](const char *field) {
+    for (const auto &error : errors) {
+      if (error.field == field) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  EXPECT_TRUE(has_field("initial_energy"));
+  EXPECT_TRUE(has_field("reproduction_energy_threshold"));
+  EXPECT_TRUE(has_field("offspring_initial_energy"));
 }
 
 // ── Mutation Tests ──────────────────────────────────────────────────────
@@ -62,8 +91,7 @@ TEST(MutationTest, MutateWeightsChangesWeights) {
 
   Mutation::mutate_weights(g, rng, 0.5f);
 
-  bool changed = (g.connections()[0].weight != original_w0 ||
-                  g.connections()[1].weight != original_w1);
+  bool changed = (g.connections()[0].weight != original_w0 || g.connections()[1].weight != original_w1);
   EXPECT_TRUE(changed);
 }
 
@@ -95,8 +123,8 @@ TEST(MutationTest, MutatedGenomeProducesValidNetwork) {
     for (const auto &out_node : g.nodes()) {
       if (out_node.type != NodeType::Output)
         continue;
-      g.add_connection({in_node.id, out_node.id, rng.next_float(-1.0f, 1.0f),
-                        true, tracker.get_innovation(in_node.id, out_node.id)});
+      g.add_connection({in_node.id, out_node.id, rng.next_float(-1.0f, 1.0f), true,
+                        tracker.get_innovation(in_node.id, out_node.id)});
     }
   }
 
@@ -116,6 +144,99 @@ TEST(MutationTest, MutatedGenomeProducesValidNetwork) {
     EXPECT_GE(o, -1.0f);
     EXPECT_LE(o, 1.0f);
   }
+}
+
+TEST(MutationTest, AddNodeReusesSplitInnovationAcrossGenomes) {
+  Genome a(1, 1);
+  Genome b(1, 1);
+  InnovationTracker tracker;
+  Random rng(42);
+
+  const std::uint32_t direct_innovation = tracker.get_innovation(0, 2);
+  a.add_connection({0, 2, 0.75f, true, direct_innovation});
+  b.add_connection({0, 2, -0.25f, true, direct_innovation});
+  tracker.init_from_population({a, b});
+
+  Mutation::add_node(a, rng, tracker);
+  Mutation::add_node(b, rng, tracker);
+
+  auto hidden_node_id = [](const Genome &genome) {
+    for (const auto &node : genome.nodes()) {
+      if (node.type == NodeType::Hidden) {
+        return node.id;
+      }
+    }
+    return std::numeric_limits<std::uint32_t>::max();
+  };
+
+  auto find_connection = [](const Genome &genome, std::uint32_t from, std::uint32_t to) -> const ConnectionGene * {
+    for (const auto &conn : genome.connections()) {
+      if (conn.in_node == from && conn.out_node == to) {
+        return &conn;
+      }
+    }
+    return nullptr;
+  };
+
+  const std::uint32_t hidden_a = hidden_node_id(a);
+  const std::uint32_t hidden_b = hidden_node_id(b);
+  ASSERT_NE(hidden_a, std::numeric_limits<std::uint32_t>::max());
+  ASSERT_EQ(hidden_a, hidden_b);
+
+  const ConnectionGene *a_in = find_connection(a, 0, hidden_a);
+  const ConnectionGene *a_out = find_connection(a, hidden_a, 2);
+  const ConnectionGene *b_in = find_connection(b, 0, hidden_b);
+  const ConnectionGene *b_out = find_connection(b, hidden_b, 2);
+
+  ASSERT_NE(a_in, nullptr);
+  ASSERT_NE(a_out, nullptr);
+  ASSERT_NE(b_in, nullptr);
+  ASSERT_NE(b_out, nullptr);
+  EXPECT_EQ(a_in->innovation, b_in->innovation);
+  EXPECT_EQ(a_out->innovation, b_out->innovation);
+}
+
+TEST(MutationTest, AddNodeDoesNotDuplicateExistingSplitStructure) {
+  Genome g(1, 1);
+  InnovationTracker tracker;
+  Random rng(42);
+
+  const std::uint32_t direct_innovation = tracker.get_innovation(0, 2);
+  g.add_connection({0, 2, 0.5f, true, direct_innovation});
+  tracker.init_from_population({g});
+
+  const std::uint32_t hidden_id = tracker.get_split_node_id(0, 2);
+  const std::uint32_t split_innovation_a = tracker.get_innovation(0, hidden_id);
+  const std::uint32_t split_innovation_b = tracker.get_innovation(hidden_id, 2);
+
+  g.add_node({hidden_id, NodeType::Hidden});
+  g.add_connection({0, hidden_id, 1.0f, false, split_innovation_a});
+  g.add_connection({hidden_id, 2, 0.5f, false, split_innovation_b});
+
+  Mutation::add_node(g, rng, tracker);
+
+  int hidden_count = 0;
+  for (const auto &node : g.nodes()) {
+    if (node.id == hidden_id) {
+      ++hidden_count;
+    }
+  }
+
+  EXPECT_EQ(hidden_count, 1);
+  EXPECT_EQ(g.connections().size(), 3u);
+
+  const auto is_enabled_connection = [](const Genome &genome, std::uint32_t from, std::uint32_t to) {
+    for (const auto &conn : genome.connections()) {
+      if (conn.in_node == from && conn.out_node == to) {
+        return conn.enabled;
+      }
+    }
+    return false;
+  };
+
+  EXPECT_FALSE(is_enabled_connection(g, 0, 2));
+  EXPECT_TRUE(is_enabled_connection(g, 0, hidden_id));
+  EXPECT_TRUE(is_enabled_connection(g, hidden_id, 2));
 }
 
 // ── Crossover Tests ─────────────────────────────────────────────────────
@@ -171,8 +292,7 @@ TEST(CrossoverTest, ChildProducesValidNetwork) {
       for (const auto &out_node : g->nodes()) {
         if (out_node.type != NodeType::Output)
           continue;
-        g->add_connection({in_node.id, out_node.id, rng.next_float(-1.0f, 1.0f),
-                           true,
+        g->add_connection({in_node.id, out_node.id, rng.next_float(-1.0f, 1.0f), true,
                            tracker.get_innovation(in_node.id, out_node.id)});
       }
     }
@@ -330,8 +450,8 @@ TEST(MutationTest, DeleteConnectionProducesValidNetwork) {
     for (const auto &out_node : g.nodes()) {
       if (out_node.type != NodeType::Output)
         continue;
-      g.add_connection({in_node.id, out_node.id, rng.next_float(-1.0f, 1.0f),
-                        true, tracker.get_innovation(in_node.id, out_node.id)});
+      g.add_connection({in_node.id, out_node.id, rng.next_float(-1.0f, 1.0f), true,
+                        tracker.get_innovation(in_node.id, out_node.id)});
     }
   }
 
@@ -362,8 +482,8 @@ TEST(NeuralNetworkTest, ActivateIntoMatchesActivate) {
     for (const auto &out_node : g.nodes()) {
       if (out_node.type != NodeType::Output)
         continue;
-      g.add_connection({in_node.id, out_node.id, rng.next_float(-1.0f, 1.0f),
-                        true, tracker.get_innovation(in_node.id, out_node.id)});
+      g.add_connection({in_node.id, out_node.id, rng.next_float(-1.0f, 1.0f), true,
+                        tracker.get_innovation(in_node.id, out_node.id)});
     }
   }
 
@@ -458,23 +578,6 @@ TEST(GenomeTest, CompatibilityDistanceWithExcess) {
   EXPECT_GT(dist, 0.0f);
 }
 
-TEST(GenomeTest, JsonRoundTrip) {
-  Genome g(3, 2);
-  g.add_connection({0, 4, 0.5f, true, 0});
-  g.add_connection({1, 5, -0.3f, false, 1});
-  g.add_node({10, NodeType::Hidden});
-
-  std::string json = g.to_json();
-  Genome restored = Genome::from_json(json);
-
-  EXPECT_EQ(restored.num_inputs(), 3);
-  EXPECT_EQ(restored.num_outputs(), 2);
-  EXPECT_EQ(restored.nodes().size(), g.nodes().size());
-  EXPECT_EQ(restored.connections().size(), 2u);
-  EXPECT_FLOAT_EQ(restored.connections()[0].weight, 0.5f);
-  EXPECT_FALSE(restored.connections()[1].enabled);
-}
-
 // ── Neural Network Tests ─────────────────────────────────────────────────
 
 TEST(NeuralNetworkTest, ActivateReturnsCorrectOutputCount) {
@@ -483,8 +586,7 @@ TEST(NeuralNetworkTest, ActivateReturnsCorrectOutputCount) {
   std::uint32_t innov = 0;
   for (int i = 0; i < 3; ++i) {
     for (int o = 4; o <= 5; ++o) {
-      g.add_connection({static_cast<std::uint32_t>(i),
-                        static_cast<std::uint32_t>(o), 0.5f, true, innov++});
+      g.add_connection({static_cast<std::uint32_t>(i), static_cast<std::uint32_t>(o), 0.5f, true, innov++});
     }
   }
 

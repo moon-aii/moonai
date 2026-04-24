@@ -5,10 +5,14 @@
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 
+#include <cuda_runtime.h>
+
 #include <algorithm>
+#include <cassert>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <exception>
 #include <filesystem>
 #include <fstream>
@@ -17,11 +21,6 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
-
-// CUDA includes for GPU profiling
-#ifdef MOONAI_ENABLE_CUDA
-#include <cuda_runtime.h>
-#endif
 
 std::string utc_timestamp() {
   const auto now = std::chrono::system_clock::now();
@@ -54,14 +53,13 @@ struct ScopeNode {
   ScopeNode *parent = nullptr;
 };
 
-#ifdef MOONAI_ENABLE_CUDA
-struct GpuEventPair {
+struct StreamEventPair {
   const char *name;
   cudaEvent_t start;
   cudaEvent_t end;
   cudaStream_t stream;
+  ScopeNode *owner = nullptr;
 };
-#endif
 
 class Profiler {
 public:
@@ -74,11 +72,9 @@ public:
   void begin_scope(const char *event_name);
   void end_scope(const char *event_name);
 
-#ifdef MOONAI_ENABLE_CUDA
-  int record_gpu_event_start(const char *name, cudaStream_t stream);
-  void record_gpu_event_end(int event_index);
-  void merge_gpu_timings();
-#endif
+  int record_stream_event_start(const char *name, cudaStream_t stream);
+  void record_stream_event_end(int event_index);
+  void merge_stream_timings();
 
   std::vector<std::unique_ptr<ScopeNode>> finish_run();
 
@@ -91,54 +87,47 @@ private:
   std::vector<ScopeNode *> active_stack_;
   std::unique_ptr<ScopeNode> pending_root_;
 
-#ifdef MOONAI_ENABLE_CUDA
-  std::vector<GpuEventPair> pending_gpu_events_;
-  int next_gpu_event_index_;
-#endif
+  std::vector<StreamEventPair> pending_stream_events_;
+  int next_stream_event_index_;
+
+  void destroy_pending_stream_events();
 };
 
-Profiler::Profiler()
-#ifdef MOONAI_ENABLE_CUDA
-    : next_gpu_event_index_(0)
-#endif
-{
-}
+Profiler::Profiler() : next_stream_event_index_(0) {}
 
-Profiler::~Profiler() {
-#ifdef MOONAI_ENABLE_CUDA
-  for (auto &event : pending_gpu_events_) {
+void Profiler::destroy_pending_stream_events() {
+  for (auto &event : pending_stream_events_) {
     if (event.start)
       cudaEventDestroy(event.start);
     if (event.end)
       cudaEventDestroy(event.end);
   }
-#endif
+  pending_stream_events_.clear();
+  next_stream_event_index_ = 0;
+}
+
+Profiler::~Profiler() {
+  destroy_pending_stream_events();
 }
 
 ScopedTimer::ScopedTimer(const char *event_name, cudaStream_t stream)
-    : event_name_(event_name), stream_(stream), gpu_event_index_(-1), has_cpu_scope_(stream == nullptr) {
-#ifdef MOONAI_ENABLE_CUDA
+    : event_name_(event_name), stream_(stream), stream_event_index_(-1), has_cpu_scope_(stream == nullptr) {
   if (stream) {
-    gpu_event_index_ = Profiler::instance().record_gpu_event_start(event_name, stream);
+    stream_event_index_ = Profiler::instance().record_stream_event_start(event_name, stream);
   }
-#endif
   if (has_cpu_scope_) {
     Profiler::instance().begin_scope(event_name);
   }
 }
 
 ScopedTimer::~ScopedTimer() {
-  if (std::strcmp(event_name_, "gpu_synchronize") == 0) {
-#ifdef MOONAI_ENABLE_CUDA
-    Profiler::instance().merge_gpu_timings();
-#endif
+  if (std::strcmp(event_name_, "synchronize") == 0) {
+    Profiler::instance().merge_stream_timings();
   }
 
-#ifdef MOONAI_ENABLE_CUDA
-  if (gpu_event_index_ >= 0) {
-    Profiler::instance().record_gpu_event_end(gpu_event_index_);
+  if (stream_event_index_ >= 0) {
+    Profiler::instance().record_stream_event_end(stream_event_index_);
   }
-#endif
 
   if (has_cpu_scope_) {
     Profiler::instance().end_scope(event_name_);
@@ -146,14 +135,11 @@ ScopedTimer::~ScopedTimer() {
 }
 
 void Profiler::start_run(const AppConfig &cfg) {
+  destroy_pending_stream_events();
   cfg_ = cfg;
   frame_trees_.clear();
   active_stack_.clear();
   pending_root_.reset();
-#ifdef MOONAI_ENABLE_CUDA
-  pending_gpu_events_.clear();
-  next_gpu_event_index_ = 0;
-#endif
 }
 
 void Profiler::begin_scope(const char *event_name) {
@@ -191,17 +177,21 @@ void Profiler::end_scope(const char *event_name) {
   }
 }
 
-#ifdef MOONAI_ENABLE_CUDA
-int Profiler::record_gpu_event_start(const char *name, cudaStream_t stream) {
-  int index = next_gpu_event_index_++;
-
-  if (index >= static_cast<int>(pending_gpu_events_.size())) {
-    pending_gpu_events_.resize(index + 1);
+int Profiler::record_stream_event_start(const char *name, cudaStream_t stream) {
+  if (active_stack_.empty() || active_stack_.front()->name != "frame_total") {
+    return -1;
   }
 
-  GpuEventPair &pair = pending_gpu_events_[index];
+  int index = next_stream_event_index_++;
+
+  if (index >= static_cast<int>(pending_stream_events_.size())) {
+    pending_stream_events_.resize(index + 1);
+  }
+
+  StreamEventPair &pair = pending_stream_events_[index];
   pair.name = name;
   pair.stream = stream;
+  pair.owner = active_stack_.empty() ? nullptr : active_stack_.back();
 
   cudaEventCreate(&pair.start);
   cudaEventRecord(pair.start, stream);
@@ -210,20 +200,20 @@ int Profiler::record_gpu_event_start(const char *name, cudaStream_t stream) {
   return index;
 }
 
-void Profiler::record_gpu_event_end(int event_index) {
-  assert(event_index >= 0 && event_index < static_cast<int>(pending_gpu_events_.size()));
+void Profiler::record_stream_event_end(int event_index) {
+  assert(event_index >= 0 && event_index < static_cast<int>(pending_stream_events_.size()));
 
-  GpuEventPair &pair = pending_gpu_events_[event_index];
+  StreamEventPair &pair = pending_stream_events_[event_index];
   cudaEventCreate(&pair.end);
   cudaEventRecord(pair.end, pair.stream);
 }
 
-void Profiler::merge_gpu_timings() {
-  if (pending_gpu_events_.empty()) {
+void Profiler::merge_stream_timings() {
+  if (pending_stream_events_.empty()) {
     return;
   }
 
-  for (const auto &pair : pending_gpu_events_) {
+  for (const auto &pair : pending_stream_events_) {
     if (!pair.start || !pair.end) {
       continue;
     }
@@ -232,23 +222,31 @@ void Profiler::merge_gpu_timings() {
     cudaError_t err = cudaEventElapsedTime(&elapsed_ms, pair.start, pair.end);
 
     if (err == cudaSuccess && elapsed_ms > 0.0f) {
-      auto gpu_node = std::make_unique<ScopeNode>();
-      gpu_node->name = std::string(pair.name) + "_gpu";
-      gpu_node->duration_ns = static_cast<std::int64_t>(elapsed_ms * NS_TO_MS);
-      gpu_node->parent = active_stack_.back();
-      active_stack_.back()->children.push_back(std::move(gpu_node));
+      auto stream_node = std::make_unique<ScopeNode>();
+      stream_node->name = std::string(pair.name) + "_stream";
+      stream_node->duration_ns = static_cast<std::int64_t>(elapsed_ms * NS_TO_MS);
+      ScopeNode *owner = pair.owner;
+      if (!owner && !active_stack_.empty()) {
+        owner = active_stack_.back();
+      }
+      if (owner) {
+        stream_node->parent = owner;
+        owner->children.push_back(std::move(stream_node));
+      }
     }
 
     cudaEventDestroy(pair.start);
     cudaEventDestroy(pair.end);
   }
 
-  pending_gpu_events_.clear();
-  next_gpu_event_index_ = 0;
+  pending_stream_events_.clear();
+  next_stream_event_index_ = 0;
 }
-#endif
 
 std::vector<std::unique_ptr<ScopeNode>> Profiler::finish_run() {
+  destroy_pending_stream_events();
+  active_stack_.clear();
+  pending_root_.reset();
   return std::move(frame_trees_);
 }
 
@@ -258,12 +256,11 @@ std::vector<std::unique_ptr<ScopeNode>> Profiler::finish_run() {
 namespace {
 
 struct ProfilerArgs {
-  int frames = 300;
-  int speed_multiplier = 128;
+  int frames = 30;
+  int speed_multiplier = 4;
   std::vector<std::uint64_t> seeds = {61, 62, 63, 64, 65, 66};
-  std::string output_dir = "output/profiles";
+  std::string output_dir = "output/profiler/profiles";
   std::string experiment_name = "profile";
-  bool no_gpu = false;
   bool help = false;
 };
 
@@ -274,14 +271,12 @@ struct ParseProfilerResult {
 
 void print_profiler_usage(const char *program_name) {
   std::printf("MoonAI profiler\n"
-              "\n"
               "Usage: %s [OPTIONS]\n"
               "\n"
               "Options:\n"
-              "      --frames <n>          Number of frames per run (default: 300)\n"
+              "      --frames <n>          Number of frames per run (default: 30)\n"
               "      --output-dir <path>   Output directory for profiler JSON\n"
               "      --name <name>         Suite name in output file\n"
-              "      --no-gpu              Disable CUDA GPU acceleration\n"
               "  -h, --help                Show this help message\n",
               program_name);
 }
@@ -333,8 +328,6 @@ ParseProfilerResult parse_profiler_args(int argc, const char *argv[]) {
         continue;
       }
       result.args.experiment_name = argv[++i];
-    } else if (arg == "--no-gpu") {
-      result.args.no_gpu = true;
     } else {
       spdlog::warn("Unknown profiler argument: {}", arg);
     }
@@ -348,6 +341,7 @@ struct RunData {
   std::vector<std::unique_ptr<moonai::profiler::ScopeNode>> frames;
   double avg_frame_ms = 0.0;
   double run_total_ms = 0.0;
+  std::string status = "completed";
   std::string disposition;
 };
 
@@ -366,25 +360,24 @@ RunData run_profiler(const moonai::AppConfig &cfg) {
   auto &profiler = profiler::Profiler::instance();
   profiler.start_run(cfg);
 
+  RunData result;
+  result.seed = cfg.sim_config.seed;
+
   const auto run_start = std::chrono::steady_clock::now();
 
   App app(cfg);
   bool completed = app.run();
+  result.frames = profiler.finish_run();
 
   if (!completed) {
     spdlog::info("Run stopped early, skipping profile generation");
-    RunData skipped;
-    skipped.seed = static_cast<std::uint64_t>(cfg.sim_config.seed);
-    return skipped;
+    result.status = "incomplete";
+    return result;
   }
-
-  RunData result;
-  result.seed = cfg.sim_config.seed;
 
   const auto run_ns =
       std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - run_start).count();
   result.run_total_ms = ns_to_ms(run_ns);
-  result.frames = profiler.finish_run();
 
   // Calculate average frame time
   if (!result.frames.empty()) {
@@ -516,59 +509,74 @@ void write_manifest(std::vector<RunData> runs, const std::filesystem::path &outp
   nlohmann::json metadata;
   metadata["suite_name"] = cfg.experiment_name;
   metadata["frame_count"] = cfg.sim_config.max_steps / cfg.speed_multiplier;
-  metadata["gpu_allowed"] = cfg.enable_gpu;
   metadata["platform"] = moonai::AppConfig::platform;
-  metadata["cuda_compiled"] = moonai::AppConfig::cuda_compiled;
   metadata["generated_at_utc"] = utc_timestamp();
   manifest["metadata"] = metadata;
 
-  // Filter runs that have frames (completed successfully) and sort by
-  // avg_frame_ms
-  std::vector<RunData> completed;
+  std::vector<RunData *> completed;
   for (auto &run : runs) {
-    if (!run.frames.empty()) {
-      completed.push_back(std::move(run));
+    if (run.status == "completed" && !run.frames.empty()) {
+      completed.push_back(&run);
+    } else {
+      run.disposition = run.status;
     }
-  }
-
-  if (completed.empty()) {
-    spdlog::error("No completed runs to write");
-    return;
   }
 
   std::sort(completed.begin(), completed.end(),
-            [](const RunData &a, const RunData &b) { return a.avg_frame_ms < b.avg_frame_ms; });
+            [](const RunData *a, const RunData *b) { return a->avg_frame_ms < b->avg_frame_ms; });
 
   // Mark dispositions
   if (completed.size() > 2) {
-    completed[0].disposition = "dropped_fastest";
-    completed.back().disposition = "dropped_slowest";
+    completed[0]->disposition = "dropped_fastest";
+    completed.back()->disposition = "dropped_slowest";
     for (size_t i = 1; i < completed.size() - 1; ++i) {
-      completed[i].disposition = "kept";
+      completed[i]->disposition = "kept";
     }
   } else {
-    for (auto &run : completed) {
-      run.disposition = "kept";
+    for (auto *run : completed) {
+      run->disposition = "kept";
     }
   }
 
-  // Build runs list with dispositions (do this before moving kept runs)
   nlohmann::json run_array = nlohmann::json::array();
-  for (const auto &run : completed) {
+  for (const auto &run : runs) {
     nlohmann::json run_obj;
     run_obj["seed"] = run.seed;
     run_obj["avg_frame_ms"] = run.avg_frame_ms;
+    run_obj["status"] = run.status;
     run_obj["disposition"] = run.disposition;
     run_array.push_back(run_obj);
   }
   manifest["runs"] = run_array;
 
-  // Collect kept runs (move frames from completed to kept)
   std::vector<RunData> kept;
-  for (auto &run : completed) {
+  for (auto &run : runs) {
     if (run.disposition == "kept") {
       kept.push_back(std::move(run));
     }
+  }
+
+  if (kept.empty()) {
+    manifest["summary"] = {
+        {"avg_frame_ms", 0.0},
+        {"stddev_ms", 0.0},
+        {"min_frame_ms", 0.0},
+        {"max_frame_ms", 0.0},
+    };
+    manifest["frame_timeline_ms"] = nlohmann::json::array();
+
+    std::filesystem::create_directories(output_path.parent_path());
+    std::ofstream file(output_path);
+    if (!file.is_open()) {
+      spdlog::error("Failed to open profiler output '{}'", output_path.string());
+      return;
+    }
+    file << manifest.dump(2) << '\n';
+    if (!file)
+      spdlog::error("Failed to write profiler output '{}'", output_path.string());
+    else
+      spdlog::info("Profiler output written to: {}", output_path.string());
+    return;
   }
 
   // Summary statistics from kept runs
@@ -640,7 +648,6 @@ int main(int argc, const char *argv[]) {
   base_cfg.sim_config.max_steps = args.frames * args.speed_multiplier;
   base_cfg.experiment_name = args.experiment_name;
   base_cfg.headless = false;
-  base_cfg.enable_gpu = !args.no_gpu;
   base_cfg.speed_multiplier = args.speed_multiplier;
   const auto output_path =
       std::filesystem::path(args.output_dir) / (utc_timestamp() + "_" + args.experiment_name + ".json");
