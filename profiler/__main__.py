@@ -10,8 +10,8 @@ from .report import generate_report
 
 def build_parser() -> argparse.ArgumentParser:
     project_root = Path(__file__).resolve().parents[2]
-    default_input = project_root / "output" / "profiles"
-    default_output = project_root / "profiler" / "output"
+    default_input = project_root / "output" / "profiler" / "profiles"
+    default_output = project_root / "output" / "profiler"
 
     parser = argparse.ArgumentParser(
         prog="moonai-profiler",

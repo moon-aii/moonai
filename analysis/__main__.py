@@ -10,8 +10,8 @@ from .pipeline import run_analysis
 
 def build_parser() -> argparse.ArgumentParser:
     project_root = Path(__file__).resolve().parents[2]
-    default_input = project_root / "output"
-    default_output = project_root / "analysis" / "output"
+    default_input = project_root / "output" / "experiments"
+    default_output = project_root / "output" / "analysis"
 
     parser = argparse.ArgumentParser(
         prog="moonai-analysis",

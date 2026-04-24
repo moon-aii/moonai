@@ -182,8 +182,6 @@ clean:
 [group('clean')]
 clean-outputs:
   rm -rf output/
-  rm -rf analysis/output/
-  rm -rf profiler/output/
 
 # ─── Docs ──────────────────────────────────────────────────────────────────
 

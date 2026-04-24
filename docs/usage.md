@@ -116,7 +116,7 @@ just experiment
 
 ## Simulation Output
 
-Each run writes to `output/{experiment_name}/` (named experiments) or `output/YYYYMMDD_HHMMSS_seedN/` (anonymous runs):
+Each run writes to `output/experiments/{experiment_name}/` (named experiments) or `output/experiments/YYYYMMDD_HHMMSS_seedN/` (anonymous runs):
 
 | File | Contents |
 |------|----------|
@@ -136,10 +136,10 @@ just experiment-analyse
 Internally this runs the packaged analysis entry point from `analysis/`:
 
 ```bash
-cd analysis && uv run moonai-analysis
+uv run analysis
 ```
 
-The analysis writes a timestamped report to `analysis/output/`, for example `report_20260324_154233.html`.
+The analysis writes a timestamped report to `output/analysis/`, for example `report_20260324_154233.html`.
 
 The generated HTML is fully self-contained: it embeds all plots and report data directly into a single file, including:
 
@@ -149,7 +149,7 @@ The generated HTML is fully self-contained: it embeds all plots and report data 
 - skipped-run information for incomplete or invalid runs
 - inline styling and navigation so the report opens directly in a browser without side files
 
-The analysis code is structured as a small package under `analysis/moonai_analysis/`:
+The analysis code is structured as a package under `analysis/`:
 
 - `pipeline.py` orchestrates the full analysis run
 - `io.py` discovers runs and loads CSV/JSON data
@@ -158,7 +158,7 @@ The analysis code is structured as a small package under `analysis/moonai_analys
 - `genome.py` renders embedded representative-genome topology diagrams
 - `summary.py` prepares structured summary data for the report
 - `html_report.py` renders the final self-contained HTML document
-- `templates/report.html` defines the HTML report layout
+- `report.html` defines the HTML report layout
 
 ## Experiment conditions
 
@@ -204,9 +204,9 @@ just profile-run --name mytest --output-dir results  # Custom name and output
 |------|---------|-------------|
 | `--frames N` | 300 | Number of frames to capture per run |
 | `--name <name>` | profile | Experiment name (used in output filename) |
-| `--output-dir <path>` | output/profiles | Output directory |
+| `--output-dir <path>` | output/profiler/profiles | Output directory |
 
-Each profiler run writes a single JSON file to `output/profiles/`:
+Each profiler run writes a single JSON file to `output/profiler/profiles/`:
 
 | File | Contents |
 |------|----------|
@@ -221,15 +221,14 @@ just profile-analyse    # Generate HTML report from latest profile run
 just profile            # Full pipeline: run profiler and build report
 ```
 
-The profiler writes a timestamped self-contained HTML report to `profiler/output/`, for example `profile_report_20260324_154233.html`.
+The profiler writes a timestamped self-contained HTML report to `output/profiler/`, for example `profile_report_20260324_154233.html`.
 
-The profiler package lives under `profiler/moonai_profiler/` and includes:
+The profiler package lives under `profiler/` and includes:
 
-- `pipeline.py` for orchestration
+- `report.py` for generating the profiler report
 - `io.py` for discovering and validating profile runs
-- `plots.py` for embedded timing charts
 - `html_report.py` for rendering
-- `templates/report.html` for layout
+- `report.html` for the HTML report layout
 
 ## Visualization Controls
 

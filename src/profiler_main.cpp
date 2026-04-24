@@ -259,7 +259,7 @@ struct ProfilerArgs {
   int frames = 30;
   int speed_multiplier = 4;
   std::vector<std::uint64_t> seeds = {61, 62, 63, 64, 65, 66};
-  std::string output_dir = "output/profiles";
+  std::string output_dir = "output/profiler/profiles";
   std::string experiment_name = "profile";
   bool help = false;
 };

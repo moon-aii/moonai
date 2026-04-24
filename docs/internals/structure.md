@@ -11,6 +11,8 @@ moonai/
 ├── CMakeLists.txt              # Root CMake configuration
 ├── CMakePresets.json           # Build presets for Linux/Windows
 ├── vcpkg.json                  # Dependency manifest
+├── pyproject.toml              # Python package config (hatchling build)
+├── uv.lock                     # Python dependency lock
 ├── justfile                    # Project commands
 ├── config.lua                  # Unified config: default run + experiment matrix
 ├── .clang-format               # LLVM code style configuration
