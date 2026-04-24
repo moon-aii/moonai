@@ -9,7 +9,7 @@ from .report import generate_report
 
 
 def build_parser() -> argparse.ArgumentParser:
-    project_root = Path(__file__).resolve().parents[2]
+    project_root = Path(__file__).resolve().parents[1]
     default_input = project_root / "output" / "profiler" / "profiles"
     default_output = project_root / "output" / "profiler"
 
