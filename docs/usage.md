@@ -92,7 +92,22 @@ just list-experiments
 just experiment-run
 ```
 
-### Set up Python and generate analysis
+## Visualization Controls
+
+| Key | Action |
+|-----|--------|
+| `Space` | Pause / resume |
+| `↑` / `↓` or `+` / `-` | Increase / decrease simulation speed |
+| `.` | Step one step (while paused) |
+| `S` | Save screenshot |
+| `Esc` | Quit |
+| Left-click | Select an agent (shows stats + live NN panel) |
+| Right-click drag | Pan camera |
+| Scroll wheel | Zoom |
+
+When an agent is selected, its **vision range** (semi-transparent circle), **sensor lines** (connections to nearby agents and food), and **stats panel** are automatically displayed. The agent controller receives 35 inputs: the 5 closest predators, prey, and food items as signed proximity-weighted `dx, dy` pairs, plus self energy, velocity `x/y`, and signed wall proximity on `x/y`. Missing targets are encoded as `0`, and closer objects produce larger absolute values in `[-1, 1]`. The **Network panel** shows its neural network topology with edges colored by weight value: blue (positive) → gray (near zero) → orange (negative).
+
+## Set up Python and generate analysis
 
 Installs simulation + profiler analysis dependencies via uv.
 
@@ -106,7 +121,7 @@ Reads output/, writes a self-contained HTML report.
 just experiment-analyse
 ```
 
-### Full pipeline
+## Full pipeline
 
 Runs all experiments + generates report.
 
@@ -149,43 +164,6 @@ The generated HTML is fully self-contained: it embeds all plots and report data 
 - skipped-run information for incomplete or invalid runs
 - inline styling and navigation so the report opens directly in a browser without side files
 
-The analysis code is structured as a package under `analysis/`:
-
-- `pipeline.py` orchestrates the full analysis run
-- `io.py` discovers runs and loads CSV/JSON data
-- `labels.py` groups runs into experiment conditions
-- `plots.py` generates embedded per-condition and comparison figures
-- `genome.py` renders embedded representative-genome topology diagrams
-- `summary.py` prepares structured summary data for the report
-- `html_report.py` renders the final self-contained HTML document
-- `report.html` defines the HTML report layout
-
-## Experiment conditions
-
-55 conditions defined in `config.lua` across 9 groups, each × 5 seeds = **275 seeded runs**, plus the unseeded `default` entry.
-
-The default baseline is 2000 agents (500 predators, 1500 prey) on a 3000×3000 square world with 1500 steps per report window. Scaled experiments use `scale_base()` to maintain agent density by proportionally adjusting world size and food count.
-
-- Group A — Baseline sweeps (2K agents)
-- Group B — Scale experiments (proportional world)
-- Group C — Parameter sweeps at 5K
-- Group D — Parameter sweeps at 10K
-- Group E — World density (5K agents, varying world size)
-- Group F — Reporting window length
-- Group G — Energy / resource dynamics
-- Group H — Agent speed / interaction range (5K)
-- Group I — Topology complexity
-
-## Large-scale experiments
-
-Experiments with 5K+ agents require significant compute. Recommendations:
-
-- **Release build** (`just release`) for 2-5x faster simulation
-- **Headless mode** (`--headless`) disables gui for maximum throughput
-- **Memory**: ~4 GB RAM for 10K agents, ~8 GB for 20K agents
-- **VRAM**: ~512 MB for 10K agents, ~1 GB for 20K agents
-- Running all 330 experiments sequentially takes significant time; use `--experiment` to run specific conditions or parallelize across machines
-
 ## Profiler
 
 The profiler executable is available but not built by default (set `MOONAI_BUILD_PROFILER=ON` to enable). It captures detailed per-frame timing data for performance analysis.
@@ -223,24 +201,22 @@ just profile            # Full pipeline: run profiler and build report
 
 The profiler writes a timestamped self-contained HTML report to `output/profiler/`, for example `profile_report_20260324_154233.html`.
 
-The profiler package lives under `profiler/` and includes:
+## Output Artifacts
 
-- `report.py` for generating the profiler report
-- `io.py` for discovering and validating profile runs
-- `html_report.py` for rendering
-- `report.html` for the HTML report layout
+Generated artifacts live under `output/` (gitignored):
 
-## Visualization Controls
-
-| Key | Action |
-|-----|--------|
-| `Space` | Pause / resume |
-| `↑` / `↓` or `+` / `-` | Increase / decrease simulation speed |
-| `.` | Step one step (while paused) |
-| `S` | Save screenshot |
-| `Esc` | Quit |
-| Left-click | Select an agent (shows stats + live NN panel) |
-| Right-click drag | Pan camera |
-| Scroll wheel | Zoom |
-
-When an agent is selected, its **vision range** (semi-transparent circle), **sensor lines** (connections to nearby agents and food), and **stats panel** are automatically displayed. The agent controller receives 35 inputs: the 5 closest predators, prey, and food items as signed proximity-weighted `dx, dy` pairs, plus self energy, velocity `x/y`, and signed wall proximity on `x/y`. Missing targets are encoded as `0`, and closer objects produce larger absolute values in `[-1, 1]`. The **Network panel** shows its neural network topology with edges colored by weight value: blue (positive) → gray (near zero) → orange (negative).
+```
+output/
+├── experiments/           # Simulation run outputs
+│   └── {experiment_name}/
+│       ├── config.json
+│       ├── stats.csv
+│       ├── species.csv
+│       └── genomes.json
+├── profiler/              # Profiler outputs
+│   ├── profiles/          # C++ profiler JSON data
+│   │   └── YYYY-MM-DD_HH-MM-SS_*.json
+│   └── profile.html       # Profiler HTML report
+└── analysis/              # Analysis HTML reports
+    └── report_*.html
+```
