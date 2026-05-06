@@ -47,7 +47,7 @@ struct SimulationConfig {
 
   int seed = 67;
 
-  std::string output_dir = "output";
+  std::string output_dir = "output/experiments";
   int report_interval_steps = 1000;
 };
 

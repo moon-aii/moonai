@@ -1,5 +1,16 @@
 # About
 
+## Overview
+
+MoonAI uses a predator-prey environment as a synthetic benchmark to evaluate evolutionary computation methods. Agents (predators and prey) are controlled by neural networks whose structure and weights evolve continuously through births and deaths using the **NeuroEvolution of Augmenting Topologies (NEAT)** algorithm.
+
+The platform enables researchers to:
+
+- Observe how neural network topologies emerge and grow in complexity through evolution
+- Compare different genetic representations, mutation strategies, and selection methods
+- Generate structured datasets for machine learning research without real-world data
+- Visualize agent behavior and algorithm evolution in real time
+
 ## Features
 
 - **Entity-Component-System Architecture** - Data-oriented design with sparse-set ECS, cache-friendly SoA memory layouts, and 5-10x performance improvement
@@ -21,7 +32,7 @@ To achieve high-performance execution, MoonAI uses a CUDA-first runtime. The hos
 
 ### Simulation Environment
 
-The simulation operates within a deterministic, time-stepped 2D world. This virtual ecosystem imposes selective pressures on agents—predators and prey—with configurable attributes including speed, vision, stamina, and reproduction rates. Each agent is controlled by a neural network that reads 12 local inputs: nearest predator, prey, and food as normalized dx, dy, plus energy, velocity, and nearby predator, prey, and food density.
+The simulation operates within a deterministic, time-stepped 2D world. This virtual ecosystem imposes selective pressures on agents—predators and prey—with configurable attributes including speed, vision, stamina, and reproduction rates. Each agent is controlled by a neural network that reads 35 local inputs: the 5 closest predators, prey, and food items as signed proximity-weighted dx and dy pairs, plus self energy, velocity x/y, and signed wall proximity x/y.
 
 ### Evolutionary Core
 
