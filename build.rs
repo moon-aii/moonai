@@ -24,11 +24,15 @@ fn main() {
     println!("cargo:rerun-if-changed=src/tick/mutation.cu");
     println!("cargo:rerun-if-changed=src/tick/network_compilation.cu");
 
-    cc::Build::new().cuda(true).flag("-arch=sm_89").file("src/tick/kernel.cu").compile("moonai_simulation_cuda");
+    cc::Build::new()
+        .cuda(true)
+        .flag("-arch=native")
+        .file("src/tick/kernel.cu")
+        .compile("moonai_simulation_cuda");
 
     cc::Build::new()
         .cuda(true)
-        .flag("-arch=sm_89")
+        .flag("-arch=native")
         .files(&["src/tick/crossover.cu", "src/tick/mutation.cu", "src/tick/network_compilation.cu"])
         .compile("moonai_evolution_cuda");
 }
