@@ -23,3 +23,11 @@ pub struct RepresentativeGenomeHeader {
     pub num_nodes: u16,
     pub num_connections: u16,
 }
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SpeciesBatchReadbackHeader {
+    pub population_kind: PopulationKind,
+    pub species_count: u32,
+    pub returned_species_count: u32,
+}

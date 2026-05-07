@@ -5,12 +5,19 @@
 using moonai_gpu::CudaStatus;
 using moonai_gpu::DeviceInnovationState;
 using moonai_gpu::DevicePopulationBuffers;
+using moonai_gpu::FoodBuffer;
 using moonai_gpu::GpuEvolutionConfig;
 using moonai_gpu::GpuEvolutionState;
+using moonai_gpu::GpuSimulationConfig;
 using moonai_gpu::InnovationRecord;
+using moonai_gpu::InnovationLogReadbackHeader;
 using moonai_gpu::PopulationKind;
 using moonai_gpu::PopulationSummaryReadback;
+using moonai_gpu::RenderAgentReadback;
+using moonai_gpu::RenderFoodReadback;
+using moonai_gpu::RenderSnapshotHeader;
 using moonai_gpu::SeededAgentSnapshot;
+using moonai_gpu::SimulationCounters;
 using moonai_gpu::UiStatsReadback;
 
 namespace moonai_gpu {
@@ -104,15 +111,70 @@ void free_population_buffers(DevicePopulationBuffers &population) {
   population.capacity = 0U;
 }
 
+CudaStatus allocate_food_buffers(FoodBuffer &food, std::uint32_t capacity) {
+  food.capacity = capacity;
+  for (auto status : {moonai_gpu::alloc_array(&food.pos_x, capacity), moonai_gpu::alloc_array(&food.pos_y, capacity),
+                      moonai_gpu::alloc_array(&food.active, capacity)}) {
+    if (status != CudaStatus::Success) {
+      return status;
+    }
+  }
+  return CudaStatus::Success;
+}
+
+void free_food_buffers(FoodBuffer &food) {
+  moonai_gpu::free_array(food.pos_x);
+  moonai_gpu::free_array(food.pos_y);
+  moonai_gpu::free_array(food.active);
+  food.capacity = 0U;
+}
+
+CudaStatus allocate_mapped_ui_stats(UiStatsReadback **host_ptr, UiStatsReadback **device_ptr) {
+  void *mapped_host = nullptr;
+  const auto alloc_error = cudaHostAlloc(&mapped_host, sizeof(UiStatsReadback), cudaHostAllocMapped);
+  auto status = moonai_gpu::map_cuda_runtime_error(alloc_error, CudaStatus::AllocationFailed);
+  if (status != CudaStatus::Success) {
+    return status;
+  }
+
+  void *mapped_device = nullptr;
+  const auto device_error = cudaHostGetDevicePointer(&mapped_device, mapped_host, 0U);
+  status = moonai_gpu::map_cuda_runtime_error(device_error, CudaStatus::AllocationFailed);
+  if (status != CudaStatus::Success) {
+    cudaFreeHost(mapped_host);
+    return status;
+  }
+
+  *host_ptr = static_cast<UiStatsReadback *>(mapped_host);
+  *device_ptr = static_cast<UiStatsReadback *>(mapped_device);
+  **host_ptr = UiStatsReadback{};
+  return CudaStatus::Success;
+}
+
+void free_mapped_ui_stats(UiStatsReadback *&host_ptr, UiStatsReadback *&device_ptr) {
+  if (host_ptr != nullptr) {
+    cudaFreeHost(host_ptr);
+  }
+  host_ptr = nullptr;
+  device_ptr = nullptr;
+}
+
 void destroy_state(GpuEvolutionState *state) {
   if (state == nullptr) {
     return;
   }
+  free_food_buffers(state->food);
   free_population_buffers(state->predator);
   free_population_buffers(state->prey);
   moonai_gpu::free_array(state->innovation);
   moonai_gpu::free_array(state->innovation_log);
   moonai_gpu::free_array(state->next_entity_id);
+  moonai_gpu::free_array(state->counters);
+  moonai_gpu::free_array(state->predator_free_list);
+  moonai_gpu::free_array(state->prey_free_list);
+  moonai_gpu::free_array(state->predator_free_len);
+  moonai_gpu::free_array(state->prey_free_len);
+  free_mapped_ui_stats(state->mapped_ui_stats_host, state->mapped_ui_stats_device);
   delete state;
 }
 
@@ -204,6 +266,387 @@ __global__ void seed_population_kernel(DevicePopulationBuffers population, std::
   population.compiled.node_counts[idx] = alive == 0U ? 0U : seeded_node_count;
   population.compiled.eval_counts[idx] = 0U;
   population.compiled.connection_counts[idx] = 0U;
+}
+
+__device__ float clamp_world(float value, float world_size) {
+  if (value < 0.0F) {
+    return 0.0F;
+  }
+  if (value > world_size) {
+    return world_size;
+  }
+  return value;
+}
+
+__device__ float clamp_unit(float value) {
+  if (value < -1.0F) {
+    return -1.0F;
+  }
+  if (value > 1.0F) {
+    return 1.0F;
+  }
+  return value;
+}
+
+__global__ void seed_food_kernel(FoodBuffer food, std::uint64_t base_seed, float world_size) {
+  const auto idx = (blockIdx.x * blockDim.x) + threadIdx.x;
+  if (idx >= food.capacity) {
+    return;
+  }
+
+  auto rng = moonai_gpu::splitmix64(base_seed ^ (static_cast<std::uint64_t>(idx) << 16U));
+  food.pos_x[idx] = moonai_gpu::next_unit_float(rng) * world_size;
+  food.pos_y[idx] = moonai_gpu::next_unit_float(rng) * world_size;
+  food.active[idx] = 1U;
+}
+
+__global__ void initialize_free_list_kernel(DevicePopulationBuffers population, std::uint32_t *free_list,
+                                            std::uint32_t *free_len) {
+  if (blockIdx.x != 0U || threadIdx.x != 0U) {
+    return;
+  }
+
+  std::uint32_t len = 0U;
+  for (std::uint32_t idx = 0; idx < population.capacity; ++idx) {
+    if (population.alive[idx] == 0U) {
+      free_list[len++] = idx;
+    }
+  }
+  *free_len = len;
+}
+
+__global__ void reset_simulation_counters_kernel(SimulationCounters *counters) {
+  if (blockIdx.x == 0U && threadIdx.x == 0U) {
+    *counters = SimulationCounters{};
+  }
+}
+
+__global__ void advance_tick_kernel(SimulationCounters *counters) {
+  if (blockIdx.x == 0U && threadIdx.x == 0U) {
+    ++counters->tick;
+  }
+}
+
+__global__ void infer_population_kernel(DevicePopulationBuffers population, std::uint32_t num_inputs, float max_energy,
+                                        float world_size) {
+  const auto idx = (blockIdx.x * blockDim.x) + threadIdx.x;
+  if (idx >= population.capacity || population.alive[idx] == 0U) {
+    return;
+  }
+
+  const auto node_count = population.compiled.node_counts[idx];
+  const auto eval_count = population.compiled.eval_counts[idx];
+  if (node_count == 0U || node_count > moonai_gpu::kCompileScratchNodeLimit) {
+    population.vel_x[idx] = 0.0F;
+    population.vel_y[idx] = 0.0F;
+    return;
+  }
+
+  float activations[moonai_gpu::kCompileScratchNodeLimit]{};
+  if (num_inputs > moonai_gpu::kSelfEnergyInputIndex && moonai_gpu::kSelfEnergyInputIndex < node_count) {
+    activations[moonai_gpu::kSelfEnergyInputIndex] = max_energy <= 0.0F ? 0.0F : population.energy[idx] / max_energy;
+  }
+  if (num_inputs > moonai_gpu::kVelocityXInputIndex && moonai_gpu::kVelocityXInputIndex < node_count) {
+    activations[moonai_gpu::kVelocityXInputIndex] = clamp_unit(population.vel_x[idx]);
+  }
+  if (num_inputs > moonai_gpu::kVelocityYInputIndex && moonai_gpu::kVelocityYInputIndex < node_count) {
+    activations[moonai_gpu::kVelocityYInputIndex] = clamp_unit(population.vel_y[idx]);
+  }
+  if (num_inputs > moonai_gpu::kWallXInputIndex && moonai_gpu::kWallXInputIndex < node_count) {
+    const auto normalized_x = world_size <= 0.0F ? 0.0F : ((population.pos_x[idx] / world_size) * 2.0F) - 1.0F;
+    activations[moonai_gpu::kWallXInputIndex] = clamp_unit(normalized_x);
+  }
+  if (num_inputs > moonai_gpu::kWallYInputIndex && moonai_gpu::kWallYInputIndex < node_count) {
+    const auto normalized_y = world_size <= 0.0F ? 0.0F : ((population.pos_y[idx] / world_size) * 2.0F) - 1.0F;
+    activations[moonai_gpu::kWallYInputIndex] = clamp_unit(normalized_y);
+  }
+  if (num_inputs < node_count) {
+    activations[num_inputs] = 1.0F;
+  }
+
+  const auto offset_base = static_cast<std::size_t>(idx) * (population.compiled.node_stride + 1U);
+  const auto eval_base = static_cast<std::size_t>(idx) * population.compiled.node_stride;
+  const auto output_base = static_cast<std::size_t>(idx) * population.compiled.output_stride;
+  const auto compiled_connection_base = static_cast<std::size_t>(idx) * population.compiled.connection_stride;
+  for (std::uint16_t eval_index = 0; eval_index < eval_count; ++eval_index) {
+    const auto node = population.compiled.eval_order[eval_base + eval_index];
+    if (node >= node_count) {
+      continue;
+    }
+    const auto start = population.compiled.connection_offsets[offset_base + node];
+    const auto end = population.compiled.connection_offsets[offset_base + node + 1U];
+    float sum = 0.0F;
+    for (std::uint32_t connection = start; connection < end; ++connection) {
+      const auto source = population.compiled.connection_sources[compiled_connection_base + connection];
+      if (source < node_count) {
+        sum += activations[source] * population.compiled.connection_weights[compiled_connection_base + connection];
+      }
+    }
+    activations[node] = tanhf(sum);
+  }
+
+  const auto output_x = population.compiled.output_stride > 0U ? population.compiled.output_indices[output_base] : 0U;
+  const auto output_y = population.compiled.output_stride > 1U ? population.compiled.output_indices[output_base + 1U] : 0U;
+  population.vel_x[idx] = output_x < node_count ? activations[output_x] : 0.0F;
+  population.vel_y[idx] = output_y < node_count ? activations[output_y] : 0.0F;
+}
+
+__global__ void update_vitals_kernel(DevicePopulationBuffers population, float energy_drain_per_tick, std::uint32_t max_age,
+                                     std::uint32_t *free_list, std::uint32_t *free_len, std::uint32_t *death_counter) {
+  const auto idx = (blockIdx.x * blockDim.x) + threadIdx.x;
+  if (idx >= population.capacity || population.alive[idx] == 0U) {
+    return;
+  }
+
+  population.age[idx] += 1.0F;
+  population.energy[idx] -= energy_drain_per_tick;
+  if (population.energy[idx] < 0.0F) {
+    population.energy[idx] = 0.0F;
+  }
+
+  if (population.energy[idx] <= 0.0F || population.age[idx] >= static_cast<float>(max_age)) {
+    population.alive[idx] = 0U;
+    population.vel_x[idx] = 0.0F;
+    population.vel_y[idx] = 0.0F;
+    const auto free_index = atomicAdd(free_len, 1U);
+    if (free_index < population.capacity) {
+      free_list[free_index] = idx;
+    }
+    atomicAdd(death_counter, 1U);
+  }
+}
+
+__global__ void resolve_food_kernel(DevicePopulationBuffers prey, FoodBuffer food, SimulationCounters *counters,
+                                    float interaction_range, float energy_gain_from_food, float max_energy,
+                                    float world_size) {
+  if (blockIdx.x != 0U || threadIdx.x != 0U) {
+    return;
+  }
+
+  const auto interaction_range_sq = interaction_range * interaction_range;
+  for (std::uint32_t prey_idx = 0; prey_idx < prey.capacity; ++prey_idx) {
+    if (prey.alive[prey_idx] == 0U) {
+      continue;
+    }
+
+    std::uint32_t best_food = food.capacity;
+    float best_distance = interaction_range_sq;
+    for (std::uint32_t food_idx = 0; food_idx < food.capacity; ++food_idx) {
+      if (food.active[food_idx] == 0U) {
+        continue;
+      }
+
+      const auto dx = food.pos_x[food_idx] - prey.pos_x[prey_idx];
+      const auto dy = food.pos_y[food_idx] - prey.pos_y[prey_idx];
+      const auto distance_sq = (dx * dx) + (dy * dy);
+      if (distance_sq <= best_distance) {
+        best_distance = distance_sq;
+        best_food = food_idx;
+      }
+    }
+
+    if (best_food == food.capacity) {
+      continue;
+    }
+
+    auto rng = prey.rng_state[prey_idx] ^ (static_cast<std::uint64_t>(best_food) << 16U) ^ counters->tick;
+    food.pos_x[best_food] = moonai_gpu::next_unit_float(rng) * world_size;
+    food.pos_y[best_food] = moonai_gpu::next_unit_float(rng) * world_size;
+    food.active[best_food] = 1U;
+    prey.rng_state[prey_idx] = rng;
+    prey.energy[prey_idx] += energy_gain_from_food;
+    if (prey.energy[prey_idx] > max_energy) {
+      prey.energy[prey_idx] = max_energy;
+    }
+    ++counters->food_eaten;
+  }
+}
+
+__global__ void resolve_combat_kernel(DevicePopulationBuffers predator, DevicePopulationBuffers prey,
+                                      SimulationCounters *counters, std::uint32_t *prey_free_list,
+                                      std::uint32_t *prey_free_len, float interaction_range, float energy_gain_from_kill,
+                                      float max_energy) {
+  if (blockIdx.x != 0U || threadIdx.x != 0U) {
+    return;
+  }
+
+  const auto interaction_range_sq = interaction_range * interaction_range;
+  for (std::uint32_t predator_idx = 0; predator_idx < predator.capacity; ++predator_idx) {
+    if (predator.alive[predator_idx] == 0U) {
+      continue;
+    }
+
+    std::uint32_t best_prey = prey.capacity;
+    float best_distance = interaction_range_sq;
+    for (std::uint32_t prey_idx = 0; prey_idx < prey.capacity; ++prey_idx) {
+      if (prey.alive[prey_idx] == 0U) {
+        continue;
+      }
+
+      const auto dx = prey.pos_x[prey_idx] - predator.pos_x[predator_idx];
+      const auto dy = prey.pos_y[prey_idx] - predator.pos_y[predator_idx];
+      const auto distance_sq = (dx * dx) + (dy * dy);
+      if (distance_sq <= best_distance) {
+        best_distance = distance_sq;
+        best_prey = prey_idx;
+      }
+    }
+
+    if (best_prey == prey.capacity) {
+      continue;
+    }
+
+    prey.alive[best_prey] = 0U;
+    prey.energy[best_prey] = 0.0F;
+    prey.vel_x[best_prey] = 0.0F;
+    prey.vel_y[best_prey] = 0.0F;
+    const auto free_index = (*prey_free_len)++;
+    if (free_index < prey.capacity) {
+      prey_free_list[free_index] = best_prey;
+    }
+    predator.energy[predator_idx] += energy_gain_from_kill;
+    if (predator.energy[predator_idx] > max_energy) {
+      predator.energy[predator_idx] = max_energy;
+    }
+    ++counters->kills;
+    ++counters->prey_deaths;
+  }
+}
+
+__global__ void apply_movement_kernel(DevicePopulationBuffers population, float speed, float world_size) {
+  const auto idx = (blockIdx.x * blockDim.x) + threadIdx.x;
+  if (idx >= population.capacity || population.alive[idx] == 0U) {
+    return;
+  }
+
+  population.pos_x[idx] = clamp_world(population.pos_x[idx] + (population.vel_x[idx] * speed), world_size);
+  population.pos_y[idx] = clamp_world(population.pos_y[idx] + (population.vel_y[idx] * speed), world_size);
+}
+
+__global__ void write_ui_stats_kernel(DevicePopulationBuffers predator, DevicePopulationBuffers prey, FoodBuffer food,
+                                      const SimulationCounters *counters, UiStatsReadback *out_stats) {
+  if (blockIdx.x != 0U || threadIdx.x != 0U) {
+    return;
+  }
+
+  std::uint32_t predator_count = 0U;
+  std::uint32_t prey_count = 0U;
+  float predator_energy = 0.0F;
+  float prey_energy = 0.0F;
+  for (std::uint32_t idx = 0; idx < predator.capacity; ++idx) {
+    if (predator.alive[idx] == 0U) {
+      continue;
+    }
+    ++predator_count;
+    predator_energy += predator.energy[idx];
+  }
+  for (std::uint32_t idx = 0; idx < prey.capacity; ++idx) {
+    if (prey.alive[idx] == 0U) {
+      continue;
+    }
+    ++prey_count;
+    prey_energy += prey.energy[idx];
+  }
+  std::uint32_t active_food = 0U;
+  for (std::uint32_t idx = 0; idx < food.capacity; ++idx) {
+    active_food += food.active[idx] != 0U;
+  }
+
+  out_stats->tick = counters->tick;
+  out_stats->predator_count = predator_count;
+  out_stats->prey_count = prey_count;
+  out_stats->predator_births = counters->predator_births;
+  out_stats->prey_births = counters->prey_births;
+  out_stats->predator_deaths = counters->predator_deaths;
+  out_stats->prey_deaths = counters->prey_deaths;
+  out_stats->kills = counters->kills;
+  out_stats->food_eaten = counters->food_eaten;
+  out_stats->avg_predator_energy = predator_count == 0U ? 0.0F : predator_energy / static_cast<float>(predator_count);
+  out_stats->avg_prey_energy = prey_count == 0U ? 0.0F : prey_energy / static_cast<float>(prey_count);
+  static_cast<void>(active_food);
+}
+
+__global__ void free_list_state_kernel(FoodBuffer food, const SimulationCounters *counters,
+                                       const std::uint32_t *predator_free_len, const std::uint32_t *prey_free_len,
+                                       moonai_gpu::FreeListStateReadback *out_state) {
+  if (blockIdx.x != 0U || threadIdx.x != 0U) {
+    return;
+  }
+
+  std::uint32_t active_food = 0U;
+  for (std::uint32_t idx = 0; idx < food.capacity; ++idx) {
+    active_food += food.active[idx] != 0U;
+  }
+  out_state->tick = counters->tick;
+  out_state->predator_free_slots = *predator_free_len;
+  out_state->prey_free_slots = *prey_free_len;
+  out_state->active_food_count = active_food;
+  out_state->food_capacity = food.capacity;
+}
+
+__global__ void render_snapshot_kernel(DevicePopulationBuffers predator, DevicePopulationBuffers prey, FoodBuffer food,
+                                       const SimulationCounters *counters, std::uint32_t max_predators,
+                                       std::uint32_t max_prey, std::uint32_t max_food, RenderSnapshotHeader *out_header,
+                                       RenderAgentReadback *out_predators, RenderAgentReadback *out_prey,
+                                       RenderFoodReadback *out_food) {
+  if (blockIdx.x != 0U || threadIdx.x != 0U) {
+    return;
+  }
+
+  out_header->tick = counters->tick;
+  out_header->total_predators = 0U;
+  out_header->total_prey = 0U;
+  out_header->total_food = 0U;
+  out_header->returned_predators = 0U;
+  out_header->returned_prey = 0U;
+  out_header->returned_food = 0U;
+
+  for (std::uint32_t idx = 0; idx < predator.capacity; ++idx) {
+    if (predator.alive[idx] == 0U) {
+      continue;
+    }
+    ++out_header->total_predators;
+    if (out_header->returned_predators < max_predators) {
+      out_predators[out_header->returned_predators++] = RenderAgentReadback{PopulationKind::Predator,
+                                                                            idx,
+                                                                            predator.entity_id[idx],
+                                                                            predator.species_id[idx],
+                                                                            predator.generation[idx],
+                                                                            predator.pos_x[idx],
+                                                                            predator.pos_y[idx],
+                                                                            predator.vel_x[idx],
+                                                                            predator.vel_y[idx],
+                                                                            predator.energy[idx]};
+    }
+  }
+  for (std::uint32_t idx = 0; idx < prey.capacity; ++idx) {
+    if (prey.alive[idx] == 0U) {
+      continue;
+    }
+    ++out_header->total_prey;
+    if (out_header->returned_prey < max_prey) {
+      out_prey[out_header->returned_prey++] = RenderAgentReadback{PopulationKind::Prey,
+                                                                  idx,
+                                                                  prey.entity_id[idx],
+                                                                  prey.species_id[idx],
+                                                                  prey.generation[idx],
+                                                                  prey.pos_x[idx],
+                                                                  prey.pos_y[idx],
+                                                                  prey.vel_x[idx],
+                                                                  prey.vel_y[idx],
+                                                                  prey.energy[idx]};
+    }
+  }
+  for (std::uint32_t idx = 0; idx < food.capacity; ++idx) {
+    if (food.active[idx] == 0U) {
+      continue;
+    }
+    ++out_header->total_food;
+    if (out_header->returned_food < max_food) {
+      out_food[out_header->returned_food++] = RenderFoodReadback{idx, food.active[idx], 0U, 0U, food.pos_x[idx],
+                                                                 food.pos_y[idx]};
+    }
+  }
 }
 
 __global__ void summarize_population_kernel(DevicePopulationBuffers population, const DeviceInnovationState *innovation,
@@ -430,6 +873,11 @@ extern "C" std::int32_t moonai_gpu_evolution_ui_stats(const void *state_ptr, UiS
     return static_cast<std::int32_t>(CudaStatus::InvalidArgument);
   }
 
+  if (state->mapped_ui_stats_host != nullptr) {
+    *out_stats = *state->mapped_ui_stats_host;
+    return static_cast<std::int32_t>(CudaStatus::Success);
+  }
+
   PopulationSummaryReadback predator_summary{};
   PopulationSummaryReadback prey_summary{};
   auto status = static_cast<CudaStatus>(
@@ -465,6 +913,238 @@ extern "C" std::int32_t moonai_gpu_evolution_innovation_state(const void *state_
 
   return static_cast<std::int32_t>(
       moonai_gpu::copy_compact_device_readback(state->innovation, out_innovation, sizeof(*out_innovation)));
+}
+
+extern "C" std::int32_t moonai_gpu_evolution_innovation_log(const void *state_ptr, std::uint32_t max_records,
+                                                              InnovationLogReadbackHeader *out_header,
+                                                              InnovationRecord *out_records) {
+  auto *state = static_cast<const GpuEvolutionState *>(state_ptr);
+  if (state == nullptr || out_header == nullptr || (max_records != 0U && out_records == nullptr)) {
+    return static_cast<std::int32_t>(CudaStatus::InvalidArgument);
+  }
+
+  DeviceInnovationState innovation_state{};
+  auto status = moonai_gpu::copy_compact_device_readback(state->innovation, &innovation_state, sizeof(innovation_state));
+  if (status != CudaStatus::Success) {
+    return static_cast<std::int32_t>(status);
+  }
+
+  const auto stored_len = innovation_state.log_len < innovation_state.log_capacity ? innovation_state.log_len
+                                                                                    : innovation_state.log_capacity;
+  const auto returned_len = stored_len < max_records ? stored_len : max_records;
+  out_header->total_len = innovation_state.log_len;
+  out_header->stored_len = stored_len;
+  out_header->returned_len = returned_len;
+  out_header->dropped_len = innovation_state.log_len > innovation_state.log_capacity
+                                ? innovation_state.log_len - innovation_state.log_capacity
+                                : 0U;
+
+  if (returned_len == 0U) {
+    return static_cast<std::int32_t>(CudaStatus::Success);
+  }
+
+  status = moonai_gpu::copy_compact_device_readback(state->innovation_log, out_records,
+                                                    sizeof(InnovationRecord) * returned_len);
+  return static_cast<std::int32_t>(status);
+}
+
+extern "C" std::int32_t moonai_gpu_simulation_initialize(void *state_ptr, const GpuSimulationConfig *config) {
+  auto *state = static_cast<GpuEvolutionState *>(state_ptr);
+  if (state == nullptr || config == nullptr || config->world_size <= 0.0F || config->predator_speed <= 0.0F ||
+      config->prey_speed <= 0.0F || config->max_energy <= 0.0F || config->initial_energy <= 0.0F || config->max_age == 0U) {
+    return static_cast<std::int32_t>(CudaStatus::InvalidArgument);
+  }
+
+  state->simulation = *config;
+  if (state->food.capacity != config->food_capacity) {
+    free_food_buffers(state->food);
+  }
+  if (config->food_capacity > 0U && state->food.capacity == 0U) {
+    auto status = allocate_food_buffers(state->food, config->food_capacity);
+    if (status != CudaStatus::Success) {
+      return static_cast<std::int32_t>(status);
+    }
+  }
+  if (state->counters == nullptr) {
+    auto status = moonai_gpu::alloc_array(&state->counters, 1U);
+    if (status != CudaStatus::Success) {
+      return static_cast<std::int32_t>(status);
+    }
+  }
+  if (state->predator_free_list == nullptr) {
+    auto status = moonai_gpu::alloc_array(&state->predator_free_list, state->predator.capacity);
+    if (status != CudaStatus::Success) {
+      return static_cast<std::int32_t>(status);
+    }
+  }
+  if (state->prey_free_list == nullptr) {
+    auto status = moonai_gpu::alloc_array(&state->prey_free_list, state->prey.capacity);
+    if (status != CudaStatus::Success) {
+      return static_cast<std::int32_t>(status);
+    }
+  }
+  if (state->predator_free_len == nullptr) {
+    auto status = moonai_gpu::alloc_array(&state->predator_free_len, 1U);
+    if (status != CudaStatus::Success) {
+      return static_cast<std::int32_t>(status);
+    }
+  }
+  if (state->prey_free_len == nullptr) {
+    auto status = moonai_gpu::alloc_array(&state->prey_free_len, 1U);
+    if (status != CudaStatus::Success) {
+      return static_cast<std::int32_t>(status);
+    }
+  }
+  if (state->mapped_ui_stats_host == nullptr || state->mapped_ui_stats_device == nullptr) {
+    auto status = allocate_mapped_ui_stats(&state->mapped_ui_stats_host, &state->mapped_ui_stats_device);
+    if (status != CudaStatus::Success) {
+      return static_cast<std::int32_t>(status);
+    }
+  }
+
+  reset_simulation_counters_kernel<<<1U, 1U>>>(state->counters);
+  initialize_free_list_kernel<<<1U, 1U>>>(state->predator, state->predator_free_list, state->predator_free_len);
+  initialize_free_list_kernel<<<1U, 1U>>>(state->prey, state->prey_free_list, state->prey_free_len);
+  if (state->food.capacity > 0U) {
+    const auto food_blocks = (state->food.capacity + 255U) / 256U;
+    seed_food_kernel<<<food_blocks == 0U ? 1U : food_blocks, 256U>>>(state->food, config->seed ^ 0xC0FFEEULL,
+                                                                      config->world_size);
+  }
+  write_ui_stats_kernel<<<1U, 1U>>>(state->predator, state->prey, state->food, state->counters, state->mapped_ui_stats_device);
+  auto status = moonai_gpu::synchronize_kernels();
+  return static_cast<std::int32_t>(status);
+}
+
+extern "C" std::int32_t moonai_gpu_simulation_step(void *state_ptr, UiStatsReadback *out_stats) {
+  auto *state = static_cast<GpuEvolutionState *>(state_ptr);
+  if (state == nullptr || out_stats == nullptr || state->counters == nullptr || state->mapped_ui_stats_host == nullptr ||
+      state->mapped_ui_stats_device == nullptr) {
+    return static_cast<std::int32_t>(CudaStatus::InvalidArgument);
+  }
+
+  const auto predator_blocks = (state->predator.capacity + 255U) / 256U;
+  const auto prey_blocks = (state->prey.capacity + 255U) / 256U;
+  infer_population_kernel<<<predator_blocks == 0U ? 1U : predator_blocks, 256U>>>(state->predator, state->config.num_inputs,
+                                                                                    state->simulation.max_energy,
+                                                                                    state->simulation.world_size);
+  infer_population_kernel<<<prey_blocks == 0U ? 1U : prey_blocks, 256U>>>(state->prey, state->config.num_inputs,
+                                                                            state->simulation.max_energy,
+                                                                            state->simulation.world_size);
+  update_vitals_kernel<<<predator_blocks == 0U ? 1U : predator_blocks, 256U>>>(state->predator,
+                                                                                 state->simulation.energy_drain_per_tick,
+                                                                                 state->simulation.max_age,
+                                                                                 state->predator_free_list,
+                                                                                 state->predator_free_len,
+                                                                                 &state->counters->predator_deaths);
+  update_vitals_kernel<<<prey_blocks == 0U ? 1U : prey_blocks, 256U>>>(state->prey, state->simulation.energy_drain_per_tick,
+                                                                        state->simulation.max_age, state->prey_free_list,
+                                                                        state->prey_free_len, &state->counters->prey_deaths);
+  resolve_food_kernel<<<1U, 1U>>>(state->prey, state->food, state->counters, state->simulation.interaction_range,
+                                  state->simulation.energy_gain_from_food, state->simulation.max_energy,
+                                  state->simulation.world_size);
+  resolve_combat_kernel<<<1U, 1U>>>(state->predator, state->prey, state->counters, state->prey_free_list,
+                                    state->prey_free_len, state->simulation.interaction_range,
+                                    state->simulation.energy_gain_from_kill, state->simulation.max_energy);
+  apply_movement_kernel<<<predator_blocks == 0U ? 1U : predator_blocks, 256U>>>(state->predator,
+                                                                                 state->simulation.predator_speed,
+                                                                                 state->simulation.world_size);
+  apply_movement_kernel<<<prey_blocks == 0U ? 1U : prey_blocks, 256U>>>(state->prey, state->simulation.prey_speed,
+                                                                         state->simulation.world_size);
+  advance_tick_kernel<<<1U, 1U>>>(state->counters);
+  write_ui_stats_kernel<<<1U, 1U>>>(state->predator, state->prey, state->food, state->counters, state->mapped_ui_stats_device);
+  auto status = moonai_gpu::synchronize_kernels();
+  if (status != CudaStatus::Success) {
+    return static_cast<std::int32_t>(status);
+  }
+
+  *out_stats = *state->mapped_ui_stats_host;
+  return static_cast<std::int32_t>(CudaStatus::Success);
+}
+
+extern "C" std::int32_t moonai_gpu_simulation_ui_stats(const void *state_ptr, UiStatsReadback *out_stats) {
+  auto *state = static_cast<const GpuEvolutionState *>(state_ptr);
+  if (state == nullptr || out_stats == nullptr || state->mapped_ui_stats_host == nullptr) {
+    return static_cast<std::int32_t>(CudaStatus::InvalidArgument);
+  }
+  *out_stats = *state->mapped_ui_stats_host;
+  return static_cast<std::int32_t>(CudaStatus::Success);
+}
+
+extern "C" std::int32_t moonai_gpu_simulation_free_list_state(const void *state_ptr,
+                                                                moonai_gpu::FreeListStateReadback *out_state) {
+  auto *state = static_cast<const GpuEvolutionState *>(state_ptr);
+  if (state == nullptr || out_state == nullptr || state->counters == nullptr || state->predator_free_len == nullptr ||
+      state->prey_free_len == nullptr) {
+    return static_cast<std::int32_t>(CudaStatus::InvalidArgument);
+  }
+
+  moonai_gpu::FreeListStateReadback *device_state = nullptr;
+  auto status = moonai_gpu::alloc_array(&device_state, 1U);
+  if (status == CudaStatus::Success) {
+    free_list_state_kernel<<<1U, 1U>>>(state->food, state->counters, state->predator_free_len, state->prey_free_len,
+                                       device_state);
+    status = moonai_gpu::synchronize_kernels();
+  }
+  if (status == CudaStatus::Success) {
+    status = moonai_gpu::copy_compact_device_readback(device_state, out_state, sizeof(*out_state));
+  }
+  moonai_gpu::free_array(device_state);
+  return static_cast<std::int32_t>(status);
+}
+
+extern "C" std::int32_t moonai_gpu_simulation_render_snapshot(const void *state_ptr, std::uint32_t max_predators,
+                                                                std::uint32_t max_prey, std::uint32_t max_food,
+                                                                RenderSnapshotHeader *out_header,
+                                                                RenderAgentReadback *out_predators,
+                                                                RenderAgentReadback *out_prey,
+                                                                RenderFoodReadback *out_food) {
+  auto *state = static_cast<const GpuEvolutionState *>(state_ptr);
+  if (state == nullptr || out_header == nullptr ||
+      (max_predators != 0U && out_predators == nullptr) || (max_prey != 0U && out_prey == nullptr) ||
+      (max_food != 0U && out_food == nullptr) || state->counters == nullptr) {
+    return static_cast<std::int32_t>(CudaStatus::InvalidArgument);
+  }
+
+  RenderSnapshotHeader *device_header = nullptr;
+  RenderAgentReadback *device_predators = nullptr;
+  RenderAgentReadback *device_prey = nullptr;
+  RenderFoodReadback *device_food = nullptr;
+  auto status = moonai_gpu::alloc_array(&device_header, 1U);
+  if (status == CudaStatus::Success && max_predators > 0U) {
+    status = moonai_gpu::alloc_array(&device_predators, max_predators);
+  }
+  if (status == CudaStatus::Success && max_prey > 0U) {
+    status = moonai_gpu::alloc_array(&device_prey, max_prey);
+  }
+  if (status == CudaStatus::Success && max_food > 0U) {
+    status = moonai_gpu::alloc_array(&device_food, max_food);
+  }
+  if (status == CudaStatus::Success) {
+    render_snapshot_kernel<<<1U, 1U>>>(state->predator, state->prey, state->food, state->counters, max_predators, max_prey,
+                                       max_food, device_header, device_predators, device_prey, device_food);
+    status = moonai_gpu::synchronize_kernels();
+  }
+  if (status == CudaStatus::Success) {
+    status = moonai_gpu::copy_compact_device_readback(device_header, out_header, sizeof(*out_header));
+  }
+  if (status == CudaStatus::Success && out_header->returned_predators > 0U) {
+    status = moonai_gpu::copy_compact_device_readback(device_predators, out_predators,
+                                                      sizeof(RenderAgentReadback) * out_header->returned_predators);
+  }
+  if (status == CudaStatus::Success && out_header->returned_prey > 0U) {
+    status = moonai_gpu::copy_compact_device_readback(device_prey, out_prey,
+                                                      sizeof(RenderAgentReadback) * out_header->returned_prey);
+  }
+  if (status == CudaStatus::Success && out_header->returned_food > 0U) {
+    status = moonai_gpu::copy_compact_device_readback(device_food, out_food,
+                                                      sizeof(RenderFoodReadback) * out_header->returned_food);
+  }
+
+  moonai_gpu::free_array(device_header);
+  moonai_gpu::free_array(device_predators);
+  moonai_gpu::free_array(device_prey);
+  moonai_gpu::free_array(device_food);
+  return static_cast<std::int32_t>(status);
 }
 
 extern "C" std::int32_t moonai_gpu_last_cuda_error_code() { return moonai_gpu::g_last_cuda_error_code; }

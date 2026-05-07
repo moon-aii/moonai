@@ -9,6 +9,7 @@ using moonai_gpu::InvariantCheckReadback;
 using moonai_gpu::PopulationKind;
 using moonai_gpu::RepresentativeGenomeHeader;
 using moonai_gpu::SelectedAgentNetworkReadback;
+using moonai_gpu::SpeciesBatchReadbackHeader;
 using moonai_gpu::SpeciesSummaryReadback;
 
 namespace {
@@ -334,6 +335,59 @@ __global__ void classify_species_kernel(DevicePopulationBuffers population, Popu
   build_representative_header(population, population_kind, representative_slot, out_header);
 }
 
+__global__ void classify_species_batch_kernel(DevicePopulationBuffers population, PopulationKind population_kind,
+                                              SpeciesSummaryReadback *out_summaries,
+                                              RepresentativeGenomeHeader *out_headers,
+                                              std::uint32_t *out_species_count) {
+  if (blockIdx.x != 0U || threadIdx.x != 0U) {
+    return;
+  }
+
+  std::uint32_t species_sizes[moonai_gpu::kSpeciesBucketCount]{};
+  float complexity_sums[moonai_gpu::kSpeciesBucketCount]{};
+  std::uint32_t representative_slots[moonai_gpu::kSpeciesBucketCount]{};
+  bool representative_seen[moonai_gpu::kSpeciesBucketCount]{};
+
+  for (std::uint32_t idx = 0; idx < population.capacity; ++idx) {
+    if (population.alive[idx] == 0U) {
+      continue;
+    }
+
+    const auto node_count = population.genome.num_nodes[idx];
+    const auto connection_count = population.genome.num_connections[idx];
+    const auto enabled_count = count_enabled_connections(population, idx, connection_count);
+    const auto species_id = species_bucket(population, idx, node_count, connection_count);
+    population.species_id[idx] = species_id;
+
+    if (!representative_seen[species_id]) {
+      representative_slots[species_id] = idx;
+      representative_seen[species_id] = true;
+    }
+
+    ++species_sizes[species_id];
+    complexity_sums[species_id] += static_cast<float>(node_count + enabled_count);
+  }
+
+  std::uint32_t dense_count = 0U;
+  for (std::uint32_t species_id = 0; species_id < moonai_gpu::kSpeciesBucketCount; ++species_id) {
+    if (species_sizes[species_id] == 0U) {
+      continue;
+    }
+
+    const auto representative_slot = representative_slots[species_id];
+    out_summaries[dense_count] = SpeciesSummaryReadback{population_kind,
+                                                        species_id,
+                                                        species_sizes[species_id],
+                                                        representative_slot,
+                                                        complexity_sums[species_id] /
+                                                            static_cast<float>(species_sizes[species_id])};
+    build_representative_header(population, population_kind, representative_slot, &out_headers[dense_count]);
+    ++dense_count;
+  }
+
+  *out_species_count = dense_count;
+}
+
 __device__ void inspect_population_invariants(const DevicePopulationBuffers &population, std::uint32_t output_stride,
                                               std::uint32_t *agents_checked, InvariantCheckReadback *out_checks) {
   for (std::uint32_t slot = 0; slot < population.capacity; ++slot) {
@@ -518,6 +572,58 @@ extern "C" std::int32_t moonai_gpu_evolution_classify_species(void *state_ptr, P
 
   moonai_gpu::free_array(device_summary);
   moonai_gpu::free_array(device_header);
+  return static_cast<std::int32_t>(status);
+}
+
+extern "C" std::int32_t moonai_gpu_evolution_species_summaries(void *state_ptr, PopulationKind population_kind,
+                                                                 std::uint32_t max_species,
+                                                                 SpeciesBatchReadbackHeader *out_header,
+                                                                 SpeciesSummaryReadback *out_summaries,
+                                                                 RepresentativeGenomeHeader *out_representatives) {
+  auto *state = static_cast<GpuEvolutionState *>(state_ptr);
+  if (state == nullptr || out_header == nullptr ||
+      (max_species != 0U && (out_summaries == nullptr || out_representatives == nullptr))) {
+    return static_cast<std::int32_t>(CudaStatus::InvalidArgument);
+  }
+
+  auto &population = moonai_gpu::population_for_kind(*state, population_kind);
+  SpeciesSummaryReadback *device_summaries = nullptr;
+  RepresentativeGenomeHeader *device_headers = nullptr;
+  std::uint32_t *device_count = nullptr;
+  auto status = moonai_gpu::alloc_array(&device_summaries, moonai_gpu::kSpeciesBucketCount);
+  if (status == CudaStatus::Success) {
+    status = moonai_gpu::alloc_array(&device_headers, moonai_gpu::kSpeciesBucketCount);
+  }
+  if (status == CudaStatus::Success) {
+    status = moonai_gpu::alloc_array(&device_count, 1U);
+  }
+  if (status == CudaStatus::Success) {
+    classify_species_batch_kernel<<<1U, 1U>>>(population, population_kind, device_summaries, device_headers, device_count);
+    status = moonai_gpu::synchronize_kernels();
+  }
+
+  std::uint32_t species_count = 0U;
+  if (status == CudaStatus::Success) {
+    status = moonai_gpu::copy_compact_device_readback(device_count, &species_count, sizeof(species_count));
+  }
+  if (status == CudaStatus::Success) {
+    const auto returned_species_count = species_count < max_species ? species_count : max_species;
+    out_header->population_kind = population_kind;
+    out_header->species_count = species_count;
+    out_header->returned_species_count = returned_species_count;
+    if (returned_species_count > 0U) {
+      status = moonai_gpu::copy_compact_device_readback(device_summaries, out_summaries,
+                                                        sizeof(SpeciesSummaryReadback) * returned_species_count);
+    }
+    if (status == CudaStatus::Success && returned_species_count > 0U) {
+      status = moonai_gpu::copy_compact_device_readback(device_headers, out_representatives,
+                                                        sizeof(RepresentativeGenomeHeader) * returned_species_count);
+    }
+  }
+
+  moonai_gpu::free_array(device_summaries);
+  moonai_gpu::free_array(device_headers);
+  moonai_gpu::free_array(device_count);
   return static_cast<std::int32_t>(status);
 }
 

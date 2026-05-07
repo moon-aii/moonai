@@ -407,47 +407,47 @@ src/
 
 #### 4a. GPU Buffers
 
-| #   | Task                         | Notes                                                |
-| --- | ---------------------------- | ---------------------------------------------------- |
-| 1   | `PredatorBuffer` SoA layout  | All genome arrays in-place                           |
-| 2   | `PreyBuffer` SoA layout      | Same as predator                                     |
-| 3   | `FoodBuffer`                 | pos_x, pos_y, active                                 |
-| 4   | `UiStats` pinned host-mapped | Written on UI refresh cadence, CPU reads with memcpy |
-| 5   | Free list ring buffer        | Push dead slots, pop for births                      |
+| #   | Task                         | Notes                                                | Status |
+| --- | ---------------------------- | ---------------------------------------------------- | ------ |
+| 1   | `PredatorBuffer` SoA layout  | All genome arrays in-place                           | [x]    |
+| 2   | `PreyBuffer` SoA layout      | Same as predator                                     | [x]    |
+| 3   | `FoodBuffer`                 | pos_x, pos_y, active                                 | [x]    |
+| 4   | `UiStats` pinned host-mapped | Written on UI refresh cadence, CPU reads with memcpy | [x]    |
+| 5   | Free list ring buffer        | Push dead slots, pop for births                      | [x]    |
 
 #### 4b. Persistent Kernel Phases
 
-| #   | Phase               | Calls                      | Algorithm                                      |
-| --- | ------------------- | -------------------------- | ---------------------------------------------- |
-| 1   | `grid_build`        | —                          | Count-scan-scatter into spatial cells          |
-| 2   | `sensor_compute`    | —                          | Search 5 nearest predators/prey/food per agent |
-| 3   | `inference`         | —                          | Forward pass tanh activation                   |
-| 4   | `update_vitals`     | —                          | Energy drain, age++, death check               |
-| 5   | `resolve_food`      | —                          | Prey claim food in range                       |
-| 6   | `resolve_combat`    | —                          | Predator claim prey in range                   |
-| 7   | `apply_movement`    | —                          | NN output → position update                    |
-| 8   | `reproduction`      | —                          |                                                |
-| 8a  | evaluate            | —                          | Energy >= threshold, not used this tick        |
-| 8b  | find_mate           | —                          | DenseReproductionGrid search                   |
-| 8c  | gpu_crossover       | **tick evolution modules** | Calls crossover.cu kernel                      |
-| 8d  | gpu_mutate          | **tick evolution modules** | Calls mutation.cu kernel                       |
-| 8e  | gpu_compile_network | **tick evolution modules** | Calls network_compilation.cu                   |
-| 8f  | activate_slot       | —                          | Mark birth_state=ACTIVE                        |
-| 9   | `write_ui_stats`    | —                          | Pinned memory write on UI refresh cadence      |
-| 10  | `write_ui_frame`    | —                          | Publish all-agent render snapshot for UI frame |
+| #   | Phase               | Calls                      | Algorithm                                      | Status |
+| --- | ------------------- | -------------------------- | ---------------------------------------------- | ------ |
+| 1   | `grid_build`        | —                          | Count-scan-scatter into spatial cells          | [ ]    |
+| 2   | `sensor_compute`    | —                          | Search 5 nearest predators/prey/food per agent | [ ]    |
+| 3   | `inference`         | —                          | Forward pass tanh activation                   | [x]    |
+| 4   | `update_vitals`     | —                          | Energy drain, age++, death check               | [x]    |
+| 5   | `resolve_food`      | —                          | Prey claim food in range                       | [x]    |
+| 6   | `resolve_combat`    | —                          | Predator claim prey in range                   | [x]    |
+| 7   | `apply_movement`    | —                          | NN output → position update                    | [x]    |
+| 8   | `reproduction`      | —                          |                                                | [ ]    |
+| 8a  | evaluate            | —                          | Energy >= threshold, not used this tick        | [ ]    |
+| 8b  | find_mate           | —                          | DenseReproductionGrid search                   | [ ]    |
+| 8c  | gpu_crossover       | **tick evolution modules** | Calls crossover.cu kernel                      | [ ]    |
+| 8d  | gpu_mutate          | **tick evolution modules** | Calls mutation.cu kernel                       | [ ]    |
+| 8e  | gpu_compile_network | **tick evolution modules** | Calls network_compilation.cu                   | [ ]    |
+| 8f  | activate_slot       | —                          | Mark birth_state=ACTIVE                        | [ ]    |
+| 9   | `write_ui_stats`    | —                          | Pinned memory write on UI refresh cadence      | [x]    |
+| 10  | `write_ui_frame`    | —                          | Publish all-agent render snapshot for UI frame | [x]    |
 
 #### 4c. Metrics Reduce
 
-| #   | Task                                                | Notes                           |
-| --- | --------------------------------------------------- | ------------------------------- |
-| 11  | Launch `metrics_reduce_kernel` at `report_interval` | Warp reduction → compact struct |
+| #   | Task                                                | Notes                           | Status |
+| --- | --------------------------------------------------- | ------------------------------- | ------ |
+| 11  | Launch `metrics_reduce_kernel` at `report_interval` | Warp reduction → compact struct | [ ]    |
 
 #### 4d. Buffer Management
 
-| #   | Task                           | Trigger                             |
-| --- | ------------------------------ | ----------------------------------- |
-| 12  | Buffer expansion               | `live_count > capacity * 0.9`       |
-| 13  | Compaction (mark-scatter-swap) | `free_list empty && births pending` |
+| #   | Task                           | Trigger                             | Status |
+| --- | ------------------------------ | ----------------------------------- | ------ |
+| 12  | Buffer expansion               | `live_count > capacity * 0.9`       | [ ]    |
+| 13  | Compaction (mark-scatter-swap) | `free_list empty && births pending` | [ ]    |
 
 ### Phase 5 — Metrics
 

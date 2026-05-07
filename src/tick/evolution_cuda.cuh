@@ -34,6 +34,12 @@ constexpr std::uint32_t kInnovationRecordAddNodeOutgoing = 3U;
 constexpr std::uint32_t kCompileScratchNodeLimit = 128U;
 constexpr std::uint32_t kCompileScratchConnectionLimit = 256U;
 constexpr std::uint32_t kSpeciesBucketCount = 64U;
+constexpr std::uint32_t kSensorInputCount = 30U;
+constexpr std::uint32_t kSelfEnergyInputIndex = 30U;
+constexpr std::uint32_t kVelocityXInputIndex = 31U;
+constexpr std::uint32_t kVelocityYInputIndex = 32U;
+constexpr std::uint32_t kWallXInputIndex = 33U;
+constexpr std::uint32_t kWallYInputIndex = 34U;
 
 struct DeviceGenomeBuffers {
   std::int32_t *connection_from;
@@ -79,6 +85,13 @@ struct DevicePopulationBuffers {
   std::uint32_t capacity;
 };
 
+struct FoodBuffer {
+  float *pos_x;
+  float *pos_y;
+  std::uint8_t *active;
+  std::uint32_t capacity;
+};
+
 struct DeviceInnovationState {
   std::uint32_t next_innovation;
   std::uint32_t next_node_id;
@@ -91,6 +104,13 @@ struct InnovationRecord {
   std::uint32_t to_node;
   std::uint32_t innovation;
   std::uint32_t record_kind;
+};
+
+struct InnovationLogReadbackHeader {
+  std::uint32_t total_len;
+  std::uint32_t stored_len;
+  std::uint32_t returned_len;
+  std::uint32_t dropped_len;
 };
 
 struct GpuEvolutionConfig {
@@ -153,6 +173,21 @@ struct UiStatsReadback {
   float avg_prey_energy;
 };
 
+struct GpuSimulationConfig {
+  std::uint32_t food_capacity;
+  float world_size;
+  float predator_speed;
+  float prey_speed;
+  float interaction_range;
+  float energy_drain_per_tick;
+  float energy_gain_from_kill;
+  float energy_gain_from_food;
+  float initial_energy;
+  float max_energy;
+  std::uint32_t max_age;
+  std::uint64_t seed;
+};
+
 struct GpuMutationConfig {
   float mutation_rate;
   float weight_mutation_power;
@@ -203,6 +238,12 @@ struct RepresentativeGenomeHeader {
   std::uint16_t num_connections;
 };
 
+struct SpeciesBatchReadbackHeader {
+  PopulationKind population_kind;
+  std::uint32_t species_count;
+  std::uint32_t returned_species_count;
+};
+
 struct CompiledNetworkReadbackHeader {
   PopulationKind population_kind;
   std::uint32_t slot;
@@ -223,6 +264,46 @@ struct SelectedAgentNetworkReadback {
   float output_1;
 };
 
+struct RenderSnapshotHeader {
+  std::uint32_t tick;
+  std::uint32_t total_predators;
+  std::uint32_t total_prey;
+  std::uint32_t total_food;
+  std::uint32_t returned_predators;
+  std::uint32_t returned_prey;
+  std::uint32_t returned_food;
+};
+
+struct RenderAgentReadback {
+  PopulationKind population_kind;
+  std::uint32_t slot;
+  std::uint32_t entity_id;
+  std::uint32_t species_id;
+  std::uint32_t generation;
+  float pos_x;
+  float pos_y;
+  float dir_x;
+  float dir_y;
+  float energy;
+};
+
+struct RenderFoodReadback {
+  std::uint32_t slot;
+  std::uint8_t active;
+  std::uint8_t reserved0;
+  std::uint16_t reserved1;
+  float pos_x;
+  float pos_y;
+};
+
+struct FreeListStateReadback {
+  std::uint32_t tick;
+  std::uint32_t predator_free_slots;
+  std::uint32_t prey_free_slots;
+  std::uint32_t active_food_count;
+  std::uint32_t food_capacity;
+};
+
 struct InvariantCheckReadback {
   std::uint32_t predator_agents_checked;
   std::uint32_t prey_agents_checked;
@@ -236,13 +317,32 @@ struct InvariantCheckReadback {
   std::uint32_t innovation_log_overflow;
 };
 
+struct SimulationCounters {
+  std::uint32_t tick;
+  std::uint32_t predator_births;
+  std::uint32_t prey_births;
+  std::uint32_t predator_deaths;
+  std::uint32_t prey_deaths;
+  std::uint32_t kills;
+  std::uint32_t food_eaten;
+};
+
 struct GpuEvolutionState {
   GpuEvolutionConfig config;
+  GpuSimulationConfig simulation;
   DevicePopulationBuffers predator;
   DevicePopulationBuffers prey;
+  FoodBuffer food;
   DeviceInnovationState *innovation;
   InnovationRecord *innovation_log;
   std::uint32_t *next_entity_id;
+  SimulationCounters *counters;
+  UiStatsReadback *mapped_ui_stats_host;
+  UiStatsReadback *mapped_ui_stats_device;
+  std::uint32_t *predator_free_list;
+  std::uint32_t *prey_free_list;
+  std::uint32_t *predator_free_len;
+  std::uint32_t *prey_free_len;
 };
 
 inline bool is_runtime_unavailable_error(cudaError_t error) {
