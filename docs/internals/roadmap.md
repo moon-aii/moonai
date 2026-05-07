@@ -54,9 +54,7 @@ flowchart TD
         INIT_SIM[init src/tick]
         INIT_LOG[init metrics]
         INIT_UI[init src/ui]
-        SEED[seed initial population]
         TICK_LOOP{while running}
-        REDUCE{gpu_reduce_metrics}
         LOG[log CSV/JSON]
         RENDER[wgpu_render_frame]
         UI[egui_overlay_draw]
@@ -64,6 +62,7 @@ flowchart TD
     end
 
     subgraph GPU["GPU Persistent Kernel"]
+        SEED[seed_initial_population]
         GRID[grid_build]
         SENSOR[sensor_compute]
         INFERENCE[neural_inference]
@@ -80,6 +79,7 @@ flowchart TD
         ACTIVATE[activate_slot]
         ATOMICS[write_atomics]
         UISTATS[write_ui_stats]
+        REPORT[classify_species + reduce_metrics]
     end
 
     CLI --> LUA --> ROUTE
@@ -87,13 +87,12 @@ flowchart TD
     ROUTE -->|validate| EXIT
     ROUTE -->|run| INIT_SIM
     INIT_SIM --> INIT_LOG --> INIT_UI --> SEED --> TICK_LOOP
-    TICK_LOOP -->|run N ticks| GPU
-    GPU --> GRID --> SENSOR --> INFERENCE --> VITALS --> FOOD --> COMBAT --> MOVE
+    TICK_LOOP -->|run N ticks| GRID
+    GRID --> SENSOR --> INFERENCE --> VITALS --> FOOD --> COMBAT --> MOVE
     MOVE --> REPRO
     REPRO --> EVAL --> FIND --> CROSS --> MUT --> COMPILE --> ACTIVATE
     ACTIVATE --> ATOMICS --> UISTATS
-    TICK_LOOP -->|report_interval| REDUCE --> LOG
-    TICK_LOOP -->|headless| RENDER
+    TICK_LOOP -->|report_interval| REPORT --> LOG
     TICK_LOOP -->|GUI mode| RENDER --> UI
     TICK_LOOP -->|signal| EXIT
 ```
@@ -211,12 +210,14 @@ flowchart TB
 
 ## 2. Design Principles
 
-1. **GPU owns all simulation state** — positions, velocities, energy, age, alive flags, genomes, innovation counters, all live in GPU memory.
-2. **CPU is orchestrator only** — never iterates the agent population except for initial population seeding and metrics export.
-3. **Tick-based cadence** — GPU runs N simulation ticks per tick; CPU handles metrics logging between ticks.
-4. **GPU-native evolution** — crossover, mutation, and network compilation happen entirely on GPU via the evolution portion of `src/tick/`.
-5. **Buffer expansion** — buffers grow by 2x when capacity threshold is reached. No artificial ceiling.
-6. **No duplication** — evolution logic lives in the evolution portion of `src/tick/`; the simulation portion calls those kernels.
+1. **GPU owns all simulation state** — positions, velocities, energy, age, alive flags, genomes, compiled networks, innovation counters, and species metadata live in GPU memory.
+2. **CPU is orchestrator only** — it loads config, allocates buffers, launches kernels, and writes files from compact readbacks. It does not maintain or execute a population-wide simulation, evolution, or verification path.
+3. **Tick-based cadence** — GPU runs initialization, simulation, evolution, report-window reduction, and on-demand inspection kernels. CPU only sequences those launches.
+4. **GPU-native evolution** — seeding, crossover, mutation, network compilation, and species classification happen entirely on GPU via the evolution portion of `src/tick/`.
+5. **Cadence separation** — `report_interval_ticks` controls CSV/JSON/species/genome export cadence, while UI `speed_multiplier` controls visualization refresh cadence. They are independent.
+6. **Readback/interop is minimal** — only the current UI-frame render snapshot, selected-agent inspection buffers, and report/export structs are transferred out of the simulation buffers.
+7. **No duplication** — there is no separate CPU algorithmic path for evolution, inference, speciation, or verification. Host Rust may define FFI layouts and export structs only.
+8. **Buffer expansion** — buffers grow by 2x when capacity threshold is reached. No artificial ceiling.
 
 ## 3. Assumptions
 
@@ -232,23 +233,30 @@ flowchart TB
 - Predator and prey use separate GPU buffers; no `AgentType` enum needed.
 - `config.lua` is loaded via `mlua`. `moonai_defaults` is injected as a global table.
 - CLI `--experiment` flag is a string passthrough; experiment selection logic lives in the root binary entrypoint.
+- Initial population seeding happens on GPU.
+- `report_interval_ticks` is the artifact-export cadence only. It controls when the runtime writes `stats.csv`, `species.csv`, `genomes.json`, and related report data.
+- UI `speed_multiplier` is the visualization cadence only. `1x` means refresh UI every tick, `8x` means refresh UI every 8 ticks, and so on.
+- A UI refresh must include all active predators, prey, and food needed for rendering, plus aggregate population statistics.
 - Reproduction is **sexual** — two parent genomes crossover on GPU, mutation applied on GPU, network compiled on GPU.
+- Species classification happens on GPU at report intervals so `species.csv`, species counts, and representative-genome export do not require a host-side genome walk.
 - FPS target: 120fps. Speed multiplier: 1x-1024x ticks per frame. Every frame renders everything live.
-- UI needs fresh data every frame: population counts, positions, velocities, all of it.
+- Selected-agent inspection is additive: the main view always renders the full population, and selection only requests extra vision/sensor/network data for that one agent.
+- UI needs fresh data every UI refresh: population counts, positions, and movement directions for all visible agents.
+- Verification must rely on GPU-side invariants, fixed-seed determinism, readback schema checks, and end-to-end runtime tests. There is no CPU reference implementation for algorithm validation.
 
 ## 4. Technology Choices
 
-| Concern            | C++           | Rust/GPU-First                     |
-| ------------------ | ------------- | ---------------------------------- |
-| Language           | C++17         | Rust 2024                          |
-| CUDA binding       | raw CUDA      | `cxx` (supports CUDA natively)     |
-| Logging            | spdlog        | `tracing` + `tracing-subscriber`   |
-| JSON               | nlohmann/json | `serde` + `serde_json`             |
-| Lua binding        | Lua C API     | `mlua` crate                       |
-| GUI framework      | SFML          | winit + egui + wgpu                |
-| GPU rendering      | SFML shapes   | wgpu instanced rendering           |
-| Atomic counters    | —             | CUDA atomics for GPU-to-CPU events |
-| Genome compilation | CPU (rayon)   | GPU (persistent kernel)            |
+| Concern            | C++           | Rust/GPU-First                          |
+| ------------------ | ------------- | --------------------------------------- |
+| Language           | C++17         | Rust 2024                               |
+| CUDA binding       | raw CUDA      | Rust FFI + `nvcc` via `build.rs` / `cc` |
+| Logging            | spdlog        | `tracing` + `tracing-subscriber`        |
+| JSON               | nlohmann/json | `serde` + `serde_json`                  |
+| Lua binding        | Lua C API     | `mlua` crate                            |
+| GUI framework      | SFML          | winit + egui + wgpu                     |
+| GPU rendering      | SFML shapes   | wgpu instanced rendering                |
+| Atomic counters    | —             | CUDA atomics for GPU-to-CPU events      |
+| Genome compilation | CPU (rayon)   | GPU (persistent kernel)                 |
 
 ## 5. Source Architecture
 
@@ -364,48 +372,48 @@ src/
 
 ### Phase 3 — Evolution (GPU CUDA Kernels)
 
-**Goal:** the evolution portion of `src/tick/` owns all NEAT logic as CUDA kernels — no duplication
+**Goal:** the evolution portion of `src/tick/` owns all NEAT logic as CUDA kernels with a single GPU execution path and no CPU mirror
 
-#### 3a. Data Structures
+#### 3a. Host/Device ABI and GPU Layouts
 
-| #   | Task                                                                                        | Verification                                              |
-| --- | ------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| 1   | Implement `Genome` struct with `Vec<NodeGene>`, `Vec<ConnectionGene>`                       | `cargo test --all-targets --all-features --locked genome` |
-| 2   | Implement `Genome::add_node`, `add_connection`, `has_connection`, `has_node`, `max_node_id` | Unit tests                                                |
-| 3   | Implement `Genome::complexity`, `compatibility_distance`                                    | Unit tests                                                |
-| 4   | Implement `InnovationTracker` with global counter                                           | Unit tests                                                |
-| 5   | Implement `NeuralNetwork::activate`, `activate_into`                                        | Compare with C++ forward pass                             |
+| #   | Task                                                                                           | Verification                                       |
+| --- | ---------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| 1   | Define device-resident genome, compiled-network, and innovation-counter layouts                | `cargo build`                                      |
+| 2   | Add explicit Rust/CUDA FFI entry points and safe launch wrappers in `src/tick/`                | `cargo test --all-targets --all-features --locked` |
+| 3   | Implement GPU initialization/seeding kernel for predators, prey, and RNG state                 | Fixed-seed smoke test                              |
+| 4   | Implement device-side innovation tracking state and append-only report buffers                 | Kernel smoke test                                  |
+| 5   | Define compact readback structs for UI, metrics, species summaries, and representative genomes | Serialization tests                                |
 
-#### 3b. CPU Reference Operations (for algorithm validation)
+#### 3b. CUDA Kernel Implementation
 
-| #   | Task                                                                          | Verification                |
-| --- | ----------------------------------------------------------------------------- | --------------------------- |
-| 6   | Implement `crossover` function (sexual, matching by innovation)               | Unit tests (property-based) |
-| 7   | Implement `mutate_weights`, `add_connection`, `add_node`, `delete_connection` | Unit tests                  |
-| 8   | Implement `Species` compatibility, add_member, refresh                        | Unit tests                  |
-| 9   | Implement `EvolutionManager::seed_initial_population`, `reproduce_population` | Integration test            |
+| #   | Task                                            | Algorithm                                                                                                                    |
+| --- | ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| 6   | `crossover.cu` — `gpu_crossover_kernel`         | 1 thread or warp per offspring. Merge parent genes by innovation and emit child genes directly into device buffers.          |
+| 7   | `mutation.cu` — `gpu_mutate_kernel`             | Per-agent weight perturbation, add_connection, add_node, and delete_connection using device RNG and innovation atomics only. |
+| 8   | `network_compilation.cu` — `gpu_compile_kernel` | Topological sort nodes → `eval_order[]`, build connection offsets, and materialize inference arrays entirely on device.      |
+| 9   | GPU species-classification kernel               | Assign `species_id`, accumulate species summaries, and capture representative slots without host genome traversal.           |
 
-#### 3c. CUDA Kernel Implementation
+#### 3c. GPU Verification and Observability
 
-| #   | Task                                            | Algorithm                                                                                                                                                                                       |
-| --- | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 10  | `crossover.cu` — `gpu_crossover_kernel`         | 1 thread per offspring. Sort parent connections by innovation (warp-level bitonic). Merge with 50%/50% inheritance rules.                                                                       |
-| 11  | `mutation.cu` — `gpu_mutate_kernel`             | Per-agent: weight perturbation (Gaussian), add_connection (atomic innovation counter + linear scan), add_node (disable connection + 2 new connections with atomic counters), delete_connection. |
-| 12  | `network_compilation.cu` — `gpu_compile_kernel` | Topological sort of nodes → eval_order[]. Build conn_ptr[] offsets. Copy weights to inference arrays.                                                                                           |
+| #   | Task                                                                  | Verification                                                         |
+| --- | --------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| 10  | Add device-side invariant checks for genome/network bounds            | Debug smoke test on tiny populations                                 |
+| 11  | Add fixed-seed determinism tests for GPU initialization and evolution | Repeat run produces byte-identical compact readbacks on same machine |
+| 12  | Add end-to-end GPU smoke test for seed → mutate → compile → inspect   | `cargo test --all-targets --all-features --locked`                   |
 
 ### Phase 4 — GPU Simulation Kernel
 
-**Goal:** the simulation portion of `src/tick/` calls the evolution CUDA kernels without duplicating that logic
+**Goal:** the simulation portion of `src/tick/` drives the persistent kernel and reuses the single GPU evolution path without duplicating that logic on host
 
 #### 4a. GPU Buffers
 
-| #   | Task                         | Notes                                     |
-| --- | ---------------------------- | ----------------------------------------- |
-| 1   | `PredatorBuffer` SoA layout  | All genome arrays in-place                |
-| 2   | `PreyBuffer` SoA layout      | Same as predator                          |
-| 3   | `FoodBuffer`                 | pos_x, pos_y, active                      |
-| 4   | `UiStats` pinned host-mapped | Written every tick, CPU reads with memcpy |
-| 5   | Free list ring buffer        | Push dead slots, pop for births           |
+| #   | Task                         | Notes                                                |
+| --- | ---------------------------- | ---------------------------------------------------- |
+| 1   | `PredatorBuffer` SoA layout  | All genome arrays in-place                           |
+| 2   | `PreyBuffer` SoA layout      | Same as predator                                     |
+| 3   | `FoodBuffer`                 | pos_x, pos_y, active                                 |
+| 4   | `UiStats` pinned host-mapped | Written on UI refresh cadence, CPU reads with memcpy |
+| 5   | Free list ring buffer        | Push dead slots, pop for births                      |
 
 #### 4b. Persistent Kernel Phases
 
@@ -425,42 +433,44 @@ src/
 | 8d  | gpu_mutate          | **tick evolution modules** | Calls mutation.cu kernel                       |
 | 8e  | gpu_compile_network | **tick evolution modules** | Calls network_compilation.cu                   |
 | 8f  | activate_slot       | —                          | Mark birth_state=ACTIVE                        |
-| 9   | `write_ui_stats`    | —                          | Pinned memory write                            |
+| 9   | `write_ui_stats`    | —                          | Pinned memory write on UI refresh cadence      |
+| 10  | `write_ui_frame`    | —                          | Publish all-agent render snapshot for UI frame |
 
 #### 4c. Metrics Reduce
 
 | #   | Task                                                | Notes                           |
 | --- | --------------------------------------------------- | ------------------------------- |
-| 10  | Launch `metrics_reduce_kernel` at `report_interval` | Warp reduction → compact struct |
+| 11  | Launch `metrics_reduce_kernel` at `report_interval` | Warp reduction → compact struct |
 
 #### 4d. Buffer Management
 
 | #   | Task                           | Trigger                             |
 | --- | ------------------------------ | ----------------------------------- |
-| 11  | Buffer expansion               | `live_count > capacity * 0.9`       |
-| 12  | Compaction (mark-scatter-swap) | `free_list empty && births pending` |
+| 12  | Buffer expansion               | `live_count > capacity * 0.9`       |
+| 13  | Compaction (mark-scatter-swap) | `free_list empty && births pending` |
 
 ### Phase 5 — Metrics
 
-**Goal:** Output files match C++ schema exactly
+**Goal:** Output files match C++ schema exactly using GPU-side reductions and compact readbacks only
 
-| #   | Task            | Details                                                                                                                                                                                                                                                                                                      |
-| --- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 1   | `Logger` struct | `YYYYMMDD_HHMMSS_seedN` directory                                                                                                                                                                                                                                                                            |
-| 2   | `stats.csv`     | tick, predator_count, prey_count, predator_births, prey_births, predator_deaths, prey_deaths, predator_species, prey_species, avg_predator_complexity, avg_prey_complexity, avg_predator_energy, avg_prey_energy, max_predator_generation, avg_predator_generation, max_prey_generation, avg_prey_generation |
-| 3   | `species.csv`   | tick, population, species_id, size, avg_complexity                                                                                                                                                                                                                                                           |
-| 4   | `genomes.json`  | Representative genome snapshots                                                                                                                                                                                                                                                                              |
+| #   | Task            | Details                                                                                                                                                                                                                                                                                                                  |
+| --- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | `Logger` struct | `YYYYMMDD_HHMMSS_seedN` directory                                                                                                                                                                                                                                                                                        |
+| 2   | `stats.csv`     | GPU reduces tick, predator_count, prey_count, predator_births, prey_births, predator_deaths, prey_deaths, predator_species, prey_species, avg_predator_complexity, avg_prey_complexity, avg_predator_energy, avg_prey_energy, max_predator_generation, avg_predator_generation, max_prey_generation, avg_prey_generation |
+| 3   | `species.csv`   | GPU classifies species, reduces `(population, species_id, size, avg_complexity)`, CPU only writes rows                                                                                                                                                                                                                   |
+| 4   | `genomes.json`  | GPU selects representative genome slots and copies compact genome snapshots for JSON serialization                                                                                                                                                                                                                       |
 
 ### Phase 6 — Headless Runtime (Milestone)
 
 **Verification Gates:**
 
-| Gate             | Command                                                      | Success Criteria                                                  |
-| ---------------- | ------------------------------------------------------------ | ----------------------------------------------------------------- |
-| Evolution tests  | `cargo test --all-targets --all-features --locked`           | All tests pass                                                    |
-| Build parity     | `cargo build`                                                | Root package compiles, no workspace required                      |
-| Config parity    | `cargo run -- --validate`                                    | Config loads                                                      |
-| Headless runtime | `cargo run -- --experiment baseline --headless --ticks 1000` | Produces stats.csv, species.csv, genomes.json matching C++ output |
+| Gate             | Command                                                      | Success Criteria                                                    |
+| ---------------- | ------------------------------------------------------------ | ------------------------------------------------------------------- |
+| Evolution tests  | `cargo test --all-targets --all-features --locked`           | All tests pass                                                      |
+| Build parity     | `cargo build`                                                | Root package compiles, no workspace required                        |
+| Config parity    | `cargo run -- --validate`                                    | Config loads                                                        |
+| GPU determinism  | repeated fixed-seed headless run                             | Compact export readbacks are byte-identical on the same machine     |
+| Headless runtime | `cargo run -- --experiment baseline --headless --ticks 1000` | Produces stats.csv, species.csv, genomes.json from GPU-only runtime |
 
 ### Phase 7 — UI
 
@@ -612,21 +622,33 @@ Per-tick innovation log (append-only):
 
 ## 9. UI Data Path
 
-GPU writes a compact `UiStats` struct to a **pinned host-mapped buffer** every tick. CPU reads it with a single `memcpy`. No kernel launch needed.
+`report_interval_ticks` and UI `speed_multiplier` are separate runtime cadences.
+
+- `report_interval_ticks` controls artifact export only.
+- UI `speed_multiplier` controls visualization refresh only.
+- `1x` means the UI refreshes every tick.
+- `8x` means the UI refreshes every 8 ticks, so the runtime publishes the latest render snapshot only when `tick % 8 == 0`.
+- These cadences are independent; a report tick may or may not coincide with a UI refresh tick.
+
+GPU writes a compact `UiStats` struct to a **pinned host-mapped buffer** on each UI refresh boundary. CPU reads it with a single `memcpy`.
 
 ```
-UiStats (pinned, written every tick):
+UiStats (pinned, written on each UI refresh):
   tick, predator_count, prey_count
   predator_births, prey_births
   predator_deaths, prey_deaths
   kills, food_eaten
   avg_predator_energy, avg_prey_energy
 
-render pass (wgpu, no CPU readback):
-  predator positions -> GPU buffer -> instanced draw
-  prey positions -> GPU buffer -> instanced draw
-  food positions -> GPU buffer -> instanced draw
-  vision circle, sensor lines -> computed on GPU on-demand (click), read via staging buffer
+UI frame snapshot (written on each UI refresh):
+  predator positions + movement directions -> render buffer
+  prey positions + movement directions -> render buffer
+  food positions -> render buffer
+  aggregate overlay stats -> UiStats
+
+render pass:
+  main scene renders all active predators, prey, and food from the latest UI-frame snapshot
+  selected-agent overlays are optional extras layered on top of the full scene
 ```
 
 **Selected Agent Readback (On Demand)**:
@@ -639,6 +661,8 @@ User clicks agent:
     - node activations (forward pass)
   CPU: cudaMemcpy async -> read staging buffer -> update NN panel
 ```
+
+The selected-agent path does **not** replace the population render path. It augments the existing full-population view with extra inspection data for the chosen agent.
 
 ## 10. Buffer Expansion
 
