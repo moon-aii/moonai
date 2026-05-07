@@ -295,15 +295,15 @@ src/
 
 ### Logical Module Responsibilities
 
-| Historical name       | Current location                                         | Owns                                                                 |
-| --------------------- | -------------------------------------------------------- | -------------------------------------------------------------------- |
-| `moonai-config`       | `src/cli.rs`, `src/config.rs`, `src/config_error.rs`, `src/lua.rs`, `src/settings.rs` | SimulationConfig, CliArgs, UiConfig, ConfigError, Lua/settings loading |
-| `moonai-types`        | `src/types.rs`                                           | Vec2, NodeType, NodeGene, ConnectionGene, shared constants           |
-| `moonai-evolution`    | `src/tick/` evolution files                              | NEAT evolution logic, CUDA kernels, InnovationTracker, Species       |
-| `moonai-simulation`   | `src/tick/` simulation files                             | Simulation state, GPU buffers, inference, reproduction, compaction   |
-| `moonai-metrics`      | `src/metrics.rs`                                         | CSV/JSON logging facade                                              |
-| `moonai-ui`           | `src/ui/`                                                | UI runtime state, app loop, renderer integration                     |
-| `moonai`              | `src/main.rs`, `src/signal.rs`                           | Binary entrypoint and signal handling                                |
+| Historical name     | Current location                                                                      | Owns                                                                   |
+| ------------------- | ------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `moonai-config`     | `src/cli.rs`, `src/config.rs`, `src/config_error.rs`, `src/lua.rs`, `src/settings.rs` | SimulationConfig, CliArgs, UiConfig, ConfigError, Lua/settings loading |
+| `moonai-types`      | `src/types.rs`                                                                        | Vec2, NodeType, NodeGene, ConnectionGene, shared constants             |
+| `moonai-evolution`  | `src/tick/` evolution files                                                           | NEAT evolution logic, CUDA kernels, InnovationTracker, Species         |
+| `moonai-simulation` | `src/tick/` simulation files                                                          | Simulation state, GPU buffers, inference, reproduction, compaction     |
+| `moonai-metrics`    | `src/metrics.rs`                                                                      | CSV/JSON logging facade                                                |
+| `moonai-ui`         | `src/ui/`                                                                             | UI runtime state, app loop, renderer integration                       |
+| `moonai`            | `src/main.rs`, `src/signal.rs`                                                        | Binary entrypoint and signal handling                                  |
 
 ## 6. Phase Specifications
 
@@ -313,17 +313,17 @@ src/
 
 **Goal:** Empty but compilable workspace
 
-| #   | Task                            | File Changes                                                                              | Verification                       | Status |
-| --- | ------------------------------- | ----------------------------------------------------------------------------------------- | ---------------------------------- | ------ |
-| 1   | Create `Cargo.toml` workspace   | `Cargo.toml`                                                                              | `cargo metadata` succeeds          | [x]    |
-| 2   | Create `moonai-config` stub     | `moonai-config/Cargo.toml`, `moonai-config/src/lib.rs`                                    | `cargo build`                      | [x]    |
-| 3   | Create `moonai-types` stub      | `moonai-types/Cargo.toml`, `moonai-types/src/lib.rs`                                      | `cargo build`                      | [x]    |
-| 4   | Create `moonai-evolution` stub  | `moonai-evolution/Cargo.toml`, `moonai-evolution/src/lib.rs`, `moonai-evolution/build.rs` | `cargo build`                      | [x]    |
-| 5   | Create `moonai-simulation` stub | same pattern                                                                              | `cargo build`                      | [x]    |
-| 6   | Create `moonai-metrics` stub    | same pattern                                                                              | `cargo build`                      | [x]    |
-| 7   | Create `moonai-ui` stub         | same pattern                                                                              | `cargo build`                      | [x]    |
-| 8   | Create `moonai` binary stub     | same pattern                                                                              | `cargo build`                      | [x]    |
-| 9   | Verify workspace                | —                                                                                         | `cargo build`                      | [x]    |
+| #   | Task                            | File Changes                                                                              | Verification              | Status |
+| --- | ------------------------------- | ----------------------------------------------------------------------------------------- | ------------------------- | ------ |
+| 1   | Create `Cargo.toml` workspace   | `Cargo.toml`                                                                              | `cargo metadata` succeeds | [x]    |
+| 2   | Create `moonai-config` stub     | `moonai-config/Cargo.toml`, `moonai-config/src/lib.rs`                                    | `cargo build`             | [x]    |
+| 3   | Create `moonai-types` stub      | `moonai-types/Cargo.toml`, `moonai-types/src/lib.rs`                                      | `cargo build`             | [x]    |
+| 4   | Create `moonai-evolution` stub  | `moonai-evolution/Cargo.toml`, `moonai-evolution/src/lib.rs`, `moonai-evolution/build.rs` | `cargo build`             | [x]    |
+| 5   | Create `moonai-simulation` stub | same pattern                                                                              | `cargo build`             | [x]    |
+| 6   | Create `moonai-metrics` stub    | same pattern                                                                              | `cargo build`             | [x]    |
+| 7   | Create `moonai-ui` stub         | same pattern                                                                              | `cargo build`             | [x]    |
+| 8   | Create `moonai` binary stub     | same pattern                                                                              | `cargo build`             | [x]    |
+| 9   | Verify workspace                | —                                                                                         | `cargo build`             | [x]    |
 
 ### Phase 2 — moonai-config [x]
 
@@ -331,7 +331,7 @@ src/
 
 | #   | Task                                                                                    | Verification                              | Status |
 | --- | --------------------------------------------------------------------------------------- | ----------------------------------------- | ------ |
-| 1   | `SimulationConfig` with all fields + serde (C++-aligned defaults)                       | `cargo check`                            | [x]    |
+| 1   | `SimulationConfig` with all fields + serde (C++-aligned defaults)                       | `cargo check`                             | [x]    |
 | 2   | `CliArgs` + clap parsing (`--experiment`, `--all`, `--headless`, `-n`, etc.)            | `cargo run -- --list` works               | [x]    |
 | 3   | `UiConfig` with **hardcoded defaults** (50+ fields from legacy constants.hpp)           | Unit tests                                | [x]    |
 | 4   | Lua loading — inject `moonai_defaults`, parse experiment table                          | `cargo run -- --validate` works           | [x]    |
@@ -355,12 +355,12 @@ src/
 
 **Goal:** Consolidate the completed Rust rewrite phases into one root package without changing behavior.
 
-| #   | Task                                                                                               | Verification                                                                 | Status |
-| --- | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- | ------ |
-| 1   | Move the completed `moonai-*` crate sources into root `src/`, keeping only `src/ui/` and `src/tick/` as subdirectories | `cargo build`                                                                | [x]    |
-| 2   | Merge crate build scripts into root `build.rs` and keep CUDA compilation/linking working          | `cargo build`; `cargo test --all-targets --all-features --locked`           | [x]    |
-| 3   | Preserve config defaults, Lua loading, settings parsing, and CLI routing exactly                  | `cargo run -- --list`; `cargo run -- --validate`                            | [x]    |
-| 4   | Remove the old workspace tree and update refactor-related documentation                            | `just gate`                                                                  | [x]    |
+| #   | Task                                                                                                                   | Verification                                                      | Status |
+| --- | ---------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- | ------ |
+| 1   | Move the completed `moonai-*` crate sources into root `src/`, keeping only `src/ui/` and `src/tick/` as subdirectories | `cargo build`                                                     | [x]    |
+| 2   | Merge crate build scripts into root `build.rs` and keep CUDA compilation/linking working                               | `cargo build`; `cargo test --all-targets --all-features --locked` | [x]    |
+| 3   | Preserve config defaults, Lua loading, settings parsing, and CLI routing exactly                                       | `cargo run -- --list`; `cargo run -- --validate`                  | [x]    |
+| 4   | Remove the old workspace tree and update refactor-related documentation                                                | `just gate`                                                       | [x]    |
 
 ### Phase 3 — Evolution (GPU CUDA Kernels)
 
@@ -368,13 +368,13 @@ src/
 
 #### 3a. Data Structures
 
-| #   | Task                                                                                        | Verification                               |
-| --- | ------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| #   | Task                                                                                        | Verification                                              |
+| --- | ------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
 | 1   | Implement `Genome` struct with `Vec<NodeGene>`, `Vec<ConnectionGene>`                       | `cargo test --all-targets --all-features --locked genome` |
-| 2   | Implement `Genome::add_node`, `add_connection`, `has_connection`, `has_node`, `max_node_id` | Unit tests                                 |
-| 3   | Implement `Genome::complexity`, `compatibility_distance`                                    | Unit tests                                 |
-| 4   | Implement `InnovationTracker` with global counter                                           | Unit tests                                 |
-| 5   | Implement `NeuralNetwork::activate`, `activate_into`                                        | Compare with C++ forward pass              |
+| 2   | Implement `Genome::add_node`, `add_connection`, `has_connection`, `has_node`, `max_node_id` | Unit tests                                                |
+| 3   | Implement `Genome::complexity`, `compatibility_distance`                                    | Unit tests                                                |
+| 4   | Implement `InnovationTracker` with global counter                                           | Unit tests                                                |
+| 5   | Implement `NeuralNetwork::activate`, `activate_into`                                        | Compare with C++ forward pass                             |
 
 #### 3b. CPU Reference Operations (for algorithm validation)
 
@@ -409,23 +409,23 @@ src/
 
 #### 4b. Persistent Kernel Phases
 
-| #   | Phase               | Calls                | Algorithm                                      |
-| --- | ------------------- | -------------------- | ---------------------------------------------- |
-| 1   | `grid_build`        | —                    | Count-scan-scatter into spatial cells          |
-| 2   | `sensor_compute`    | —                    | Search 5 nearest predators/prey/food per agent |
-| 3   | `inference`         | —                    | Forward pass tanh activation                   |
-| 4   | `update_vitals`     | —                    | Energy drain, age++, death check               |
-| 5   | `resolve_food`      | —                    | Prey claim food in range                       |
-| 6   | `resolve_combat`    | —                    | Predator claim prey in range                   |
-| 7   | `apply_movement`    | —                    | NN output → position update                    |
-| 8   | `reproduction`      | —                    |                                                |
-| 8a  | evaluate            | —                    | Energy >= threshold, not used this tick        |
-| 8b  | find_mate           | —                    | DenseReproductionGrid search                   |
-| 8c  | gpu_crossover       | **tick evolution modules** | Calls crossover.cu kernel                |
-| 8d  | gpu_mutate          | **tick evolution modules** | Calls mutation.cu kernel                 |
-| 8e  | gpu_compile_network | **tick evolution modules** | Calls network_compilation.cu             |
-| 8f  | activate_slot       | —                    | Mark birth_state=ACTIVE                        |
-| 9   | `write_ui_stats`    | —                    | Pinned memory write                            |
+| #   | Phase               | Calls                      | Algorithm                                      |
+| --- | ------------------- | -------------------------- | ---------------------------------------------- |
+| 1   | `grid_build`        | —                          | Count-scan-scatter into spatial cells          |
+| 2   | `sensor_compute`    | —                          | Search 5 nearest predators/prey/food per agent |
+| 3   | `inference`         | —                          | Forward pass tanh activation                   |
+| 4   | `update_vitals`     | —                          | Energy drain, age++, death check               |
+| 5   | `resolve_food`      | —                          | Prey claim food in range                       |
+| 6   | `resolve_combat`    | —                          | Predator claim prey in range                   |
+| 7   | `apply_movement`    | —                          | NN output → position update                    |
+| 8   | `reproduction`      | —                          |                                                |
+| 8a  | evaluate            | —                          | Energy >= threshold, not used this tick        |
+| 8b  | find_mate           | —                          | DenseReproductionGrid search                   |
+| 8c  | gpu_crossover       | **tick evolution modules** | Calls crossover.cu kernel                      |
+| 8d  | gpu_mutate          | **tick evolution modules** | Calls mutation.cu kernel                       |
+| 8e  | gpu_compile_network | **tick evolution modules** | Calls network_compilation.cu                   |
+| 8f  | activate_slot       | —                          | Mark birth_state=ACTIVE                        |
+| 9   | `write_ui_stats`    | —                          | Pinned memory write                            |
 
 #### 4c. Metrics Reduce
 
@@ -455,12 +455,12 @@ src/
 
 **Verification Gates:**
 
-| Gate             | Command                                                             | Success Criteria                                                  |
-| ---------------- | ------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| Evolution tests  | `cargo test --all-targets --all-features --locked`                  | All tests pass                                                    |
-| Build parity     | `cargo build`                                                       | Root package compiles, no workspace required                      |
-| Config parity    | `cargo run -- --validate`                                           | Config loads                                                      |
-| Headless runtime | `cargo run -- --experiment baseline --headless --ticks 1000`        | Produces stats.csv, species.csv, genomes.json matching C++ output |
+| Gate             | Command                                                      | Success Criteria                                                  |
+| ---------------- | ------------------------------------------------------------ | ----------------------------------------------------------------- |
+| Evolution tests  | `cargo test --all-targets --all-features --locked`           | All tests pass                                                    |
+| Build parity     | `cargo build`                                                | Root package compiles, no workspace required                      |
+| Config parity    | `cargo run -- --validate`                                    | Config loads                                                      |
+| Headless runtime | `cargo run -- --experiment baseline --headless --ticks 1000` | Produces stats.csv, species.csv, genomes.json matching C++ output |
 
 ### Phase 7 — UI
 

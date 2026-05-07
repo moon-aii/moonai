@@ -24,11 +24,7 @@ fn main() {
     println!("cargo:rerun-if-changed=src/tick/mutation.cu");
     println!("cargo:rerun-if-changed=src/tick/network_compilation.cu");
 
-    cc::Build::new()
-        .cuda(true)
-        .flag("-arch=native")
-        .file("src/tick/kernel.cu")
-        .compile("moonai_simulation_cuda");
+    cc::Build::new().cuda(true).flag("-arch=native").file("src/tick/kernel.cu").compile("moonai_simulation_cuda");
 
     cc::Build::new()
         .cuda(true)
