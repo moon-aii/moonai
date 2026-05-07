@@ -73,4 +73,6 @@ cmake --build build/linux-debug --parallel # manually
 just run
 ```
 
+Both `config.lua` and `settings.json` ship with the binary and are resolved from the binary directory.
+
 ### Analysis

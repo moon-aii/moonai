@@ -52,18 +52,18 @@ class EmbeddedChart:
 
 
 def build_condition_aggregate(label: str, runs: list[RunData]) -> ConditionAggregate:
-    step_frames = []
+    tick_frames = []
     for run in runs:
-        frame = run.stats[["step", *COMPARISON_METRICS]].copy()
+        frame = run.stats[["tick", *COMPARISON_METRICS]].copy()
         frame["run"] = run.name
-        step_frames.append(frame)
+        tick_frames.append(frame)
 
-    combined = pd.concat(step_frames, ignore_index=True)
-    grouped = combined.groupby("step")
-    summary = pd.DataFrame({"step": sorted(combined["step"].unique())})
+    combined = pd.concat(tick_frames, ignore_index=True)
+    grouped = combined.groupby("tick")
+    summary = pd.DataFrame({"tick": sorted(combined["tick"].unique())})
     for metric in COMPARISON_METRICS:
-        summary[f"{metric}_mean"] = grouped[metric].mean().reindex(summary["step"]).to_numpy()
-        summary[f"{metric}_std"] = grouped[metric].std(ddof=0).fillna(0.0).reindex(summary["step"]).to_numpy()
+        summary[f"{metric}_mean"] = grouped[metric].mean().reindex(summary["tick"]).to_numpy()
+        summary[f"{metric}_std"] = grouped[metric].std(ddof=0).fillna(0.0).reindex(summary["tick"]).to_numpy()
 
     representative_run = max(runs, key=lambda run: float(run.stats["avg_complexity"].iloc[-1]))
     return ConditionAggregate(
@@ -92,10 +92,10 @@ def render_comparison_charts(
             frame = aggregate.summary_frame
             mean = frame[f"{metric}_mean"]
             std = frame[f"{metric}_std"]
-            axis.plot(frame["step"], mean, label=aggregate.label, linewidth=1.7)
-            axis.fill_between(frame["step"], mean - std, mean + std, alpha=0.12)
+            axis.plot(frame["tick"], mean, label=aggregate.label, linewidth=1.7)
+            axis.fill_between(frame["tick"], mean - std, mean + std, alpha=0.12)
 
-        axis.set_xlabel("Step")
+        axis.set_xlabel("Tick")
         axis.set_ylabel(metric.replace("_", " ").title())
         axis.set_title(f"{metric.replace('_', ' ').title()} by Condition")
         axis.grid(True, alpha=0.3)
@@ -115,7 +115,7 @@ def render_population_chart(aggregate: ConditionAggregate) -> EmbeddedChart:
     figure, axis = plt.subplots(figsize=(12, 6))
     _plot_mean_std(axis, frame, "predator_count", "Predators", STYLE["predator_count"])
     _plot_mean_std(axis, frame, "prey_count", "Prey", STYLE["prey_count"])
-    axis.set_xlabel("Step")
+    axis.set_xlabel("Tick")
     axis.set_ylabel("Population")
     axis.set_title(f"{aggregate.label} - Population (mean +/- std across {len(aggregate.runs)} runs)")
     axis.legend(loc="best")
@@ -129,7 +129,7 @@ def render_population_chart(aggregate: ConditionAggregate) -> EmbeddedChart:
 
 def render_species_chart(run: RunData, label: str) -> EmbeddedChart:
     species_path = run.path / "species.csv"
-    species_frame = load_optional_csv(species_path, required_columns=["step", "population", "species_id", "size"])
+    species_frame = load_optional_csv(species_path, required_columns=["tick", "population", "species_id", "size"])
     figure, axes = plt.subplots(3, 1, figsize=(12, 14), sharex=True)
 
     if species_frame is None:
@@ -139,14 +139,14 @@ def render_species_chart(run: RunData, label: str) -> EmbeddedChart:
             axis.set_axis_off()
     else:
         axes[0].plot(
-            run.stats["step"],
+            run.stats["tick"],
             run.stats["predator_species"],
             color=STYLE["predator_species"],
             linewidth=1.7,
             label="Predator Species",
         )
         axes[0].plot(
-            run.stats["step"],
+            run.stats["tick"],
             run.stats["prey_species"],
             color=STYLE["prey_species"],
             linewidth=1.7,
@@ -160,7 +160,7 @@ def render_species_chart(run: RunData, label: str) -> EmbeddedChart:
         predator_frame = species_frame[species_frame["population"] == "predator"]
         prey_frame = species_frame[species_frame["population"] == "prey"]
 
-        predator_pivot = predator_frame.pivot_table(index="step", columns="species_id", values="size", fill_value=0)
+        predator_pivot = predator_frame.pivot_table(index="tick", columns="species_id", values="size", fill_value=0)
         if predator_pivot.empty:
             axes[1].text(0.5, 0.5, "No predator species data", ha="center", va="center")
             axes[1].set_axis_off()
@@ -179,7 +179,7 @@ def render_species_chart(run: RunData, label: str) -> EmbeddedChart:
             if len(predator_pivot.columns) <= 15:
                 axes[1].legend(loc="upper right", fontsize=8, ncol=3)
 
-        prey_pivot = prey_frame.pivot_table(index="step", columns="species_id", values="size", fill_value=0)
+        prey_pivot = prey_frame.pivot_table(index="tick", columns="species_id", values="size", fill_value=0)
         if prey_pivot.empty:
             axes[2].text(0.5, 0.5, "No prey species data", ha="center", va="center")
             axes[2].set_axis_off()
@@ -192,7 +192,7 @@ def render_species_chart(run: RunData, label: str) -> EmbeddedChart:
                 colors=prey_colors,
                 alpha=0.85,
             )
-            axes[2].set_xlabel("Step")
+            axes[2].set_xlabel("Tick")
             axes[2].set_ylabel("Prey Size")
             axes[2].set_title("Prey Species Distribution")
             axes[2].grid(True, alpha=0.3)
@@ -222,20 +222,20 @@ def render_complexity_chart(aggregate: ConditionAggregate) -> EmbeddedChart:
         axes[1].set_axis_off()
     else:
         axes[1].plot(
-            genome_points["step"],
+            genome_points["tick"],
             genome_points["num_nodes"],
             label="Nodes",
             color=STYLE["nodes"],
             linewidth=1.7,
         )
         axes[1].plot(
-            genome_points["step"],
+            genome_points["tick"],
             genome_points["num_connections"],
             label="Connections",
             color=STYLE["connections"],
             linewidth=1.7,
         )
-        axes[1].set_xlabel("Step")
+        axes[1].set_xlabel("Tick")
         axes[1].set_ylabel("Count")
         axes[1].set_title(f"Representative Genome Structure ({aggregate.representative_run.name})")
         axes[1].legend(loc="upper left")
@@ -251,8 +251,8 @@ def render_complexity_chart(aggregate: ConditionAggregate) -> EmbeddedChart:
 def _plot_mean_std(axis: plt.Axes, frame: pd.DataFrame, metric: str, label: str, color: str) -> None:
     mean = frame[f"{metric}_mean"]
     std = frame[f"{metric}_std"]
-    axis.plot(frame["step"], mean, label=label, color=color, linewidth=1.7)
-    axis.fill_between(frame["step"], mean - std, mean + std, color=color, alpha=0.12)
+    axis.plot(frame["tick"], mean, label=label, color=color, linewidth=1.7)
+    axis.fill_between(frame["tick"], mean - std, mean + std, color=color, alpha=0.12)
 
 
 def _load_genome_counts(path: Path) -> pd.DataFrame | None:
@@ -264,7 +264,7 @@ def _load_genome_counts(path: Path) -> pd.DataFrame | None:
         return None
     return pd.DataFrame(
         {
-            "step": [entry["step"] for entry in genomes],
+            "tick": [entry["tick"] for entry in genomes],
             "num_nodes": [entry["num_nodes"] for entry in genomes],
             "num_connections": [entry["num_connections"] for entry in genomes],
         }

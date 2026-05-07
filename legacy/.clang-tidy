@@ -54,9 +54,9 @@ Checks: >
   -modernize-use-default-member-init,
   -performance-enum-size
 
-WarningsAsErrors: ''
+WarningsAsErrors: ""
 
-HeaderFilterRegex: 'src/.*'
+HeaderFilterRegex: "src/.*"
 
 # System headers to ignore
 SystemHeaders: false
@@ -66,11 +66,11 @@ FormatStyle: file
 CheckOptions:
   # Dead code specific options
   - key: readability-redundant-member-init.IgnoreBaseInCopyConstructors
-    value: '1'
+    value: "1"
 
   # Unused parameters
   - key: misc-unused-parameters.StrictMode
-    value: '1'
+    value: "1"
 
   # Modernization preferences
   - key: modernize-loop-convert.MinConfidence
@@ -78,7 +78,7 @@ CheckOptions:
 
   # Performance
   - key: performance-for-range-copy.WarnOnAllAutoCopies
-    value: '1'
+    value: "1"
 
   # Readability
   - key: readability-identifier-naming.NamespaceCase
@@ -92,7 +92,7 @@ CheckOptions:
   - key: readability-identifier-naming.VariableCase
     value: lower_case
   - key: readability-identifier-naming.MemberSuffix
-    value: '_'
+    value: "_"
   - key: readability-identifier-naming.EnumCase
     value: PascalCase
   - key: readability-identifier-naming.EnumConstantCase
@@ -102,4 +102,4 @@ CheckOptions:
 
   # CUDA-specific (if present)
   - key: cppcoreguidelines-pro-type-vararg.HungarianPrefix
-    value: ''
+    value: ""

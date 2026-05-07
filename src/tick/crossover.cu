@@ -1,0 +1,231 @@
+#include "evolution_cuda.cuh"
+
+using moonai_gpu::CrossoverSummaryReadback;
+using moonai_gpu::CudaStatus;
+using moonai_gpu::DevicePopulationBuffers;
+using moonai_gpu::GpuEvolutionState;
+using moonai_gpu::PopulationKind;
+
+namespace {
+
+__device__ std::uint8_t merge_node_type(std::uint8_t first, std::uint8_t second) {
+  if (first == second) {
+    return first;
+  }
+  if (first == moonai_gpu::kHiddenNodeType || second == moonai_gpu::kHiddenNodeType) {
+    return moonai_gpu::kHiddenNodeType;
+  }
+  if (first == moonai_gpu::kBiasNodeType || second == moonai_gpu::kBiasNodeType) {
+    return moonai_gpu::kBiasNodeType;
+  }
+  if (first == moonai_gpu::kOutputNodeType || second == moonai_gpu::kOutputNodeType) {
+    return moonai_gpu::kOutputNodeType;
+  }
+  return moonai_gpu::kInputNodeType;
+}
+
+__device__ void write_connection_gene(const DevicePopulationBuffers &population, std::uint32_t slot,
+                                      std::uint16_t connection_index, std::int32_t from_node, std::int32_t to_node,
+                                      float weight, std::uint32_t innovation, std::uint8_t enabled) {
+  const auto entry = static_cast<std::size_t>(slot) * population.genome.connection_stride + connection_index;
+  population.genome.connection_from[entry] = from_node;
+  population.genome.connection_to[entry] = to_node;
+  population.genome.connection_weight[entry] = weight;
+  population.genome.connection_innovation[entry] = innovation;
+  population.genome.connection_enabled[entry] = enabled;
+}
+
+__global__ void crossover_kernel(DevicePopulationBuffers population, const std::uint32_t *next_entity_id,
+                                 PopulationKind population_kind, std::uint32_t parent_a_slot,
+                                 std::uint32_t parent_b_slot, std::uint32_t offspring_slot,
+                                 std::uint32_t num_inputs, float initial_energy, CrossoverSummaryReadback *out_summary) {
+  if (blockIdx.x != 0U || threadIdx.x != 0U) {
+    return;
+  }
+
+  const auto parent_a_node_count = population.genome.num_nodes[parent_a_slot];
+  const auto parent_b_node_count = population.genome.num_nodes[parent_b_slot];
+  const auto parent_a_connection_count = population.genome.num_connections[parent_a_slot];
+  const auto parent_b_connection_count = population.genome.num_connections[parent_b_slot];
+  const auto child_node_count = parent_a_node_count > parent_b_node_count ? parent_a_node_count : parent_b_node_count;
+
+  const auto parent_a_node_base = static_cast<std::size_t>(parent_a_slot) * population.genome.node_stride;
+  const auto parent_b_node_base = static_cast<std::size_t>(parent_b_slot) * population.genome.node_stride;
+  const auto child_node_base = static_cast<std::size_t>(offspring_slot) * population.genome.node_stride;
+  for (std::uint32_t node = 0; node < population.genome.node_stride; ++node) {
+    population.genome.node_types[child_node_base + node] = moonai_gpu::kInputNodeType;
+  }
+  for (std::uint16_t node = 0; node < child_node_count; ++node) {
+    const auto first_type = node < parent_a_node_count ? population.genome.node_types[parent_a_node_base + node]
+                                                       : moonai_gpu::kInputNodeType;
+    const auto second_type = node < parent_b_node_count ? population.genome.node_types[parent_b_node_base + node]
+                                                        : moonai_gpu::kInputNodeType;
+    population.genome.node_types[child_node_base + node] = merge_node_type(first_type, second_type);
+  }
+
+  const auto parent_a_connection_base = static_cast<std::size_t>(parent_a_slot) * population.genome.connection_stride;
+  const auto parent_b_connection_base = static_cast<std::size_t>(parent_b_slot) * population.genome.connection_stride;
+  const auto child_connection_base = static_cast<std::size_t>(offspring_slot) * population.genome.connection_stride;
+  for (std::uint32_t connection = 0; connection < population.genome.connection_stride; ++connection) {
+    write_connection_gene(population, offspring_slot, static_cast<std::uint16_t>(connection), 0, 0, 0.0F, 0U, 0U);
+  }
+
+  auto rng = population.rng_state[parent_a_slot] ^ moonai_gpu::splitmix64(population.rng_state[parent_b_slot]) ^ offspring_slot;
+  std::uint16_t parent_a_index = 0U;
+  std::uint16_t parent_b_index = 0U;
+  std::uint16_t child_connection_count = 0U;
+  std::uint32_t matching_genes = 0U;
+  std::uint32_t disjoint_genes = 0U;
+  std::uint32_t excess_genes = 0U;
+
+  while (child_connection_count < population.genome.connection_stride &&
+         (parent_a_index < parent_a_connection_count || parent_b_index < parent_b_connection_count)) {
+    const auto a_active = parent_a_index < parent_a_connection_count;
+    const auto b_active = parent_b_index < parent_b_connection_count;
+
+    if (a_active && b_active) {
+      const auto a_entry = parent_a_connection_base + parent_a_index;
+      const auto b_entry = parent_b_connection_base + parent_b_index;
+      const auto a_innovation = population.genome.connection_innovation[a_entry];
+      const auto b_innovation = population.genome.connection_innovation[b_entry];
+
+      if (a_innovation == b_innovation) {
+        ++matching_genes;
+        const auto choose_parent_b = moonai_gpu::next_unit_float(rng) < 0.5F;
+        const auto source_entry = choose_parent_b ? b_entry : a_entry;
+        auto enabled = population.genome.connection_enabled[source_entry];
+        if ((population.genome.connection_enabled[a_entry] == 0U || population.genome.connection_enabled[b_entry] == 0U) &&
+            moonai_gpu::next_unit_float(rng) < 0.75F) {
+          enabled = 0U;
+        }
+        write_connection_gene(population, offspring_slot, child_connection_count,
+                              population.genome.connection_from[source_entry], population.genome.connection_to[source_entry],
+                              population.genome.connection_weight[source_entry],
+                              population.genome.connection_innovation[source_entry], enabled);
+        ++child_connection_count;
+        ++parent_a_index;
+        ++parent_b_index;
+        continue;
+      }
+
+      const auto inherit_from_a = a_innovation < b_innovation;
+      const auto source_entry = inherit_from_a ? a_entry : b_entry;
+      ++disjoint_genes;
+      if (moonai_gpu::next_unit_float(rng) < 0.5F) {
+        const auto enabled = moonai_gpu::next_unit_float(rng) < 0.75F ? 0U : population.genome.connection_enabled[source_entry];
+        write_connection_gene(population, offspring_slot, child_connection_count,
+                              population.genome.connection_from[source_entry], population.genome.connection_to[source_entry],
+                              population.genome.connection_weight[source_entry],
+                              population.genome.connection_innovation[source_entry], enabled);
+        ++child_connection_count;
+      }
+      if (inherit_from_a) {
+        ++parent_a_index;
+      } else {
+        ++parent_b_index;
+      }
+      continue;
+    }
+
+    const auto inherit_from_a = a_active;
+    const auto source_entry = inherit_from_a ? parent_a_connection_base + parent_a_index : parent_b_connection_base + parent_b_index;
+    ++excess_genes;
+    if (moonai_gpu::next_unit_float(rng) < 0.5F) {
+      const auto enabled = moonai_gpu::next_unit_float(rng) < 0.75F ? 0U : population.genome.connection_enabled[source_entry];
+      write_connection_gene(population, offspring_slot, child_connection_count,
+                            population.genome.connection_from[source_entry], population.genome.connection_to[source_entry],
+                            population.genome.connection_weight[source_entry], population.genome.connection_innovation[source_entry],
+                            enabled);
+      ++child_connection_count;
+    }
+    if (inherit_from_a) {
+      ++parent_a_index;
+    } else {
+      ++parent_b_index;
+    }
+  }
+
+  population.genome.num_nodes[offspring_slot] = child_node_count;
+  population.genome.num_connections[offspring_slot] = child_connection_count;
+  population.alive[offspring_slot] = 1U;
+  population.species_id[offspring_slot] = 0U;
+  population.entity_id[offspring_slot] = atomicAdd(const_cast<std::uint32_t *>(next_entity_id), 1U);
+  population.generation[offspring_slot] =
+      (population.generation[parent_a_slot] > population.generation[parent_b_slot] ? population.generation[parent_a_slot]
+                                                                                    : population.generation[parent_b_slot]) +
+      1U;
+  population.pos_x[offspring_slot] = (population.pos_x[parent_a_slot] + population.pos_x[parent_b_slot]) * 0.5F;
+  population.pos_y[offspring_slot] = (population.pos_y[parent_a_slot] + population.pos_y[parent_b_slot]) * 0.5F;
+  population.vel_x[offspring_slot] = moonai_gpu::next_signed_float(rng) * 0.05F;
+  population.vel_y[offspring_slot] = moonai_gpu::next_signed_float(rng) * 0.05F;
+  population.energy[offspring_slot] = initial_energy;
+  population.age[offspring_slot] = 0.0F;
+  population.rng_state[offspring_slot] = rng;
+  population.compiled.node_counts[offspring_slot] = child_node_count;
+  population.compiled.eval_counts[offspring_slot] = 0U;
+  population.compiled.connection_counts[offspring_slot] = 0U;
+
+  std::uint64_t genome_hash = 1469598103934665603ULL;
+  for (std::uint16_t node = 0; node < child_node_count; ++node) {
+    genome_hash = moonai_gpu::hash_mix(genome_hash, population.genome.node_types[child_node_base + node]);
+  }
+  for (std::uint16_t connection = 0; connection < child_connection_count; ++connection) {
+    const auto entry = child_connection_base + connection;
+    genome_hash = moonai_gpu::hash_mix(genome_hash, static_cast<std::uint32_t>(population.genome.connection_from[entry]));
+    genome_hash = moonai_gpu::hash_mix(genome_hash, static_cast<std::uint32_t>(population.genome.connection_to[entry]));
+    genome_hash = moonai_gpu::hash_mix(genome_hash, population.genome.connection_innovation[entry]);
+    genome_hash = moonai_gpu::hash_mix(genome_hash, population.genome.connection_enabled[entry]);
+    genome_hash =
+        moonai_gpu::hash_mix(genome_hash, static_cast<std::uint64_t>(__float_as_uint(population.genome.connection_weight[entry])));
+  }
+
+  out_summary->population_kind = population_kind;
+  out_summary->parent_a_slot = parent_a_slot;
+  out_summary->parent_b_slot = parent_b_slot;
+  out_summary->offspring_slot = offspring_slot;
+  out_summary->offspring_entity_id = population.entity_id[offspring_slot];
+  out_summary->offspring_generation = population.generation[offspring_slot];
+  out_summary->inherited_connections = child_connection_count;
+  out_summary->matching_genes = matching_genes;
+  out_summary->disjoint_genes = disjoint_genes;
+  out_summary->excess_genes = excess_genes;
+  out_summary->offspring_genome_hash = genome_hash;
+}
+
+} // namespace
+
+extern "C" std::int32_t moonai_gpu_evolution_crossover(void *state_ptr, PopulationKind population_kind,
+                                                         std::uint32_t parent_a_slot, std::uint32_t parent_b_slot,
+                                                         std::uint32_t offspring_slot,
+                                                         CrossoverSummaryReadback *out_summary) {
+  auto *state = static_cast<GpuEvolutionState *>(state_ptr);
+  if (state == nullptr || out_summary == nullptr) {
+    return static_cast<std::int32_t>(CudaStatus::InvalidArgument);
+  }
+
+  auto &population = moonai_gpu::population_for_kind(*state, population_kind);
+  if (parent_a_slot >= population.capacity || parent_b_slot >= population.capacity || offspring_slot >= population.capacity) {
+    return static_cast<std::int32_t>(CudaStatus::InvalidArgument);
+  }
+
+  CrossoverSummaryReadback *device_summary = nullptr;
+  auto status = moonai_gpu::alloc_array(&device_summary, 1U);
+  if (status != CudaStatus::Success) {
+    return static_cast<std::int32_t>(status);
+  }
+
+  const CrossoverSummaryReadback initial_summary{population_kind, parent_a_slot, parent_b_slot, offspring_slot, 0U, 0U,
+                                                 0U,             0U,            0U,            0U,             0U};
+  status = moonai_gpu::copy_host_data_to_device(device_summary, &initial_summary, sizeof(initial_summary));
+  if (status == CudaStatus::Success) {
+    crossover_kernel<<<1U, 1U>>>(population, state->next_entity_id, population_kind, parent_a_slot, parent_b_slot,
+                                  offspring_slot, state->config.num_inputs, state->config.initial_energy, device_summary);
+    status = moonai_gpu::synchronize_kernels();
+  }
+  if (status == CudaStatus::Success) {
+    status = moonai_gpu::copy_compact_device_readback(device_summary, out_summary, sizeof(*out_summary));
+  }
+
+  moonai_gpu::free_array(device_summary);
+  return static_cast<std::int32_t>(status);
+}

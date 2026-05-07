@@ -8,16 +8,9 @@ description: Conventions, rules and policies for MoonAI development.
 
 ### Toolchain
 
-| Tool    | Version   | Config                      |
-| ------- | --------- | --------------------------- |
-| Rust    | 1.95.0    | `rust-toolchain.toml`       |
-| Clippy  | (bundled) | `clippy.toml`, `Cargo.toml` |
-| rustfmt | (bundled) | `rustfmt.toml`              |
-
-### Edition and MSRV
-
-- **Edition**: 2024
+- **Rust**: 1.95.0
 - **MSRV**: 1.95.0
+- **Edition**: 2024
 - **Resolver**: 2
 
 ### Code Style
@@ -31,20 +24,14 @@ description: Conventions, rules and policies for MoonAI development.
 
 #### Rust Lints
 
-| Lint                                     | Level |
-| ---------------------------------------- | ----- |
-| `elided_lifetimes_in_paths`              | deny  |
-| `absolute_paths_not_starting_with_crate` | deny  |
-| `unsafe_code`                            | warn  |
-| `unused`                                 | warn  |
+- **deny**: `elided_lifetimes_in_paths`, `absolute_paths_not_starting_with_crate`
+- **warn**: `unsafe_code`, `unused`
 
 #### Clippy Lint Groups (All denied)
 
 - `correctness`, `suspicious`, `complexity`, `perf`, `style`
 
 #### Clippy Individual Lints (All Denied)
-
-From restriction/nursery (not covered by groups above):
 
 - `dbg_macro`, `expect_used`, `unwrap_used`, `panic`, `todo`
 - `needless_collect`, `redundant_clone`, `large_stack_arrays`
@@ -61,174 +48,43 @@ From restriction/nursery (not covered by groups above):
 
 ### Rules
 
-#### Suppression Comments — Absolute Ban
+- **Suppression comments are forbidden**
+  - Do NOT use: `#[allow(...)]`, `#![allow(...)]`, `#[expect(...)]`
+  - Enforced by ripgrep in the quality gate
+- **`unwrap`/`expect` are forbidden**
+  - only permitted in test functions via `clippy.toml` settings (`allow-expect-in-tests`, `allow-unwrap-in-tests`)
+  - use `?`, `Option::ok()`, or `anyhow::Context`
+  - Propagate errors with `?` — never swallow errors silently
+- **No `panic!()`/`todo!()`/`dbg!()`**
+- **No print to stdout/stderr** - use `tracing::info!`, `tracing::warn!`, etc.
+- **Clone explicitly on smart pointers** — `Arc::clone(&x)` not `x.clone()` (`clone_on_ref_ptr`)
+- **`.to_owned()` not `.to_string()`** on `&str` values (`str_to_string`)
+- **No `..` in fully-bound struct patterns** — all fields must be named (`rest_pat_in_fully_bound_structs`)
+- **Enums over strings**
 
-- `#[allow(...)]` and `#![allow(...)]` are forbidden in all source files (`src/`)
-- Enforced by ripgrep in the quality gate — only `tests/integration.rs` is exempt (crate-wide `expect_used`/`unwrap_used` for integration test infrastructure)
-- `expect`/`unwrap` in test functions are permitted via `clippy.toml` settings (`allow-expect-in-tests`, `allow-unwrap-in-tests`), NOT via `#[allow]` attributes
+### Source Organization
 
-### Toolchain
-
-| Tool   | Version | Config                        |
-| ------ | ------- | ----------------------------- |
-| Python | 3.14+   | `pyproject.toml`, `ruff.toml` |
-
-## Rust Standards
-
-### Workspace Lints (`Cargo.toml`)
-
-These lints are **deny** at the workspace level and cannot be overridden locally.
-
-#### Clippy Lints
-
-| Lint          | Level |
-| ------------- | ----- |
-| `correctness` | deny  |
-| `suspicious`  | deny  |
-| `complexity`  | deny  |
-| `perf`        | deny  |
-| `style`       | deny  |
-
-#### Explicitly Denied Lints
-
-| Lint                                 | Level |
-| ------------------------------------ | ----- |
-| `dbg_macro`                          | deny  |
-| `expect_used`                        | deny  |
-| `needless_collect`                   | deny  |
-| `panic`                              | deny  |
-| `redundant_clone`                    | deny  |
-| `redundant_closure_for_method_calls` | deny  |
-| `trivially_copy_pass_by_ref`         | deny  |
-| `todo`                               | deny  |
-| `uninlined_format_args`              | deny  |
-| `unwrap_used`                        | deny  |
-| `implicit_clone`                     | deny  |
-| `inefficient_to_string`              | deny  |
-| `large_stack_arrays`                 | deny  |
-| `missing_const_for_fn`               | deny  |
-| `needless_pass_by_value`             | deny  |
-| `option_if_let_else`                 | deny  |
-| `print_stdout`                       | deny  |
-| `print_stderr`                       | deny  |
-| `clone_on_ref_ptr`                   | deny  |
-| `rest_pat_in_fully_bound_structs`    | deny  |
-| `str_to_string`                      | deny  |
-
-### Clippy Configuration (`clippy.toml`)
-
-| Setting                        | Value                         |
-| ------------------------------ | ----------------------------- |
-| MSRV                           | 1.95                          |
-| Avoid breaking exported API    | true                          |
-| Allow expect in tests          | true                          |
-| Allow unwrap in tests          | true                          |
-| Disallowed names               | `foo`, `bar`                  |
-| Too many arguments threshold   | 15                            |
-| Cognitive complexity threshold | 15                            |
-| Enum variant size threshold    | 128                           |
-| Type complexity threshold      | 256                           |
-| Large error threshold          | 256                           |
-| Source item ordering           | `['enum', 'struct', 'trait']` |
-
-### Rustfmt Configuration (`rustfmt.toml`)
-
-| Setting                  | Value |
-| ------------------------ | ----- |
-| Edition                  | 2024  |
-| Style edition            | 2024  |
-| Max width                | 120   |
-| Use small heuristics     | Max   |
-| Newline style            | Unix  |
-| Hard tabs                | false |
-| Tab spaces               | 2     |
-| Reorder imports          | true  |
-| Reorder modules          | true  |
-| Remove nested parens     | true  |
-| Use field init shorthand | true  |
-| Use try shorthand        | true  |
-
-### Suppression Forbidden
-
-**Suppression commands are forbidden.** This is enforced by the `check` recipe.
-
-```bash
-just check
-```
-
-Do NOT use:
-
-- `#[allow(...)]`
-- `#![allow(...)]`
-- `#[expect(...)]` (use in tests only if clippy allows)
-
-### Code Rules
-
-1. **No unsafe code** — `unsafe_code` is warn by default; prefer safe abstractions
-2. **No unwrap in production** — use `?`, `Option::ok()`, or `anyhow::Context`
-3. **No print to stdout/stderr** — use `tracing::info!`, `tracing::warn!`, etc.
-4. **No TODO in code** — resolve before committing
-5. **Module item order** — enum → struct → trait
-6. **No dead code** — unused code must be removed or marked with `#[allow(dead_code)]` only if truly necessary and documented why
-
-### Release Profile (`Cargo.toml`)
-
-```toml
-[profile.release]
-strip = true
-lto = true
-panic = 'abort'
-incremental = true
-codegen-units = 4
-```
-
-## Python Standards
-
-### Python Version
-
-- **Required**: Python 3.14+
-
-### Ruff Configuration (`ruff.toml`)
-
-| Setting        | Value |
-| -------------- | ----- |
-| Line length    | 120   |
-| Target version | py314 |
-| Indent width   | 4     |
-
-#### Lint Rules
-
-| Rule Set               | Status  |
-| ---------------------- | ------- |
-| E (pycodestyle errors) | enabled |
-| F (pyflakes)           | enabled |
-| I (isort)              | enabled |
-| UP (pyupgrade)         | enabled |
-
-- Fixable: ALL
-- Unfixable: none
-
-#### Format Rules
-
-| Setting      | Value  |
-| ------------ | ------ |
-| Quote style  | double |
-| Indent style | space  |
-
-## Cargo Workspace Conventions
-
-### Crate Organization
-
-Each crate MUST:
-
-- Use `version.workspace = true`
-- Use `edition.workspace = true`
-- Use `authors.workspace = true`
-- Use `license.workspace = true`
+- The Rust rewrite uses a single root package declared in `Cargo.toml`
+- Core modules live directly under `src/` as flat files
+- Only `src/ui/` and `src/tick/` may be subdirectories
+- `src/ui/` owns UI/runtime rendering code
+- `src/tick/` owns merged simulation, evolution, and CUDA-facing code
 
 ### Dependencies
 
-- Workspace dependencies MUST use `{ workspace = true }` or inherit from `[workspace.dependencies]`
-- Path dependencies for intra-workspace crates only
-- External dependencies version-pinned in `[workspace.dependencies]`
-- Build dependencies (`[build-dependencies]`) separate from runtime dependencies
+- Declare runtime dependencies in `[dependencies]`
+- Declare build-only dependencies in `[build-dependencies]`
+- Keep dependency declarations version-pinned in the root manifest
+- Do not add intra-project path dependencies; share code through `crate::...` modules instead
+
+## Python
+
+### Toolchain
+
+- **uv**: 0.11+
+- **Python**: 3.14+
+
+#### Code Style
+
+- Quote style: double
+- Indent style: space

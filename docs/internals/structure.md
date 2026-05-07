@@ -4,69 +4,49 @@ description: Project structure, file organization, and tooling reference.
 
 # Structure
 
-## Repository Structure
+## Repository Map
 
 ```
 moonai/
 ├── .github/                    # GitHub workflows
 ├── analysis/                   # Python simulation analysis package
-├── assets/                     # assets (fonts, logo)
+├── assets/                     # Static assets
 ├── docs/                       # Documentation source
-├── legacy/                     # Legacy C++ implementation (read-only, for reference)
-├── crates/                     # Rust workspace (moonai-*)
-├── tests/                      # Google Test unit tests
+├── src/                        # Single-crate Rust source tree
+├── runtime/                    # Runtime assets (config/, assets/)
 ├── .gitattributes              # Git attributes
 ├── .gitignore                  # Git ignore rules
-├── Cargo.toml                  # Rust workspace manifest (workspace config, lints)
+├── build.rs                    # CUDA build script
+├── Cargo.toml                  # Rust package manifest
 ├── Cargo.lock                  # Locked dependency versions
-├── clippy.toml                # Clippy linter configuration
-├── rustfmt.toml               # Rust formatter configuration
-├── rust-toolchain.toml        # Rust toolchain specification
-├── ruff.toml                  # Ruff linter configuration for Python
+├── clippy.toml                 # Clippy linter configuration
+├── rustfmt.toml                # Rust formatter configuration
+├── rust-toolchain.toml         # Rust toolchain specification
+├── ruff.toml                   # Ruff linter configuration for Python
 ├── README.md                   # Project readme
-├── config.lua                  # Unified config: default run + experiment matrix
 ├── justfile                    # Rust project commands
-├── pyproject.toml             # Python package config (hatchling build)
+├── pyproject.toml              # Python package config
 ├── uv.lock                     # Python dependency lock
 └── zensical.toml               # Website configuration
 ```
 
-## Legacy C++ Implementation (`legacy/`)
+## Rust Source Layout (`src/`)
 
-The `legacy/` directory contains the **original C++ implementation** of MoonAI. This codebase is **frozen and read-only** — it serves as a reference for understanding the original design and can be consulted during the Rust rewrite but is no longer actively maintained.
-
-### Legacy Contents
-
-| File/Directory      | Purpose                                              |
-| ------------------- | ---------------------------------------------------- |
-| `CMakeLists.txt`    | Root CMake configuration                             |
-| `CMakePresets.json` | Build presets for Linux/Windows                      |
-| `.clang-format`     | LLVM code style configuration                        |
-| `.clang-tidy`       | Static analysis configuration                        |
-| `vcpkg.json`        | vcpkg dependency manifest                            |
-| `justfile-cpp`      | C++ build commands (`just -f legacy/justfile-cpp`)   |
-| `architecture.md`   | System architecture diagrams and design notes        |
-| `main.cpp`          | C++ entry point                                      |
-| `app/`              | Application orchestration, main loop                 |
-| `core/`             | Types, config, Lua runtime, seeded RNG               |
-| `evolution/`        | NEAT genome, neural network, speciation              |
-| `metrics/`          | CSV/JSON logging, aggregation                        |
-| `simulation/`       | ECS-based simulation (agents, physics, spatial grid) |
-| `visualization/`    | SFML rendering, UI overlay                           |
-
-## Rust Workspace (`crates/`)
-
-The Rust rewrite lives in `crates/` and implements a GPU-first architecture:
+MoonAI now uses a single crate with a flattened source tree. Only `ui/` and `tick/` are subdirectories.
 
 ```
-crates/
-├── moonai-types/               # Core types (Vec2, NodeGene, ConnectionGene, etc.)
-├── moonai-config/              # SimulationConfig, CLI args, Lua loading
-├── moonai-evolution/           # NEAT algorithm, CUDA kernels
-├── moonai-simulation/          # GPU simulation, persistent kernel
-├── moonai-metrics/            # CSV/JSON logging
-├── moonai-ui/                  # wgpu rendering, egui overlay
-└── moonai/                     # Binary crate, signal handling
+src/
+├── main.rs                     # Binary entry point and CLI routing
+├── cli.rs                      # Clap args
+├── config.rs                   # SimulationConfig defaults + serde
+├── config_error.rs             # ConfigError + validation rules
+├── lua.rs                      # Lua loading and moonai_defaults injection
+├── settings.rs                 # settings.json loading + UiConfig
+├── types.rs                    # Core shared types/constants
+├── metrics.rs                  # Metrics logger facade
+├── signal.rs                   # SIGINT/SIGTERM handling
+├── ui/                         # UI runtime/rendering modules
+└── tick/                       # Merged simulation + evolution runtime
 ```
 
 ## `analysis/`

@@ -24,8 +24,8 @@ class RunData:
     name: str
     config: dict
     stats: pd.DataFrame
-    final_step: int
-    expected_steps: int | None
+    final_tick: int
+    expected_ticks: int | None
     seed: int | None
     config_signature: str
 
@@ -61,8 +61,8 @@ def config_signature(config: dict) -> str:
     return json.dumps(normalized, sort_keys=True, separators=(",", ":"))
 
 
-def expected_steps(config: dict) -> int | None:
-    value = int(config.get("max_steps", 0) or 0)
+def expected_ticks(config: dict) -> int | None:
+    value = int(config.get("max_ticks", 0) or 0)
     return value if value > 0 else None
 
 
@@ -87,7 +87,7 @@ def discover_runs(output_dir: Path) -> tuple[list[RunData], list[SkippedRun]]:
             stats = load_csv(
                 path / "stats.csv",
                 required_columns=[
-                    "step",
+                    "tick",
                     "predator_species",
                     "prey_species",
                     "avg_complexity",
@@ -99,13 +99,13 @@ def discover_runs(output_dir: Path) -> tuple[list[RunData], list[SkippedRun]]:
             skipped.append(SkippedRun(path, str(exc)))
             continue
 
-        final_step = int(stats["step"].iloc[-1])
-        expected = expected_steps(config)
-        if expected is not None and final_step < expected:
+        final_tick = int(stats["tick"].iloc[-1])
+        expected = expected_ticks(config)
+        if expected is not None and final_tick < expected:
             skipped.append(
                 SkippedRun(
                     path,
-                    f"incomplete run: expected {expected} steps, found {final_step}",
+                    f"incomplete run: expected {expected} ticks, found {final_tick}",
                 )
             )
             continue
@@ -117,8 +117,8 @@ def discover_runs(output_dir: Path) -> tuple[list[RunData], list[SkippedRun]]:
                 name=path.name,
                 config=config,
                 stats=stats,
-                final_step=final_step,
-                expected_steps=expected,
+                final_tick=final_tick,
+                expected_ticks=expected,
                 seed=int(seed) if isinstance(seed, int | float) else None,
                 config_signature=config_signature(config),
             )

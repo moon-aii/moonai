@@ -40,7 +40,7 @@ def run_analysis(input_dir: Path, output_dir: Path) -> None:
         if genome is not None:
             title = (
                 f"{aggregate.label} - Representative Genome "
-                f"({aggregate.representative_run.name}, Step {genome.get('step', '?')})"
+                f"({aggregate.representative_run.name}, Tick {genome.get('tick', '?')})"
             )
             genome_chart = {
                 "title": "Genome",
@@ -52,7 +52,7 @@ def run_analysis(input_dir: Path, output_dir: Path) -> None:
                 "label": aggregate.label,
                 "run_count": len(aggregate.runs),
                 "representative_run": aggregate.representative_run.name,
-                "final_step": int(aggregate.summary_frame["step"].max()),
+                "final_tick": int(aggregate.summary_frame["tick"].max()),
                 "charts": [chart.__dict__ for chart in charts],
                 "genome_chart": genome_chart,
             }
@@ -69,7 +69,7 @@ def run_analysis(input_dir: Path, output_dir: Path) -> None:
             "run_count": len(runs),
             "condition_count": len(aggregates),
             "skipped_count": len(skipped_runs),
-            "summary_step": summary.step,
+            "summary_tick": summary.tick,
             "summary_headers": summary.headers,
             "summary_rows": [
                 {

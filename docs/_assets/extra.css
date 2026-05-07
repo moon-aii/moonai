@@ -3,7 +3,7 @@
   --md-accent-fg-color: #00ad9f !important;
 }
 
-[data-md-color-scheme='slate'] {
+[data-md-color-scheme="slate"] {
   --md-primary-fg-color: #40e0d0 !important;
   --md-accent-fg-color: #40e0d0 !important;
 }

@@ -63,7 +63,7 @@ generator = false
 repo = "fontawesome/brands/github"
 
 [project.theme.font]
-text = "IBM Plex Sans"
+text = "Source Sans 3"
 code = "Source Code Pro"
 
 [[project.theme.palette]]

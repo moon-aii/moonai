@@ -1,33 +1,32 @@
-[workspace]
-members = ["crates/*"]
-default-members = ["crates/moonai"]
-resolver = "2"
-
-[workspace.package]
+[package]
+name = "moonai"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.95.0"
 authors = ["MoonAI"]
 license = "MIT"
 
-[workspace.dependencies]
+[dependencies]
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 clap = { version = "4.5", features = ["derive"] }
-mlua = "0.9"
+mlua = { version = "0.9", features = ["luau"] }
 anyhow = "1.0"
 thiserror = "1.0"
+ctrlc = "3.0"
+
+[build-dependencies]
 cc = "1.0"
 
-[workspace.lints.rust]
+[lints.rust]
 elided_lifetimes_in_paths = "deny"
 absolute_paths_not_starting_with_crate = "deny"
-unsafe_code = { level = "warn", priority = -1 }
-unused = { level = "warn", priority = -1 }
+unsafe_code = { level = "allow", priority = -1 }
+unused = { level = "allow", priority = -1 }
 
-[workspace.lints.clippy]
+[lints.clippy]
 correctness = "deny"
 suspicious = "deny"
 complexity = "deny"
@@ -61,4 +60,4 @@ strip = true
 lto = true
 panic = 'abort'
 incremental = true
-codegen-units = 4
+codegen-units = 1
