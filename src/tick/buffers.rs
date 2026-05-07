@@ -1,4 +1,73 @@
-// GPU buffer structures - to be implemented in Phase 4
-pub struct PredatorBuffer;
-pub struct PreyBuffer;
-pub struct FoodBuffer;
+use serde::{Deserialize, Serialize};
+
+use crate::tick::compiled::DeviceCompiledNetworkBuffers;
+use crate::tick::genome::{DeviceGenomeBuffers, PopulationKind};
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct DevicePopulationBuffers {
+    pub pos_x: *mut f32,
+    pub pos_y: *mut f32,
+    pub vel_x: *mut f32,
+    pub vel_y: *mut f32,
+    pub energy: *mut f32,
+    pub age: *mut f32,
+    pub alive: *mut u8,
+    pub species_id: *mut u32,
+    pub entity_id: *mut u32,
+    pub generation: *mut u32,
+    pub rng_state: *mut u64,
+    pub genome: DeviceGenomeBuffers,
+    pub compiled: DeviceCompiledNetworkBuffers,
+    pub capacity: u32,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct PredatorBuffer {
+    pub population: DevicePopulationBuffers,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct PreyBuffer {
+    pub population: DevicePopulationBuffers,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct FoodBuffer {
+    pub pos_x: *mut f32,
+    pub pos_y: *mut f32,
+    pub active: *mut u8,
+    pub capacity: u32,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct UiStatsReadback {
+    pub tick: u32,
+    pub predator_count: u32,
+    pub prey_count: u32,
+    pub predator_births: u32,
+    pub prey_births: u32,
+    pub predator_deaths: u32,
+    pub prey_deaths: u32,
+    pub kills: u32,
+    pub food_eaten: u32,
+    pub avg_predator_energy: f32,
+    pub avg_prey_energy: f32,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct PopulationSummaryReadback {
+    pub population_kind: PopulationKind,
+    pub live_count: u32,
+    pub capacity: u32,
+    pub next_entity_id: u32,
+    pub innovation_counter: u32,
+    pub next_node_id: u32,
+    pub avg_energy: f32,
+    pub avg_connections: f32,
+}

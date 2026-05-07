@@ -1,19 +1,19 @@
-use std::collections::HashMap;
+use serde::{Deserialize, Serialize};
 
-pub struct InnovationTracker {
-    next_innovation: u32,
-    next_node_id: u32,
-    connections: HashMap<(u32, u32), u32>,
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeviceInnovationState {
+    pub next_innovation: u32,
+    pub next_node_id: u32,
+    pub log_capacity: u32,
+    pub log_len: u32,
 }
 
-impl Default for InnovationTracker {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl InnovationTracker {
-    pub fn new() -> Self {
-        Self { next_innovation: 0, next_node_id: 0, connections: HashMap::new() }
-    }
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InnovationRecord {
+    pub from_node: u32,
+    pub to_node: u32,
+    pub innovation: u32,
+    pub record_kind: u32,
 }

@@ -1,16 +1,16 @@
-pub struct NeuralNetwork {
-    pub inputs: Vec<f32>,
-    pub outputs: Vec<f32>,
-}
+use serde::{Deserialize, Serialize};
 
-impl Default for NeuralNetwork {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+use crate::tick::genome::PopulationKind;
 
-impl NeuralNetwork {
-    pub const fn new() -> Self {
-        Self { inputs: Vec::new(), outputs: Vec::new() }
-    }
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct SelectedAgentNetworkReadback {
+    pub population_kind: PopulationKind,
+    pub slot: u32,
+    pub node_count: u16,
+    pub output_count: u16,
+    pub activation_count: u16,
+    pub reserved: u16,
+    pub output_0: f32,
+    pub output_1: f32,
 }
