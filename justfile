@@ -8,16 +8,16 @@
 sync:
   uv sync
 
-# Build all crates in the workspace
+# Build in debug mode
 [group('build')]
 build-debug:
-  cargo build --workspace
+  cargo build
   cp -r runtime/* target/debug
 
 # Build in release mode
 [group('build')]
 build:
-  cargo build --workspace --release
+  cargo build --release
   cp -r runtime/* target/release
 
 
@@ -41,36 +41,34 @@ analyse:
 # Fix: format and lint
 [group('quality')]
 fix:
+  prettier --log-level=warn --write .
   uv run ruff format .
   uv run ruff check . --fix
-
-  prettier --log-level=warn --write .
-
   cargo fmt --all
-  cargo clippy --workspace --all-targets --all-features --fix --allow-dirty
-
+  cargo clippy --all-targets --all-features --fix --allow-dirty
 
 # Check code: format, lint checks and manual supression command grep
 [group('quality')]
 check:
+  prettier --log-level warn --check .
   uv run ruff format . --check
   uv run ruff check .
-
-  prettier --log-level warn --check .
-
   ! rg -n -F -e '#[allow' -e '#![allow' -g '*.rs' -g '!tests/**'
   cargo fmt --all -- --check
-  cargo clippy --workspace --all-targets --all-features
+  cargo clippy --all-targets --all-features
 
 # Run tests
 [group('quality')]
 test *args:
-  cargo test --workspace --all-targets --all-features --locked -- --nocapture {{args}}
+  cargo test --all-targets --all-features --locked -- --nocapture {{args}}
 
 # Full check + test gate (github ci runs this command)
 [group('quality')]
 gate: check test
 
+# Fix + Gate, prefer this recipe to save time instead of doing gate -> fix -> gate.
+[group('quality')]
+qual: fix gate
 
 # Update dependencies
 [group('dev')]

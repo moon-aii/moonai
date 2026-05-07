@@ -1,13 +1,14 @@
 -- MoonAI simulation config
 --
--- moonai_defaults is injected by the runtime and always reflects the C++ SimulationConfig
--- struct defaults, so this file never needs updating when parameters are added or renamed.
+-- moonai_defaults is injected by the runtime and always reflects the Rust
+-- SimulationConfig defaults, so this file never needs updating when parameters
+-- are added or renamed.
 --
 -- Usage:
---   ./moonai                                                # GUI, runs 'default' directly
---   ./moonai config.lua --list                             # list all experiments
---   ./moonai config.lua --all --headless                   # run full experiment matrix
---   ./moonai config.lua --experiment baseline_seed42       # one specific experiment
+--   ./moonai                                                # runs 'default' directly
+--   ./moonai --list                                         # list all experiments
+--   ./moonai --all --headless                               # run full experiment matrix
+--   ./moonai --experiment baseline_seed42                   # one specific experiment
 
 -- Shallow-copy a table and apply any number of override tables (right-most wins).
 local function extend(t, ...)
@@ -34,9 +35,11 @@ local function scale_base(pred, prey)
 end
 
 -- ── Experiments ───────────────────────────────────────────────────────────────
--- All experiments start from moonai_defaults (3000x3000, 500 predators, 1500 prey,
--- 1500-tick report windows) and override exactly the variable(s) under study.
+-- All experiments start from moonai_defaults (3600x3600, 24000 predators, 96000 prey,
+-- 1000-tick report windows) and override exactly the variable(s) under study.
 -- 55 conditions × 5 seeds = 275 seeded runs, plus the unseeded default entry.
+-- Some experiment names still use historical labels such as `2k` and `5k`; the
+-- actual run parameters are the values in each table, not the label.
 
 -- Pre-compute scale bases for commonly used population sizes
 local base_1k  = scale_base(250,  750)
@@ -48,7 +51,7 @@ local base_15k = scale_base(3750, 11250)
 local base_20k = scale_base(5000, 15000)
 
 local conditions = {
-    -- ── Group A: Baseline sweeps (2K agents, default world) ──────────────
+    -- ── Group A: Baseline sweeps (default world / default population) ─────
     baseline       = moonai_defaults,
     mut_low        = extend(moonai_defaults, { mutation_rate = 0.1 }),
     mut_high       = extend(moonai_defaults, { mutation_rate = 0.5 }),
@@ -140,7 +143,7 @@ end
 
 -- ── Default run ───────────────────────────────────────────────────────────────
 -- Single named entry for casual use: 'just run' auto-selects this because it is
--- the only entry with this name.  All values come from moonai_defaults (2K agents).
+-- the only entry with this name. All values come from moonai_defaults (120K agents).
 --
 experiments["default"] = moonai_defaults
 

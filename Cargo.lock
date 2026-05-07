@@ -296,74 +296,15 @@ name = "moonai"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "cc",
  "clap",
  "ctrlc",
- "moonai-config",
- "moonai-evolution",
- "moonai-metrics",
- "moonai-simulation",
- "moonai-types",
- "moonai-ui",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "moonai-config"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
  "mlua",
- "moonai-types",
  "serde",
  "serde_json",
  "thiserror",
  "tracing",
  "tracing-subscriber",
-]
-
-[[package]]
-name = "moonai-evolution"
-version = "0.1.0"
-dependencies = [
- "cc",
- "moonai-types",
-]
-
-[[package]]
-name = "moonai-metrics"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "moonai-config",
- "moonai-types",
-]
-
-[[package]]
-name = "moonai-simulation"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "cc",
- "moonai-config",
- "moonai-evolution",
- "moonai-types",
-]
-
-[[package]]
-name = "moonai-types"
-version = "0.1.0"
-
-[[package]]
-name = "moonai-ui"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "moonai-config",
- "moonai-evolution",
- "moonai-simulation",
- "moonai-types",
 ]
 
 [[package]]

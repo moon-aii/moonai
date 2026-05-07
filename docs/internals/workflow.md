@@ -4,11 +4,17 @@ description: Guide to set up, build, test, and deploy the project.
 
 # Workflow
 
-## Use `justfile` Commands
-
-Always reach for a `just` recipe before running any raw CLI command. If a `just` command exists for the task. Do not run raw commands or tooling directly if any just recipe exists. The `justfile` ensures consistent behavior across development and CI environments.
+## `justfile` Commands
 
 ## Development Commands
+
+```bash
+just build-debug
+just build
+just run -- --list
+just run -- --validate
+just analyse
+```
 
 ## Quality Gate
 

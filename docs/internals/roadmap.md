@@ -2,41 +2,45 @@
 description: Tasks, priorities, known bugs, and the project roadmap.
 ---
 
-# MoonAI Rewtite Plan
+# MoonAI Rewrite Plan
 
 > **Legacy C++ Implementation**: The original C++ simulation code is preserved in `legacy/`. This legacy codebase can be inspected for reference but is no longer actively developed. It includes the CMake build system, full SFML visualization, and all original NEAT implementation details. All C++ build configuration (CMakeLists.txt, CMakePresets.json, .clang-format, .clang-tidy, vcpkg.json), source code (main.cpp, app/, core/, evolution/, metrics/, simulation/, visualization/), and architecture documentation (architecture.md) are located in `legacy/`.
+
+> **Rust Refactor Status**: The Rust rewrite no longer uses a Cargo workspace. The names `moonai-config`, `moonai-types`, `moonai-evolution`, `moonai-simulation`, `moonai-metrics`, and `moonai-ui` below are preserved as logical workstreams from the original plan, but they now live inside a single root package under `src/`.
 
 ## 1. System Architecture
 
 ### 1.1 Module Dependency Graph
 
+These nodes represent the logical module groupings inside the single root package.
+
 ```mermaid
 graph TD
     moonai
-    moonai_config
-    moonai_types
-    moonai_evolution
-    moonai_simulation
-    moonai_metrics
-    moonai_ui
+    config
+    types
+    tick_evolution
+    tick_simulation
+    metrics
+    ui
 
-    moonai_config --> moonai_types
-    moonai_evolution --> moonai_types
-    moonai_simulation --> moonai_types
-    moonai_simulation --> moonai_config
-    moonai_simulation --> moonai_evolution
-    moonai_metrics --> moonai_types
-    moonai_metrics --> moonai_config
-    moonai_ui --> moonai_types
-    moonai_ui --> moonai_config
-    moonai_ui --> moonai_evolution
-    moonai_ui --> moonai_simulation
-    moonai --> moonai_evolution
-    moonai --> moonai_simulation
-    moonai --> moonai_metrics
-    moonai --> moonai_ui
-    moonai --> moonai_config
-    moonai --> moonai_types
+    config --> types
+    tick_evolution --> types
+    tick_simulation --> types
+    tick_simulation --> config
+    tick_simulation --> tick_evolution
+    metrics --> types
+    metrics --> config
+    ui --> types
+    ui --> config
+    ui --> tick_evolution
+    ui --> tick_simulation
+    moonai --> tick_evolution
+    moonai --> tick_simulation
+    moonai --> metrics
+    moonai --> ui
+    moonai --> config
+    moonai --> types
 ```
 
 ### 1.2 Tick Execution Flow
@@ -47,9 +51,9 @@ flowchart TD
         CLI[parse CLI]
         LUA[load config.lua]
         ROUTE{Route}
-        INIT_SIM[init moonai-simulation]
-        INIT_LOG[init moonai-metrics]
-        INIT_UI[init moonai-ui]
+        INIT_SIM[init src/tick]
+        INIT_LOG[init metrics]
+        INIT_UI[init src/ui]
         SEED[seed initial population]
         TICK_LOOP{while running}
         REDUCE{gpu_reduce_metrics}
@@ -210,9 +214,9 @@ flowchart TB
 1. **GPU owns all simulation state** — positions, velocities, energy, age, alive flags, genomes, innovation counters, all live in GPU memory.
 2. **CPU is orchestrator only** — never iterates the agent population except for initial population seeding and metrics export.
 3. **Tick-based cadence** — GPU runs N simulation ticks per tick; CPU handles metrics logging between ticks.
-4. **GPU-native evolution** — crossover, mutation, and network compilation happen entirely on GPU via `moonai-evolution` CUDA kernels.
+4. **GPU-native evolution** — crossover, mutation, and network compilation happen entirely on GPU via the evolution portion of `src/tick/`.
 5. **Buffer expansion** — buffers grow by 2x when capacity threshold is reached. No artificial ceiling.
-6. **No duplication** — evolution logic lives in `moonai-evolution` only; `moonai-simulation` calls those kernels.
+6. **No duplication** — evolution logic lives in the evolution portion of `src/tick/`; the simulation portion calls those kernels.
 
 ## 3. Assumptions
 
@@ -222,12 +226,12 @@ flowchart TB
   Lookup order: explicit path via CLI flag → binary directory → fallback to defaults.
 - `UiConfig` defaults are hardcoded in Rust; `settings.json` overrides them.
 - `UiState` (paused, speed_multiplier, tick_requested, selected_agent_id) is **runtime state**,
-  lives in `moonai-ui/types.rs`. NOT in `moonai-config`.
+  lives in `src/ui/types.rs`. NOT in the config-loading modules.
 - Output schema stays unchanged so Python analysis keeps working.
 - Behavioral parity is the goal.
 - Predator and prey use separate GPU buffers; no `AgentType` enum needed.
 - `config.lua` is loaded via `mlua`. `moonai_defaults` is injected as a global table.
-- CLI `--experiment` flag is a string passthrough; experiment selection logic is in `moonai` crate.
+- CLI `--experiment` flag is a string passthrough; experiment selection logic lives in the root binary entrypoint.
 - Reproduction is **sexual** — two parent genomes crossover on GPU, mutation applied on GPU, network compiled on GPU.
 - FPS target: 120fps. Speed multiplier: 1x-1024x ticks per frame. Every frame renders everything live.
 - UI needs fresh data every frame: population counts, positions, velocities, all of it.
@@ -246,96 +250,64 @@ flowchart TB
 | Atomic counters    | —             | CUDA atomics for GPU-to-CPU events |
 | Genome compilation | CPU (rayon)   | GPU (persistent kernel)            |
 
-## 5. Crate Architecture
+## 5. Source Architecture
 
 ```
 Cargo.toml
-crates/
-  moonai-config/
-    Cargo.toml
-    src/
-      lib.rs            # re-exports Config, CliArgs, UiConfig, ConfigError
-      config.rs         # SimulationConfig (serde, with defaults)
-      cli.rs            # CliArgs struct + clap parsing
-      lua.rs            # Lua loading, moonai_defaults injection
-      ui.rs             # UiConfig (hardcoded defaults)
-      settings.rs       # settings.json loading
-      error.rs         # ConfigError, validate_config
-
-  moonai-types/
-    Cargo.toml
-    src/lib.rs          # Vec2, INVALID_ENTITY, SENSOR_COUNT (35),
-                        # OUTPUT_COUNT (2), NodeType, NodeGene,
-                        # ConnectionGene, deterministic_respawn, tracing setup
-
-  moonai-evolution/
-    Cargo.toml
-    build.rs            # Compiles .cu files via cxx
-    src/
-      lib.rs            # Genome, NeuralNetwork, Mutation, Crossover,
-                        # Species, InnovationTracker, EvolutionManager,
-                        # CompiledNetwork
-      genome.rs         # Genome struct, methods
-      network.rs        # NeuralNetwork, activate
-      innovation.rs     # InnovationTracker
-      mutation.rs       # Mutation operations
-      crossover.rs      # Crossover operations
-      species.rs        # Species, compatibility
-      evolution.rs      # EvolutionManager
-      compiled.rs       # CompiledNetwork
-      crossover.cu      # GPU kernel: genome crossover
-      mutation.cu       # GPU kernel: weight mutate, add_connection, add_node
-      network_compilation.cu  # GPU kernel: compile genome to inference format
-
-  moonai-simulation/
-    Cargo.toml
-    build.rs            # Compiles kernel.cu
-    src/
-      lib.rs            # SimulationState, GpuHandles, TickResult,
-                        # run_tick, read_metrics, read_selected_agent,
-                        # init_from_config, init_from_genomes
-      kernel.cu         # Persistent simulation kernel
-                        # NOTE: Calls evolution kernels from moonai-evolution.
-                        # Does NOT implement crossover/mutation/reproduction.
-      buffers.rs        # GPU SoA buffers (agents, food)
-      checks.rs         # CUDA_CHECK macro
-      inference.rs      # Neural inference kernel
-      reproduction.rs   # Mate finding, birth buffer management
-      metrics_reduce.rs # Metrics reduction kernel
-      compaction.rs     # GPU defragmentation
-
-  moonai-metrics/
-    Cargo.toml
-    src/lib.rs          # Logger, stats.csv, species.csv, genomes.json
-
-  moonai-ui/
-    Cargo.toml
-    src/
-      lib.rs            # App, winit event loop, egui overlay
-      render.rs         # wgpu world renderer
-      types.rs          # UiState (RUNTIME STATE), OverlayStats,
-                        # RenderFood, RenderAgent, RenderLine
-
-  moonai/
-    Cargo.toml
-    src/
-      main.rs           # binary entrypoint
-      signal.rs         # SIGINT/SIGTERM graceful shutdown
+build.rs                        # Compiles CUDA sources in src/tick/
+src/
+  main.rs                       # binary entrypoint
+  signal.rs                     # SIGINT/SIGTERM graceful shutdown
+  cli.rs                        # CliArgs
+  config.rs                     # SimulationConfig defaults + serde
+  config_error.rs               # ConfigError, validate_config
+  lua.rs                        # Lua loading, moonai_defaults injection
+  settings.rs                   # UiConfig + settings.json loading
+  types.rs                      # Vec2, NodeGene, ConnectionGene, constants
+  metrics.rs                    # Logger facade
+  ui/
+    mod.rs
+    app.rs
+    render.rs
+    types.rs                    # UiState (runtime), OverlayStats, Render* types
+  tick/
+    mod.rs
+    genome.rs
+    network.rs
+    innovation.rs
+    mutation.rs
+    crossover.rs
+    species.rs
+    evolution.rs
+    compiled.rs
+    simulation.rs
+    buffers.rs
+    checks.rs
+    inference.rs
+    reproduction.rs
+    metrics_reduce.rs
+    compaction.rs
+    kernel.cu
+    crossover.cu
+    mutation.cu
+    network_compilation.cu
 ```
 
-### Crate Responsibilities
+### Logical Module Responsibilities
 
-| Crate               | Owns                                                                                                                              | Depends on                                                               |
-| ------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| `moonai-config`     | SimulationConfig, CliArgs, UiConfig, ConfigError, Lua loading                                                                     | `moonai-types`                                                           |
-| `moonai-types`      | Vec2, NodeType, NodeGene, ConnectionGene, SENSOR_COUNT, OUTPUT_COUNT, INVALID_ENTITY                                              | —                                                                        |
-| `moonai-evolution`  | ALL NEAT evolution logic: CUDA kernels for crossover, mutation, network compilation, InnovationTracker, Species, EvolutionManager | `moonai-types`                                                           |
-| `moonai-simulation` | GPU SoA buffers, persistent simulation kernel (calls evolution kernels), spatial grid, inference, metrics reduce, UI stats write  | `moonai-types`, `moonai-config`, `moonai-evolution`                      |
-| `moonai-metrics`    | CSV/JSON file logging                                                                                                             | `moonai-types`, `moonai-config`                                          |
-| `moonai-ui`         | winit, egui panels, wgpu world renderer, UiState (runtime)                                                                        | `moonai-types`, `moonai-config`, `moonai-evolution`, `moonai-simulation` |
-| `moonai`            | main.rs, signal handling                                                                                                          | All above                                                                |
+| Historical name       | Current location                                         | Owns                                                                 |
+| --------------------- | -------------------------------------------------------- | -------------------------------------------------------------------- |
+| `moonai-config`       | `src/cli.rs`, `src/config.rs`, `src/config_error.rs`, `src/lua.rs`, `src/settings.rs` | SimulationConfig, CliArgs, UiConfig, ConfigError, Lua/settings loading |
+| `moonai-types`        | `src/types.rs`                                           | Vec2, NodeType, NodeGene, ConnectionGene, shared constants           |
+| `moonai-evolution`    | `src/tick/` evolution files                              | NEAT evolution logic, CUDA kernels, InnovationTracker, Species       |
+| `moonai-simulation`   | `src/tick/` simulation files                             | Simulation state, GPU buffers, inference, reproduction, compaction   |
+| `moonai-metrics`      | `src/metrics.rs`                                         | CSV/JSON logging facade                                              |
+| `moonai-ui`           | `src/ui/`                                                | UI runtime state, app loop, renderer integration                     |
+| `moonai`              | `src/main.rs`, `src/signal.rs`                           | Binary entrypoint and signal handling                                |
 
 ## 6. Phase Specifications
+
+**Note:** Phase names below are preserved from the original multi-crate rewrite plan for continuity. After the single-package refactor, these names refer to logical source areas inside the root package rather than separate Cargo crates.
 
 ### Phase 1 — Workspace Skeleton [x]
 
@@ -344,14 +316,14 @@ crates/
 | #   | Task                            | File Changes                                                                              | Verification                       | Status |
 | --- | ------------------------------- | ----------------------------------------------------------------------------------------- | ---------------------------------- | ------ |
 | 1   | Create `Cargo.toml` workspace   | `Cargo.toml`                                                                              | `cargo metadata` succeeds          | [x]    |
-| 2   | Create `moonai-config` stub     | `moonai-config/Cargo.toml`, `moonai-config/src/lib.rs`                                    | `cargo build -p moonai-config`     | [x]    |
-| 3   | Create `moonai-types` stub      | `moonai-types/Cargo.toml`, `moonai-types/src/lib.rs`                                      | `cargo build -p moonai-types`      | [x]    |
-| 4   | Create `moonai-evolution` stub  | `moonai-evolution/Cargo.toml`, `moonai-evolution/src/lib.rs`, `moonai-evolution/build.rs` | `cargo build -p moonai-evolution`  | [x]    |
-| 5   | Create `moonai-simulation` stub | same pattern                                                                              | `cargo build -p moonai-simulation` | [x]    |
-| 6   | Create `moonai-metrics` stub    | same pattern                                                                              | `cargo build -p moonai-metrics`    | [x]    |
-| 7   | Create `moonai-ui` stub         | same pattern                                                                              | `cargo build -p moonai-ui`         | [x]    |
-| 8   | Create `moonai` binary stub     | same pattern                                                                              | `cargo build -p moonai`            | [x]    |
-| 9   | Verify workspace                | —                                                                                         | `cargo build --workspace`          | [x]    |
+| 2   | Create `moonai-config` stub     | `moonai-config/Cargo.toml`, `moonai-config/src/lib.rs`                                    | `cargo build`                      | [x]    |
+| 3   | Create `moonai-types` stub      | `moonai-types/Cargo.toml`, `moonai-types/src/lib.rs`                                      | `cargo build`                      | [x]    |
+| 4   | Create `moonai-evolution` stub  | `moonai-evolution/Cargo.toml`, `moonai-evolution/src/lib.rs`, `moonai-evolution/build.rs` | `cargo build`                      | [x]    |
+| 5   | Create `moonai-simulation` stub | same pattern                                                                              | `cargo build`                      | [x]    |
+| 6   | Create `moonai-metrics` stub    | same pattern                                                                              | `cargo build`                      | [x]    |
+| 7   | Create `moonai-ui` stub         | same pattern                                                                              | `cargo build`                      | [x]    |
+| 8   | Create `moonai` binary stub     | same pattern                                                                              | `cargo build`                      | [x]    |
+| 9   | Verify workspace                | —                                                                                         | `cargo build`                      | [x]    |
 
 ### Phase 2 — moonai-config [x]
 
@@ -359,7 +331,7 @@ crates/
 
 | #   | Task                                                                                    | Verification                              | Status |
 | --- | --------------------------------------------------------------------------------------- | ----------------------------------------- | ------ |
-| 1   | `SimulationConfig` with all fields + serde (C++-aligned defaults)                       | `cargo check -p moonai-config`            | [x]    |
+| 1   | `SimulationConfig` with all fields + serde (C++-aligned defaults)                       | `cargo check`                            | [x]    |
 | 2   | `CliArgs` + clap parsing (`--experiment`, `--all`, `--headless`, `-n`, etc.)            | `cargo run -- --list` works               | [x]    |
 | 3   | `UiConfig` with **hardcoded defaults** (50+ fields from legacy constants.hpp)           | Unit tests                                | [x]    |
 | 4   | Lua loading — inject `moonai_defaults`, parse experiment table                          | `cargo run -- --validate` works           | [x]    |
@@ -379,15 +351,26 @@ crates/
 | 2   | `NodeType`, `NodeGene`, `ConnectionGene`                                      | Unit tests                | [x]    |
 | 3   | `deterministic_respawn`                                                       | Deterministic output test | [x]    |
 
+### Phase 2c — Single-Crate Refactor [x]
+
+**Goal:** Consolidate the completed Rust rewrite phases into one root package without changing behavior.
+
+| #   | Task                                                                                               | Verification                                                                 | Status |
+| --- | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- | ------ |
+| 1   | Move the completed `moonai-*` crate sources into root `src/`, keeping only `src/ui/` and `src/tick/` as subdirectories | `cargo build`                                                                | [x]    |
+| 2   | Merge crate build scripts into root `build.rs` and keep CUDA compilation/linking working          | `cargo build`; `cargo test --all-targets --all-features --locked`           | [x]    |
+| 3   | Preserve config defaults, Lua loading, settings parsing, and CLI routing exactly                  | `cargo run -- --list`; `cargo run -- --validate`                            | [x]    |
+| 4   | Remove the old workspace tree and update refactor-related documentation                            | `just gate`                                                                  | [x]    |
+
 ### Phase 3 — Evolution (GPU CUDA Kernels)
 
-**Goal:** `moonai-evolution` owns all NEAT logic as CUDA kernels — no duplication
+**Goal:** the evolution portion of `src/tick/` owns all NEAT logic as CUDA kernels — no duplication
 
 #### 3a. Data Structures
 
 | #   | Task                                                                                        | Verification                               |
 | --- | ------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| 1   | Implement `Genome` struct with `Vec<NodeGene>`, `Vec<ConnectionGene>`                       | `cargo test -p moonai-evolution -- genome` |
+| 1   | Implement `Genome` struct with `Vec<NodeGene>`, `Vec<ConnectionGene>`                       | `cargo test --all-targets --all-features --locked genome` |
 | 2   | Implement `Genome::add_node`, `add_connection`, `has_connection`, `has_node`, `max_node_id` | Unit tests                                 |
 | 3   | Implement `Genome::complexity`, `compatibility_distance`                                    | Unit tests                                 |
 | 4   | Implement `InnovationTracker` with global counter                                           | Unit tests                                 |
@@ -412,7 +395,7 @@ crates/
 
 ### Phase 4 — GPU Simulation Kernel
 
-**Goal:** `moonai-simulation` persistent kernel calls `moonai-evolution` CUDA kernels
+**Goal:** the simulation portion of `src/tick/` calls the evolution CUDA kernels without duplicating that logic
 
 #### 4a. GPU Buffers
 
@@ -438,9 +421,9 @@ crates/
 | 8   | `reproduction`      | —                    |                                                |
 | 8a  | evaluate            | —                    | Energy >= threshold, not used this tick        |
 | 8b  | find_mate           | —                    | DenseReproductionGrid search                   |
-| 8c  | gpu_crossover       | **moonai-evolution** | Calls crossover.cu kernel                      |
-| 8d  | gpu_mutate          | **moonai-evolution** | Calls mutation.cu kernel                       |
-| 8e  | gpu_compile_network | **moonai-evolution** | Calls network_compilation.cu                   |
+| 8c  | gpu_crossover       | **tick evolution modules** | Calls crossover.cu kernel                |
+| 8d  | gpu_mutate          | **tick evolution modules** | Calls mutation.cu kernel                 |
+| 8e  | gpu_compile_network | **tick evolution modules** | Calls network_compilation.cu             |
 | 8f  | activate_slot       | —                    | Mark birth_state=ACTIVE                        |
 | 9   | `write_ui_stats`    | —                    | Pinned memory write                            |
 
@@ -474,27 +457,26 @@ crates/
 
 | Gate             | Command                                                             | Success Criteria                                                  |
 | ---------------- | ------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| Evolution tests  | `cargo test -p moonai-evolution`                                    | All tests pass                                                    |
-| Build parity     | `cargo build --workspace`                                           | All crates compile, no CMake                                      |
-| Config parity    | `cargo run -- --validate config.lua`                                | Config loads                                                      |
-| Headless runtime | `./moonai config.lua --experiment baseline --headless --ticks 1000` | Produces stats.csv, species.csv, genomes.json matching C++ output |
+| Evolution tests  | `cargo test --all-targets --all-features --locked`                  | All tests pass                                                    |
+| Build parity     | `cargo build`                                                       | Root package compiles, no workspace required                      |
+| Config parity    | `cargo run -- --validate`                                           | Config loads                                                      |
+| Headless runtime | `cargo run -- --experiment baseline --headless --ticks 1000`        | Produces stats.csv, species.csv, genomes.json matching C++ output |
 
 ### Phase 7 — UI
 
 **File structure:**
 
 ```
-crates/moonai-ui/
-├── Cargo.toml
-└── src/
-    ├── lib.rs        # App, winit event loop, pause/tick/speed controls
-    ├── render.rs     # wgpu instanced rendering (positions from GPU buffers)
-    └── types.rs      # UiState (RUNTIME STATE, not config), OverlayStats,
+src/ui/
+├── mod.rs            # App/UI module wiring
+├── app.rs            # App, event loop, pause/tick/speed controls
+├── render.rs         # wgpu instanced rendering (positions from GPU buffers)
+└── types.rs          # UiState (RUNTIME STATE, not config), OverlayStats,
                       # RenderFood, RenderAgent, RenderLine
 ```
 
 **Note:** `UiState` (paused, speed_multiplier, tick_requested, selected_agent_id) is **runtime
-state** — it is NOT config. It lives in `moonai-ui/types.rs` and is never serialized.
+state** — it is NOT config. It lives in `src/ui/types.rs` and is never serialized.
 
 **Render pipeline:**
 
@@ -720,10 +702,11 @@ Same as current C++:
 Phase 1: Workspace skeleton (1-2 days) [COMPLETED]
 Phase 2: moonai-config (1-2 days) [COMPLETED]
 Phase 2b: moonai-types (1-2 days) [COMPLETED]
-Phase 3: moonai-evolution + CUDA kernels (1-2 weeks)
-Phase 4: moonai-simulation + persistent kernel (2-3 weeks)
-Phase 5: moonai-metrics (2-3 days)
+Phase 2c: single-crate refactor (1-2 days) [COMPLETED]
+Phase 3: evolution workstream in src/tick/ + CUDA kernels (1-2 weeks)
+Phase 4: simulation workstream in src/tick/ + persistent kernel (2-3 weeks)
+Phase 5: metrics module (2-3 days)
 Phase 6: Headless milestone (1 week)
-Phase 7: moonai-ui (2-3 weeks)
+Phase 7: ui module (2-3 weeks)
 Phase 8: Cleanup (1 day)
 ```

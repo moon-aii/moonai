@@ -43,7 +43,7 @@ hide:
 
 -   __Motivation__
 
-    Modern artificial intelligence training often requires vast amounts of real-world data and manually designed scenarios, which do not scale efficiently. MoonAI addresses this limitation by providing autonomous, self-generating training environments for studying evolutionary computation without external data dependencies.
+    Modern artificial intelligence training often requires vast amounts of real-world data, which do not scale efficiently. MoonAI addresses this limitation by providing self-generating training environments for studying artificial intelligence without external data dependencies.
 
 -   __Objective__
 

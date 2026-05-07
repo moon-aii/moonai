@@ -25,7 +25,6 @@ analysis = "analysis.__main__:main"
 dev = ["ruff>=0.15.12", "pytest"]
 docs = ["zensical>=0.0.37"]
 
-# Ruff format and lint rules
 [tool.ruff]
 line-length = 120
 target-version = "py314"

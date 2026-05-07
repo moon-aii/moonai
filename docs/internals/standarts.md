@@ -62,21 +62,20 @@ description: Conventions, rules and policies for MoonAI development.
 - **No `..` in fully-bound struct patterns** — all fields must be named (`rest_pat_in_fully_bound_structs`)
 - **Enums over strings**
 
-### Crate Organization
+### Source Organization
 
-Each crate MUST:
-
-- Use `version.workspace = true`
-- Use `edition.workspace = true`
-- Use `authors.workspace = true`
-- Use `license.workspace = true`
+- The Rust rewrite uses a single root package declared in `Cargo.toml`
+- Core modules live directly under `src/` as flat files
+- Only `src/ui/` and `src/tick/` may be subdirectories
+- `src/ui/` owns UI/runtime rendering code
+- `src/tick/` owns merged simulation, evolution, and CUDA-facing code
 
 ### Dependencies
 
-- Use workspace dependencies: declare shared deps in `[workspace.dependencies]` and reference with `{ workspace = true }`
-- External dependencies version-pinned in `[workspace.dependencies]`
-- Build dependencies (`[build-dependencies]`) separate from runtime dependencies
-- Path dependencies for intra-workspace crates only
+- Declare runtime dependencies in `[dependencies]`
+- Declare build-only dependencies in `[build-dependencies]`
+- Keep dependency declarations version-pinned in the root manifest
+- Do not add intra-project path dependencies; share code through `crate::...` modules instead
 
 ## Python
 

@@ -12,11 +12,12 @@ moonai/
 ├── analysis/                   # Python simulation analysis package
 ├── assets/                     # Static assets
 ├── docs/                       # Documentation source
-├── crates/                     # Rust workspace (moonai-*)
+├── src/                        # Single-crate Rust source tree
 ├── runtime/                    # Runtime assets (config/, assets/)
 ├── .gitattributes              # Git attributes
 ├── .gitignore                  # Git ignore rules
-├── Cargo.toml                  # Rust workspace manifest
+├── build.rs                    # CUDA build script
+├── Cargo.toml                  # Rust package manifest
 ├── Cargo.lock                  # Locked dependency versions
 ├── clippy.toml                 # Clippy linter configuration
 ├── rustfmt.toml                # Rust formatter configuration
@@ -29,19 +30,23 @@ moonai/
 └── zensical.toml               # Website configuration
 ```
 
-## Rust Workspace (`crates/`)
+## Rust Source Layout (`src/`)
 
-The Rust rewrite lives in `crates/` and implements a GPU-first architecture:
+MoonAI now uses a single crate with a flattened source tree. Only `ui/` and `tick/` are subdirectories.
 
 ```
-crates/
-├── moonai-types/               # Core types (Vec2, NodeGene, ConnectionGene, etc.)
-├── moonai-config/              # SimulationConfig, CLI args, Lua loading
-├── moonai-evolution/           # NEAT algorithm, CUDA kernels
-├── moonai-simulation/          # GPU simulation, persistent kernel
-├── moonai-metrics/            # CSV/JSON logging
-├── moonai-ui/                  # wgpu rendering, egui overlay
-└── moonai/                     # Binary crate, signal handling
+src/
+├── main.rs                     # Binary entry point and CLI routing
+├── cli.rs                      # Clap args
+├── config.rs                   # SimulationConfig defaults + serde
+├── config_error.rs             # ConfigError + validation rules
+├── lua.rs                      # Lua loading and moonai_defaults injection
+├── settings.rs                 # settings.json loading + UiConfig
+├── types.rs                    # Core shared types/constants
+├── metrics.rs                  # Metrics logger facade
+├── signal.rs                   # SIGINT/SIGTERM handling
+├── ui/                         # UI runtime/rendering modules
+└── tick/                       # Merged simulation + evolution runtime
 ```
 
 ## `analysis/`
