@@ -419,8 +419,8 @@ src/
 
 | #   | Phase               | Calls                      | Algorithm                                      | Status |
 | --- | ------------------- | -------------------------- | ---------------------------------------------- | ------ |
-| 1   | `grid_build`        | —                          | Count-scan-scatter into spatial cells          | [ ]    |
-| 2   | `sensor_compute`    | —                          | Search 5 nearest predators/prey/food per agent | [ ]    |
+| 1   | `grid_build`        | —                          | Count-scan-scatter into spatial cells          | [x]    |
+| 2   | `sensor_compute`    | —                          | Search 5 nearest predators/prey/food per agent | [x]    |
 | 3   | `inference`         | —                          | Forward pass tanh activation                   | [x]    |
 | 4   | `update_vitals`     | —                          | Energy drain, age++, death check               | [x]    |
 | 5   | `resolve_food`      | —                          | Prey claim food in range                       | [x]    |

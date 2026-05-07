@@ -1,11 +1,12 @@
 use anyhow::{Context as _, Result, bail};
 
 use crate::config::SimulationConfig;
-use crate::tick::buffers::{RenderSnapshotReadback, UiStatsReadback};
+use crate::tick::buffers::{RenderSnapshotReadback, SpatialGridReadback, UiStatsReadback};
 use crate::tick::checks::InvariantCheckReadback;
 use crate::tick::compaction::FreeListStateReadback;
 use crate::tick::evolution::{EvolutionManager, GpuEvolutionConfig};
 use crate::tick::genome::{PopulationKind, SeededAgentSnapshot};
+use crate::tick::inference::SensorSnapshotReadback;
 use crate::types::{OUTPUT_COUNT, SENSOR_COUNT};
 
 #[repr(C)]
@@ -15,6 +16,7 @@ pub struct GpuSimulationConfig {
     pub world_size: f32,
     pub predator_speed: f32,
     pub prey_speed: f32,
+    pub vision_range: f32,
     pub interaction_range: f32,
     pub energy_drain_per_tick: f32,
     pub energy_gain_from_kill: f32,
@@ -35,6 +37,9 @@ impl GpuSimulationConfig {
         }
         if config.prey_speed <= 0.0 {
             bail!("prey_speed must be positive for GPU simulation, got {}", config.prey_speed);
+        }
+        if config.vision_range <= 0.0 {
+            bail!("vision_range must be positive for GPU simulation, got {}", config.vision_range);
         }
         if config.interaction_range < 0.0 {
             bail!("interaction_range must be non-negative for GPU simulation, got {}", config.interaction_range);
@@ -72,6 +77,7 @@ impl GpuSimulationConfig {
             world_size: config.grid_size as f32,
             predator_speed: config.predator_speed,
             prey_speed: config.prey_speed,
+            vision_range: config.vision_range,
             interaction_range: config.interaction_range,
             energy_drain_per_tick: config.energy_drain_per_tick,
             energy_gain_from_kill: config.energy_gain_from_kill,
@@ -123,6 +129,14 @@ impl SimulationState {
         self.evolution.simulation_free_list_state()
     }
 
+    pub fn spatial_grid_state(&self) -> Result<SpatialGridReadback> {
+        self.evolution.simulation_spatial_grid_state()
+    }
+
+    pub fn sensor_snapshot(&self, population_kind: PopulationKind, slot: u32) -> Result<SensorSnapshotReadback> {
+        self.evolution.sensor_snapshot(population_kind, slot)
+    }
+
     pub fn render_snapshot(&self, max_predators: u32, max_prey: u32, max_food: u32) -> Result<RenderSnapshotReadback> {
         self.evolution.render_snapshot(max_predators, max_prey, max_food)
     }
@@ -155,6 +169,7 @@ mod tests {
             food_count: 10,
             predator_speed: 1.0,
             prey_speed: 1.0,
+            vision_range: 128.0,
             interaction_range: 128.0,
             energy_drain_per_tick: 0.02,
             energy_gain_from_kill: 0.25,
@@ -170,6 +185,21 @@ mod tests {
 
     fn runtime_ready() -> bool {
         EvolutionManager::runtime_status().is_success()
+    }
+
+    fn expected_wall_sensor(negative_side_dist: f32, positive_side_dist: f32, vision_range: f32) -> f32 {
+        let negative_in_range = negative_side_dist < vision_range;
+        let positive_in_range = positive_side_dist < vision_range;
+
+        if !negative_in_range && !positive_in_range {
+            return 0.0;
+        }
+
+        if negative_in_range && (!positive_in_range || negative_side_dist <= positive_side_dist) {
+            return -(1.0 - (negative_side_dist / vision_range));
+        }
+
+        1.0 - (positive_side_dist / vision_range)
     }
 
     #[test]
@@ -190,6 +220,7 @@ mod tests {
         assert_eq!(free_list.predator_free_slots, 0);
         assert_eq!(free_list.prey_free_slots, 0);
         assert_eq!(free_list.active_food_count, 10);
+        assert_eq!(state.spatial_grid_state()?.predator_entries, 4);
         assert_eq!(snapshot.header.total_predators, 4);
         assert_eq!(snapshot.header.total_prey, 6);
         assert_eq!(snapshot.header.total_food, 10);
@@ -215,6 +246,11 @@ mod tests {
 
         assert_eq!(state_a.ui_stats()?, state_b.ui_stats()?);
         assert_eq!(state_a.free_list_state()?, state_b.free_list_state()?);
+        assert_eq!(state_a.spatial_grid_state()?, state_b.spatial_grid_state()?);
+        assert_eq!(
+            state_a.sensor_snapshot(PopulationKind::Predator, 0)?,
+            state_b.sensor_snapshot(PopulationKind::Predator, 0)?
+        );
         assert_eq!(
             state_a.seeded_agent_snapshot(PopulationKind::Predator, 0)?,
             state_b.seeded_agent_snapshot(PopulationKind::Predator, 0)?
@@ -246,6 +282,53 @@ mod tests {
                 || free_list.predator_free_slots > 0
                 || free_list.prey_free_slots > 0
         );
+
+        Ok(())
+    }
+
+    #[test]
+    fn simulation_sensor_snapshot_encodes_targets_and_walls() -> Result<()> {
+        if !runtime_ready() {
+            return Ok(());
+        }
+
+        let state = SimulationState::init_from_config(&simulation_config(64))?;
+        let predator = state.seeded_agent_snapshot(PopulationKind::Predator, 0)?;
+        let sensors = state.sensor_snapshot(PopulationKind::Predator, 0)?;
+
+        assert_eq!(sensors.population_kind, PopulationKind::Predator);
+        assert_eq!(sensors.slot, 0);
+        assert_eq!(usize::from(sensors.input_count), SENSOR_COUNT);
+        assert!(sensors.inputs[..10].iter().any(|value| value.abs() > f32::EPSILON));
+        assert!(sensors.inputs[10..20].iter().any(|value| value.abs() > f32::EPSILON));
+        assert!(sensors.inputs[20..30].iter().any(|value| value.abs() > f32::EPSILON));
+        assert!((sensors.inputs[30] - 0.5).abs() < 1e-6);
+        assert_eq!(sensors.inputs[31], 0.0);
+        assert_eq!(sensors.inputs[32], 0.0);
+        assert!((sensors.inputs[33] - expected_wall_sensor(predator.pos_x, 64.0 - predator.pos_x, 128.0)).abs() < 1e-6);
+        assert!((sensors.inputs[34] - expected_wall_sensor(predator.pos_y, 64.0 - predator.pos_y, 128.0)).abs() < 1e-6);
+
+        Ok(())
+    }
+
+    #[test]
+    fn simulation_builds_spatial_grid_from_vision_range() -> Result<()> {
+        if !runtime_ready() {
+            return Ok(());
+        }
+
+        let mut config = simulation_config(65);
+        config.vision_range = 16.0;
+        let state = SimulationState::init_from_config(&config)?;
+        let grid = state.spatial_grid_state()?;
+
+        assert_eq!(grid.grid_cols, 4);
+        assert_eq!(grid.grid_rows, 4);
+        assert_eq!(grid.cell_count, 16);
+        assert!((grid.cell_size - 16.0).abs() < 1e-6);
+        assert_eq!(grid.predator_entries, 4);
+        assert_eq!(grid.prey_entries, 6);
+        assert_eq!(grid.food_entries, 10);
 
         Ok(())
     }

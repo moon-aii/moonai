@@ -34,12 +34,19 @@ constexpr std::uint32_t kInnovationRecordAddNodeOutgoing = 3U;
 constexpr std::uint32_t kCompileScratchNodeLimit = 128U;
 constexpr std::uint32_t kCompileScratchConnectionLimit = 256U;
 constexpr std::uint32_t kSpeciesBucketCount = 64U;
-constexpr std::uint32_t kSensorInputCount = 30U;
-constexpr std::uint32_t kSelfEnergyInputIndex = 30U;
-constexpr std::uint32_t kVelocityXInputIndex = 31U;
-constexpr std::uint32_t kVelocityYInputIndex = 32U;
-constexpr std::uint32_t kWallXInputIndex = 33U;
-constexpr std::uint32_t kWallYInputIndex = 34U;
+constexpr std::uint32_t kNearestTargetsPerType = 5U;
+constexpr std::uint32_t kTargetCoordinateCount = 2U;
+constexpr std::uint32_t kPerTypeSensorCount = kNearestTargetsPerType * kTargetCoordinateCount;
+constexpr std::uint32_t kTargetTypeCount = 3U;
+constexpr std::uint32_t kTargetSensorCount = kPerTypeSensorCount * kTargetTypeCount;
+constexpr std::uint32_t kSelfStateSensorCount = 3U;
+constexpr std::uint32_t kWallSensorCount = 2U;
+constexpr std::uint32_t kSensorInputCount = kTargetSensorCount + kSelfStateSensorCount + kWallSensorCount;
+constexpr std::uint32_t kSelfEnergyInputIndex = kTargetSensorCount;
+constexpr std::uint32_t kVelocityXInputIndex = kSelfEnergyInputIndex + 1U;
+constexpr std::uint32_t kVelocityYInputIndex = kSelfEnergyInputIndex + 2U;
+constexpr std::uint32_t kWallXInputIndex = kSelfEnergyInputIndex + kSelfStateSensorCount;
+constexpr std::uint32_t kWallYInputIndex = kWallXInputIndex + 1U;
 
 struct DeviceGenomeBuffers {
   std::int32_t *connection_from;
@@ -80,6 +87,7 @@ struct DevicePopulationBuffers {
   std::uint32_t *entity_id;
   std::uint32_t *generation;
   std::uint64_t *rng_state;
+  float *sensor_inputs;
   DeviceGenomeBuffers genome;
   DeviceCompiledNetworkBuffers compiled;
   std::uint32_t capacity;
@@ -178,6 +186,7 @@ struct GpuSimulationConfig {
   float world_size;
   float predator_speed;
   float prey_speed;
+  float vision_range;
   float interaction_range;
   float energy_drain_per_tick;
   float energy_gain_from_kill;
@@ -264,6 +273,14 @@ struct SelectedAgentNetworkReadback {
   float output_1;
 };
 
+struct SensorSnapshotReadback {
+  PopulationKind population_kind;
+  std::uint32_t slot;
+  std::uint16_t input_count;
+  std::uint16_t reserved;
+  float inputs[kSensorInputCount];
+};
+
 struct RenderSnapshotHeader {
   std::uint32_t tick;
   std::uint32_t total_predators;
@@ -294,6 +311,16 @@ struct RenderFoodReadback {
   std::uint16_t reserved1;
   float pos_x;
   float pos_y;
+};
+
+struct SpatialGridReadback {
+  std::uint32_t grid_cols;
+  std::uint32_t grid_rows;
+  std::uint32_t cell_count;
+  std::uint32_t predator_entries;
+  std::uint32_t prey_entries;
+  std::uint32_t food_entries;
+  float cell_size;
 };
 
 struct FreeListStateReadback {
@@ -327,6 +354,18 @@ struct SimulationCounters {
   std::uint32_t food_eaten;
 };
 
+struct PopulationGridEntry {
+  std::uint32_t slot;
+  float pos_x;
+  float pos_y;
+};
+
+struct FoodGridEntry {
+  std::uint32_t slot;
+  float pos_x;
+  float pos_y;
+};
+
 struct GpuEvolutionState {
   GpuEvolutionConfig config;
   GpuSimulationConfig simulation;
@@ -343,6 +382,22 @@ struct GpuEvolutionState {
   std::uint32_t *prey_free_list;
   std::uint32_t *predator_free_len;
   std::uint32_t *prey_free_len;
+  std::uint32_t *predator_cell_counts;
+  std::uint32_t *predator_cell_offsets;
+  std::uint32_t *predator_cell_write_offsets;
+  PopulationGridEntry *predator_grid_entries;
+  std::uint32_t *prey_cell_counts;
+  std::uint32_t *prey_cell_offsets;
+  std::uint32_t *prey_cell_write_offsets;
+  PopulationGridEntry *prey_grid_entries;
+  std::uint32_t *food_cell_counts;
+  std::uint32_t *food_cell_offsets;
+  std::uint32_t *food_cell_write_offsets;
+  FoodGridEntry *food_grid_entries;
+  std::uint32_t grid_cols;
+  std::uint32_t grid_rows;
+  std::uint32_t grid_cell_capacity;
+  float grid_cell_size;
 };
 
 inline bool is_runtime_unavailable_error(cudaError_t error) {

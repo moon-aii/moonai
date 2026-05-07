@@ -7,13 +7,14 @@ use anyhow::{Context as _, Result, anyhow, bail};
 use crate::config::SimulationConfig;
 use crate::tick::buffers::{
     PopulationSummaryReadback, RenderAgentReadback, RenderFoodReadback, RenderSnapshotHeader, RenderSnapshotReadback,
-    UiStatsReadback,
+    SpatialGridReadback, UiStatsReadback,
 };
 use crate::tick::checks::{CudaStatus, InvariantCheckReadback, check_cuda};
 use crate::tick::compaction::FreeListStateReadback;
 use crate::tick::compiled::CompiledNetworkReadbackHeader;
 use crate::tick::crossover::CrossoverSummaryReadback;
 use crate::tick::genome::{PopulationKind, SeededAgentSnapshot};
+use crate::tick::inference::SensorSnapshotReadback;
 use crate::tick::innovation::{DeviceInnovationState, InnovationLogReadbackHeader, InnovationRecord};
 use crate::tick::mutation::{GpuMutationConfig, MutationSummaryReadback};
 use crate::tick::network::SelectedAgentNetworkReadback;
@@ -186,6 +187,20 @@ impl EvolutionManager {
         readback("moonai_gpu_simulation_free_list_state", |out| {
             // SAFETY: `self.raw` is valid and `out` points to writable storage for the compact free-list readback.
             unsafe { moonai_gpu_simulation_free_list_state(self.raw.as_ptr(), out) }
+        })
+    }
+
+    pub fn simulation_spatial_grid_state(&self) -> Result<SpatialGridReadback> {
+        readback("moonai_gpu_simulation_spatial_grid_state", |out| {
+            // SAFETY: `self.raw` is valid and `out` points to writable storage for the compact spatial-grid readback.
+            unsafe { moonai_gpu_simulation_spatial_grid_state(self.raw.as_ptr(), out) }
+        })
+    }
+
+    pub fn sensor_snapshot(&self, population_kind: PopulationKind, slot: u32) -> Result<SensorSnapshotReadback> {
+        readback("moonai_gpu_simulation_sensor_snapshot", |out| {
+            // SAFETY: `self.raw` is valid and `out` points to writable storage for the compact sensor readback.
+            unsafe { moonai_gpu_simulation_sensor_snapshot(self.raw.as_ptr(), population_kind, slot, out) }
         })
     }
 
@@ -483,6 +498,16 @@ unsafe extern "C" {
     fn moonai_gpu_simulation_ui_stats(state: *const c_void, out_stats: *mut UiStatsReadback) -> CudaStatus;
     fn moonai_gpu_simulation_free_list_state(state: *const c_void, out_state: *mut FreeListStateReadback)
     -> CudaStatus;
+    fn moonai_gpu_simulation_spatial_grid_state(
+        state: *const c_void,
+        out_state: *mut SpatialGridReadback,
+    ) -> CudaStatus;
+    fn moonai_gpu_simulation_sensor_snapshot(
+        state: *const c_void,
+        population_kind: PopulationKind,
+        slot: u32,
+        out_snapshot: *mut SensorSnapshotReadback,
+    ) -> CudaStatus;
     fn moonai_gpu_simulation_render_snapshot(
         state: *const c_void,
         max_predators: u32,

@@ -17,6 +17,7 @@ pub struct DevicePopulationBuffers {
     pub entity_id: *mut u32,
     pub generation: *mut u32,
     pub rng_state: *mut u64,
+    pub sensor_inputs: *mut f32,
     pub genome: DeviceGenomeBuffers,
     pub compiled: DeviceCompiledNetworkBuffers,
     pub capacity: u32,
@@ -108,6 +109,18 @@ pub struct RenderFoodReadback {
     pub reserved1: u16,
     pub pos_x: f32,
     pub pos_y: f32,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct SpatialGridReadback {
+    pub grid_cols: u32,
+    pub grid_rows: u32,
+    pub cell_count: u32,
+    pub predator_entries: u32,
+    pub prey_entries: u32,
+    pub food_entries: u32,
+    pub cell_size: f32,
 }
 
 #[derive(Debug, Clone, PartialEq)]
