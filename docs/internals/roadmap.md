@@ -376,30 +376,30 @@ src/
 
 #### 3a. Host/Device ABI and GPU Layouts
 
-| #   | Task                                                                                           | Verification                                       |
-| --- | ---------------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| 1   | Define device-resident genome, compiled-network, and innovation-counter layouts                | `cargo build`                                      |
-| 2   | Add explicit Rust/CUDA FFI entry points and safe launch wrappers in `src/tick/`                | `cargo test --all-targets --all-features --locked` |
-| 3   | Implement GPU initialization/seeding kernel for predators, prey, and RNG state                 | Fixed-seed smoke test                              |
-| 4   | Implement device-side innovation tracking state and append-only report buffers                 | Kernel smoke test                                  |
-| 5   | Define compact readback structs for UI, metrics, species summaries, and representative genomes | Serialization tests                                |
+| #   | Task                                                                                           | Verification                                       | Status |
+| --- | ---------------------------------------------------------------------------------------------- | -------------------------------------------------- | ------ |
+| 1   | Define device-resident genome, compiled-network, and innovation-counter layouts                | `cargo build`                                      | [x]    |
+| 2   | Add explicit Rust/CUDA FFI entry points and safe launch wrappers in `src/tick/`                | `cargo test --all-targets --all-features --locked` | [x]    |
+| 3   | Implement GPU initialization/seeding kernel for predators, prey, and RNG state                 | Fixed-seed smoke test                              | [x]    |
+| 4   | Implement device-side innovation tracking state and append-only report buffers                 | Kernel smoke test                                  | [x]    |
+| 5   | Define compact readback structs for UI, metrics, species summaries, and representative genomes | Serialization tests                                | [x]    |
 
 #### 3b. CUDA Kernel Implementation
 
-| #   | Task                                            | Algorithm                                                                                                                    |
-| --- | ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| 6   | `crossover.cu` — `gpu_crossover_kernel`         | 1 thread or warp per offspring. Merge parent genes by innovation and emit child genes directly into device buffers.          |
-| 7   | `mutation.cu` — `gpu_mutate_kernel`             | Per-agent weight perturbation, add_connection, add_node, and delete_connection using device RNG and innovation atomics only. |
-| 8   | `network_compilation.cu` — `gpu_compile_kernel` | Topological sort nodes → `eval_order[]`, build connection offsets, and materialize inference arrays entirely on device.      |
-| 9   | GPU species-classification kernel               | Assign `species_id`, accumulate species summaries, and capture representative slots without host genome traversal.           |
+| #   | Task                                            | Algorithm                                                                                                                    | Status |
+| --- | ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ------ |
+| 6   | `crossover.cu` — `gpu_crossover_kernel`         | 1 thread or warp per offspring. Merge parent genes by innovation and emit child genes directly into device buffers.          | [x]    |
+| 7   | `mutation.cu` — `gpu_mutate_kernel`             | Per-agent weight perturbation, add_connection, add_node, and delete_connection using device RNG and innovation atomics only. | [x]    |
+| 8   | `network_compilation.cu` — `gpu_compile_kernel` | Topological sort nodes → `eval_order[]`, build connection offsets, and materialize inference arrays entirely on device.      | [x]    |
+| 9   | GPU species-classification kernel               | Assign `species_id`, accumulate species summaries, and capture representative slots without host genome traversal.           | [x]    |
 
 #### 3c. GPU Verification and Observability
 
-| #   | Task                                                                  | Verification                                                         |
-| --- | --------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| 10  | Add device-side invariant checks for genome/network bounds            | Debug smoke test on tiny populations                                 |
-| 11  | Add fixed-seed determinism tests for GPU initialization and evolution | Repeat run produces byte-identical compact readbacks on same machine |
-| 12  | Add end-to-end GPU smoke test for seed → mutate → compile → inspect   | `cargo test --all-targets --all-features --locked`                   |
+| #   | Task                                                                  | Verification                                                         | Status |
+| --- | --------------------------------------------------------------------- | -------------------------------------------------------------------- | ------ |
+| 10  | Add device-side invariant checks for genome/network bounds            | Debug smoke test on tiny populations                                 | [x]    |
+| 11  | Add fixed-seed determinism tests for GPU initialization and evolution | Repeat run produces byte-identical compact readbacks on same machine | [x]    |
+| 12  | Add end-to-end GPU smoke test for seed → mutate → compile → inspect   | `cargo test --all-targets --all-features --locked`                   | [x]    |
 
 ### Phase 4 — GPU Simulation Kernel
 

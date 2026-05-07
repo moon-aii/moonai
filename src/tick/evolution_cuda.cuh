@@ -1,0 +1,336 @@
+#pragma once
+
+#include <cuda_runtime.h>
+
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+
+namespace moonai_gpu {
+
+extern std::int32_t g_last_cuda_error_code;
+
+enum class CudaStatus : std::int32_t {
+  Success = 0,
+  InvalidArgument = 1,
+  AllocationFailed = 2,
+  KernelLaunchFailed = 3,
+  DeviceCopyFailed = 4,
+  RuntimeUnavailable = 5,
+};
+
+enum class PopulationKind : std::uint32_t {
+  Predator = 0,
+  Prey = 1,
+};
+
+constexpr std::uint8_t kInputNodeType = 0;
+constexpr std::uint8_t kHiddenNodeType = 1;
+constexpr std::uint8_t kOutputNodeType = 2;
+constexpr std::uint8_t kBiasNodeType = 3;
+constexpr std::uint32_t kInnovationRecordAddConnection = 1U;
+constexpr std::uint32_t kInnovationRecordAddNodeIncoming = 2U;
+constexpr std::uint32_t kInnovationRecordAddNodeOutgoing = 3U;
+constexpr std::uint32_t kCompileScratchNodeLimit = 128U;
+constexpr std::uint32_t kCompileScratchConnectionLimit = 256U;
+constexpr std::uint32_t kSpeciesBucketCount = 64U;
+
+struct DeviceGenomeBuffers {
+  std::int32_t *connection_from;
+  std::int32_t *connection_to;
+  float *connection_weight;
+  std::uint32_t *connection_innovation;
+  std::uint8_t *connection_enabled;
+  std::uint8_t *node_types;
+  std::uint16_t *num_connections;
+  std::uint16_t *num_nodes;
+  std::uint32_t connection_stride;
+  std::uint32_t node_stride;
+};
+
+struct DeviceCompiledNetworkBuffers {
+  std::uint16_t *eval_order;
+  std::uint32_t *connection_offsets;
+  std::uint16_t *output_indices;
+  std::uint16_t *connection_sources;
+  float *connection_weights;
+  std::uint16_t *node_counts;
+  std::uint16_t *eval_counts;
+  std::uint16_t *connection_counts;
+  std::uint32_t node_stride;
+  std::uint32_t connection_stride;
+  std::uint32_t output_stride;
+};
+
+struct DevicePopulationBuffers {
+  float *pos_x;
+  float *pos_y;
+  float *vel_x;
+  float *vel_y;
+  float *energy;
+  float *age;
+  std::uint8_t *alive;
+  std::uint32_t *species_id;
+  std::uint32_t *entity_id;
+  std::uint32_t *generation;
+  std::uint64_t *rng_state;
+  DeviceGenomeBuffers genome;
+  DeviceCompiledNetworkBuffers compiled;
+  std::uint32_t capacity;
+};
+
+struct DeviceInnovationState {
+  std::uint32_t next_innovation;
+  std::uint32_t next_node_id;
+  std::uint32_t log_capacity;
+  std::uint32_t log_len;
+};
+
+struct InnovationRecord {
+  std::uint32_t from_node;
+  std::uint32_t to_node;
+  std::uint32_t innovation;
+  std::uint32_t record_kind;
+};
+
+struct GpuEvolutionConfig {
+  std::uint32_t predator_capacity;
+  std::uint32_t prey_capacity;
+  std::uint32_t initial_predator_count;
+  std::uint32_t initial_prey_count;
+  float world_size;
+  float initial_energy;
+  float max_energy;
+  std::uint64_t seed;
+  std::uint32_t num_inputs;
+  std::uint32_t num_outputs;
+  std::uint32_t node_stride;
+  std::uint32_t connection_stride;
+};
+
+struct PopulationSummaryReadback {
+  PopulationKind population_kind;
+  std::uint32_t live_count;
+  std::uint32_t capacity;
+  std::uint32_t next_entity_id;
+  std::uint32_t innovation_counter;
+  std::uint32_t next_node_id;
+  float avg_energy;
+  float avg_connections;
+};
+
+struct SeededAgentSnapshot {
+  PopulationKind population_kind;
+  std::uint32_t slot;
+  std::uint32_t entity_id;
+  std::uint32_t generation;
+  std::uint32_t species_id;
+  std::uint8_t alive;
+  std::uint8_t reserved0;
+  std::uint16_t reserved1;
+  float pos_x;
+  float pos_y;
+  float vel_x;
+  float vel_y;
+  float energy;
+  float age;
+  std::uint16_t num_nodes;
+  std::uint16_t num_connections;
+  std::uint64_t genome_hash;
+};
+
+struct UiStatsReadback {
+  std::uint32_t tick;
+  std::uint32_t predator_count;
+  std::uint32_t prey_count;
+  std::uint32_t predator_births;
+  std::uint32_t prey_births;
+  std::uint32_t predator_deaths;
+  std::uint32_t prey_deaths;
+  std::uint32_t kills;
+  std::uint32_t food_eaten;
+  float avg_predator_energy;
+  float avg_prey_energy;
+};
+
+struct GpuMutationConfig {
+  float mutation_rate;
+  float weight_mutation_power;
+  float add_node_rate;
+  float add_connection_rate;
+  float delete_connection_rate;
+  std::uint32_t max_connection_attempts;
+};
+
+struct MutationSummaryReadback {
+  PopulationKind population_kind;
+  std::uint32_t agents_mutated;
+  std::uint32_t weight_perturbations;
+  std::uint32_t added_connections;
+  std::uint32_t added_nodes;
+  std::uint32_t deleted_connections;
+};
+
+struct CrossoverSummaryReadback {
+  PopulationKind population_kind;
+  std::uint32_t parent_a_slot;
+  std::uint32_t parent_b_slot;
+  std::uint32_t offspring_slot;
+  std::uint32_t offspring_entity_id;
+  std::uint32_t offspring_generation;
+  std::uint32_t inherited_connections;
+  std::uint32_t matching_genes;
+  std::uint32_t disjoint_genes;
+  std::uint32_t excess_genes;
+  std::uint64_t offspring_genome_hash;
+};
+
+struct SpeciesSummaryReadback {
+  PopulationKind population_kind;
+  std::uint32_t species_id;
+  std::uint32_t size;
+  std::uint32_t representative_slot;
+  float avg_complexity;
+};
+
+struct RepresentativeGenomeHeader {
+  PopulationKind population_kind;
+  std::uint32_t slot;
+  std::uint32_t entity_id;
+  std::uint32_t generation;
+  std::uint32_t species_id;
+  std::uint16_t num_nodes;
+  std::uint16_t num_connections;
+};
+
+struct CompiledNetworkReadbackHeader {
+  PopulationKind population_kind;
+  std::uint32_t slot;
+  std::uint16_t node_count;
+  std::uint16_t eval_node_count;
+  std::uint16_t output_count;
+  std::uint16_t connection_count;
+};
+
+struct SelectedAgentNetworkReadback {
+  PopulationKind population_kind;
+  std::uint32_t slot;
+  std::uint16_t node_count;
+  std::uint16_t output_count;
+  std::uint16_t activation_count;
+  std::uint16_t reserved;
+  float output_0;
+  float output_1;
+};
+
+struct InvariantCheckReadback {
+  std::uint32_t predator_agents_checked;
+  std::uint32_t prey_agents_checked;
+  std::uint32_t invalid_node_counts;
+  std::uint32_t invalid_connection_counts;
+  std::uint32_t invalid_connection_bounds;
+  std::uint32_t invalid_compiled_offsets;
+  std::uint32_t invalid_eval_nodes;
+  std::uint32_t invalid_output_indices;
+  std::uint32_t invalid_species_assignments;
+  std::uint32_t innovation_log_overflow;
+};
+
+struct GpuEvolutionState {
+  GpuEvolutionConfig config;
+  DevicePopulationBuffers predator;
+  DevicePopulationBuffers prey;
+  DeviceInnovationState *innovation;
+  InnovationRecord *innovation_log;
+  std::uint32_t *next_entity_id;
+};
+
+inline bool is_runtime_unavailable_error(cudaError_t error) {
+  return error == cudaErrorInsufficientDriver || error == cudaErrorInitializationError || error == cudaErrorNoDevice;
+}
+
+inline CudaStatus map_cuda_runtime_error(cudaError_t error, CudaStatus failure_status) {
+  g_last_cuda_error_code = static_cast<std::int32_t>(error);
+  if (is_runtime_unavailable_error(error)) {
+    return CudaStatus::RuntimeUnavailable;
+  }
+  return error == cudaSuccess ? CudaStatus::Success : failure_status;
+}
+
+template <typename T> inline CudaStatus alloc_array(T **ptr, std::size_t count) {
+  if (count == 0U) {
+    *ptr = nullptr;
+    return CudaStatus::Success;
+  }
+
+  void *raw = nullptr;
+  const auto error = cudaMalloc(&raw, count * sizeof(T));
+  const auto status = map_cuda_runtime_error(error, CudaStatus::AllocationFailed);
+  if (status != CudaStatus::Success) {
+    return status;
+  }
+  *ptr = static_cast<T *>(raw);
+  return CudaStatus::Success;
+}
+
+template <typename T> inline void free_array(T *&ptr) {
+  if (ptr != nullptr) {
+    cudaFree(ptr);
+    ptr = nullptr;
+  }
+}
+
+inline CudaStatus zero_device_memory(void *ptr, std::size_t size) {
+  return map_cuda_runtime_error(cudaMemset(ptr, 0, size), CudaStatus::DeviceCopyFailed);
+}
+
+inline CudaStatus copy_compact_device_readback(const void *device_ptr, void *host_ptr, std::size_t size) {
+  return map_cuda_runtime_error(cudaMemcpy(host_ptr, device_ptr, size, cudaMemcpyDeviceToHost), CudaStatus::DeviceCopyFailed);
+}
+
+inline CudaStatus copy_host_data_to_device(void *device_ptr, const void *host_ptr, std::size_t size) {
+  return map_cuda_runtime_error(cudaMemcpy(device_ptr, host_ptr, size, cudaMemcpyHostToDevice), CudaStatus::DeviceCopyFailed);
+}
+
+inline CudaStatus synchronize_kernels() {
+  return map_cuda_runtime_error(cudaDeviceSynchronize(), CudaStatus::KernelLaunchFailed);
+}
+
+inline const DevicePopulationBuffers &population_for_kind(const GpuEvolutionState &state, PopulationKind population_kind) {
+  return population_kind == PopulationKind::Predator ? state.predator : state.prey;
+}
+
+inline DevicePopulationBuffers &population_for_kind(GpuEvolutionState &state, PopulationKind population_kind) {
+  return population_kind == PopulationKind::Predator ? state.predator : state.prey;
+}
+
+__device__ inline std::uint64_t splitmix64(std::uint64_t state) {
+  state += 0x9e3779b97f4a7c15ULL;
+  state = (state ^ (state >> 30U)) * 0xbf58476d1ce4e5b9ULL;
+  state = (state ^ (state >> 27U)) * 0x94d049bb133111ebULL;
+  return state ^ (state >> 31U);
+}
+
+__device__ inline float next_unit_float(std::uint64_t &state) {
+  state = splitmix64(state);
+  const auto bits = static_cast<std::uint32_t>(state & 0x00FF'FFFFULL);
+  return static_cast<float>(bits) / static_cast<float>(0x00FF'FFFFU);
+}
+
+__device__ inline float next_signed_float(std::uint64_t &state) { return (next_unit_float(state) * 2.0F) - 1.0F; }
+
+__device__ inline std::uint64_t hash_mix(std::uint64_t hash, std::uint64_t value) {
+  hash ^= value + 0x9e3779b97f4a7c15ULL + (hash << 6U) + (hash >> 2U);
+  return hash;
+}
+
+__device__ inline void append_innovation_record(DeviceInnovationState *innovation, InnovationRecord *innovation_log,
+                                                std::uint32_t from_node, std::uint32_t to_node,
+                                                std::uint32_t innovation_id, std::uint32_t record_kind) {
+  const auto log_index = atomicAdd(&innovation->log_len, 1U);
+  if (log_index < innovation->log_capacity) {
+    innovation_log[log_index] = InnovationRecord{from_node, to_node, innovation_id, record_kind};
+  }
+}
+
+} // namespace moonai_gpu
