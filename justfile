@@ -5,7 +5,7 @@
 
 # Set up Python environment
 [group('build')]
-setup-uv:
+sync:
   uv sync
 
 # Build all crates in the workspace
@@ -41,8 +41,8 @@ analyse:
 # Fix: format and lint
 [group('quality')]
 fix:
-  ruff format .
-  ruff check . --fix
+  uv run ruff format .
+  uv run ruff check . --fix
 
   prettier --log-level=warn --write .
 
@@ -53,8 +53,8 @@ fix:
 # Check code: format, lint checks and manual supression command grep
 [group('quality')]
 check:
-  ruff format . --check
-  ruff check .
+  uv run ruff format . --check
+  uv run ruff check .
 
   prettier --log-level warn --check .
 
@@ -82,7 +82,7 @@ update:
 [group('clean')]
 clean:
   cargo clean
-  ruff clean
+  uv run ruff clean
 
 # Remove all output and generated report artifacts
 [group('clean')]
@@ -94,4 +94,4 @@ clean-outputs:
 [group('docs')]
 docs:
   rm -rf site/
-  zensical serve
+  uv run --group docs zensical serve

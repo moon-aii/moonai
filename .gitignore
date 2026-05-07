@@ -1,7 +1,8 @@
 # Build directories
+site/
+target/
 build/
 out/
-cmake-build-*/
 
 # IDE files
 .vscode/
@@ -12,23 +13,10 @@ cmake-build-*/
 .cache/
 compile_commands.json
 
-# Compiled objects
-*.o
-*.obj
-*.a
-*.lib
-*.so
-*.dll
-*.dylib
-*.exe
-
 # CUDA compiled
 *.cubin
 *.ptx
 *.fatbin
-
-# vcpkg installed locally
-vcpkg_installed/
 
 # Python
 __pycache__/
@@ -41,7 +29,6 @@ venv/
 
 # Simulation output data
 output/
-*.csv
 !analysis/**/*.csv
 
 # OS files
@@ -51,8 +38,3 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.bak
-
-# static docs
-site/
-
-target/

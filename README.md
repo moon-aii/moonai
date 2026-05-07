@@ -4,7 +4,7 @@ A modular and extensible simulation platform for studying continuous evolutionar
 
 **CMPE 491/492 - Senior Design Project | TED University**
 
-**Website:** https://moon-aii.github.io/moonai/
+**Website**: https://moon-aii.github.io/moonai/
 
 **Team**: Caner Aras, Emir Irkılata, Oğuzhan Özkaya
 

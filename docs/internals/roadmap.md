@@ -2,7 +2,7 @@
 description: Tasks, priorities, known bugs, and the project roadmap.
 ---
 
-# MoonAI Implementation Plan — GPU-First Architecture
+# MoonAI Rewtite Plan
 
 > **Legacy C++ Implementation**: The original C++ simulation code is preserved in `legacy/`. This legacy codebase can be inspected for reference but is no longer actively developed. It includes the CMake build system, full SFML visualization, and all original NEAT implementation details. All C++ build configuration (CMakeLists.txt, CMakePresets.json, .clang-format, .clang-tidy, vcpkg.json), source code (main.cpp, app/, core/, evolution/, metrics/, simulation/, visualization/), and architecture documentation (architecture.md) are located in `legacy/`.
 
