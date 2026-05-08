@@ -29,7 +29,7 @@
   in {
     devShells.${system}.default = pkgs.mkShell {
       inherit name;
-      strictDeps = true;
+      # strictDeps = true;
       buildInputs = libs;
       NIX_LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath libs;
 
