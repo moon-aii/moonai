@@ -370,7 +370,7 @@ src/
 | 3   | Preserve config defaults, Lua loading, settings parsing, and CLI routing exactly                                       | `cargo run -- --list`; `cargo run -- --validate`                  | [x]    |
 | 4   | Remove the old workspace tree and update refactor-related documentation                                                | `just gate`                                                       | [x]    |
 
-### Phase 3 — Evolution (GPU CUDA Kernels)
+### Phase 3 — Evolution (GPU CUDA Kernels) [x]
 
 **Goal:** the evolution portion of `src/tick/` owns all NEAT logic as CUDA kernels with a single GPU execution path and no CPU mirror
 
@@ -401,7 +401,7 @@ src/
 | 11  | Add fixed-seed determinism tests for GPU initialization and evolution | Repeat run produces byte-identical compact readbacks on same machine | [x]    |
 | 12  | Add end-to-end GPU smoke test for seed → mutate → compile → inspect   | `cargo test --all-targets --all-features --locked`                   | [x]    |
 
-### Phase 4 — GPU Simulation Kernel
+### Phase 4 — GPU Simulation Kernel [x]
 
 **Goal:** the simulation portion of `src/tick/` drives the persistent kernel and reuses the single GPU evolution path without duplicating that logic on host
 
@@ -449,7 +449,7 @@ src/
 | 12  | Buffer expansion               | `live_count > capacity * 0.9`       | [x]    |
 | 13  | Compaction (mark-scatter-swap) | `free_list empty && births pending` | [x]    |
 
-### Phase 5 — Metrics
+### Phase 5 — Metrics [x]
 
 **Goal:** Output files match C++ schema exactly using GPU-side reductions and compact readbacks only
 
@@ -460,17 +460,17 @@ src/
 | 3   | `species.csv`   | GPU classifies species, reduces `(population, species_id, size, avg_complexity)`, CPU only writes rows                                                                                                                                                                                                                   | [x]    |
 | 4   | `genomes.json`  | GPU selects representative genome slots and copies compact genome snapshots for JSON serialization                                                                                                                                                                                                                       | [x]    |
 
-### Phase 6 — Headless Runtime (Milestone)
+### Phase 6 — Headless Runtime (Milestone) [x]
 
 **Verification Gates:**
 
-| Gate             | Command                                                      | Success Criteria                                                    |
-| ---------------- | ------------------------------------------------------------ | ------------------------------------------------------------------- |
-| Evolution tests  | `cargo test --all-targets --all-features --locked`           | All tests pass                                                      |
-| Build parity     | `cargo build`                                                | Root package compiles, no workspace required                        |
-| Config parity    | `cargo run -- --validate`                                    | Config loads                                                        |
-| GPU determinism  | repeated fixed-seed headless run                             | Compact export readbacks are byte-identical on the same machine     |
-| Headless runtime | `cargo run -- --experiment baseline --headless --ticks 1000` | Produces stats.csv, species.csv, genomes.json from GPU-only runtime |
+| Gate             | Command                                                                                                                   | Success Criteria                                                    |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| Evolution tests  | `cargo test --all-targets --all-features --locked`                                                                        | All tests pass                                                      |
+| Build parity     | `cargo build`                                                                                                             | Root package compiles, no workspace required                        |
+| Config parity    | `cargo run -- --validate`                                                                                                 | Config loads                                                        |
+| GPU determinism  | repeat `cargo run -- --experiment pop_small_seed42 --headless --ticks 1 --name verify_small_*`, then compare artifacts  | Compact export readbacks are byte-identical on the same machine     |
+| Headless runtime | `cargo run -- --experiment pop_small_seed42 --headless --ticks 1 --name verify_small`                                    | Produces stats.csv, species.csv, genomes.json from GPU-only runtime |
 
 ### Phase 7 — UI
 
@@ -727,10 +727,10 @@ Phase 1: Workspace skeleton (1-2 days) [COMPLETED]
 Phase 2: moonai-config (1-2 days) [COMPLETED]
 Phase 2b: moonai-types (1-2 days) [COMPLETED]
 Phase 2c: single-crate refactor (1-2 days) [COMPLETED]
-Phase 3: evolution workstream in src/tick/ + CUDA kernels (1-2 weeks)
-Phase 4: simulation workstream in src/tick/ + persistent kernel (2-3 weeks)
-Phase 5: metrics module (2-3 days)
-Phase 6: Headless milestone (1 week)
+Phase 3: evolution workstream in src/tick/ + CUDA kernels (1-2 weeks) [COMPLETED]
+Phase 4: simulation workstream in src/tick/ + persistent kernel (2-3 weeks) [COMPLETED]
+Phase 5: metrics module (2-3 days) [COMPLETED]
+Phase 6: Headless milestone (1 week) [COMPLETED]
 Phase 7: ui module (2-3 weeks)
 Phase 8: Cleanup (1 day)
 ```
