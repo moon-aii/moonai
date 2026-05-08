@@ -53,6 +53,19 @@ pub struct GpuEvolutionConfig {
     pub connection_stride: u32,
 }
 
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PopulationSummaryReadback {
+    pub population_kind: PopulationKind,
+    pub live_count: u32,
+    pub capacity: u32,
+    pub next_entity_id: u32,
+    pub innovation_counter: u32,
+    pub next_node_id: u32,
+    pub avg_energy: f32,
+    pub avg_connections: f32,
+}
+
 impl GpuEvolutionConfig {
     pub fn for_seed_stage(simulation: &SimulationConfig, num_inputs: u32, num_outputs: u32) -> Result<Self> {
         let predator_capacity = as_non_negative_u32(simulation.predator_count, "predator_count")?;
@@ -127,22 +140,126 @@ impl EvolutionManager {
         check_cuda_status(status, "moonai_gpu_evolution_seed_initial_population")
     }
 
-    pub fn initialize_simulation(&mut self, config: GpuSimulationConfig) -> Result<()> {
-        // SAFETY: `self.raw` is valid and `config` is copied into the CUDA runtime surface.
-        let status = unsafe { moonai_gpu_simulation_initialize(self.raw.as_ptr(), &config) };
-        check_cuda_status(status, "moonai_gpu_simulation_initialize")
+    pub fn set_simulation_config(&mut self, config: GpuSimulationConfig) -> Result<()> {
+        let status = unsafe { moonai_gpu_simulation_set_config(self.raw.as_ptr(), &config) };
+        check_cuda_status(status, "moonai_gpu_simulation_set_config")
     }
 
-    pub fn simulation_step(&mut self) -> Result<UiStatsReadback> {
-        readback("moonai_gpu_simulation_step", |out| {
-            // SAFETY: `self.raw` is valid and `out` points to writable storage for the mapped UI stats snapshot.
-            unsafe { moonai_gpu_simulation_step(self.raw.as_ptr(), out) }
+    pub fn set_spatial_grid(&mut self, cell_size: f32, grid_cols: u32, grid_rows: u32) -> Result<()> {
+        let status = unsafe { moonai_gpu_simulation_set_grid(self.raw.as_ptr(), cell_size, grid_cols, grid_rows) };
+        check_cuda_status(status, "moonai_gpu_simulation_set_grid")
+    }
+
+    pub fn ensure_food_buffer(&mut self) -> Result<()> {
+        let status = unsafe { moonai_gpu_simulation_ensure_food_buffer(self.raw.as_ptr()) };
+        check_cuda_status(status, "moonai_gpu_simulation_ensure_food_buffer")
+    }
+
+    pub fn ensure_counter_buffer(&mut self) -> Result<()> {
+        let status = unsafe { moonai_gpu_simulation_ensure_counter_buffer(self.raw.as_ptr()) };
+        check_cuda_status(status, "moonai_gpu_simulation_ensure_counter_buffer")
+    }
+
+    pub fn ensure_free_lists(&mut self) -> Result<()> {
+        let status = unsafe { moonai_gpu_simulation_ensure_free_lists(self.raw.as_ptr()) };
+        check_cuda_status(status, "moonai_gpu_simulation_ensure_free_lists")
+    }
+
+    pub fn ensure_reproduction_buffers(&mut self) -> Result<()> {
+        let status = unsafe { moonai_gpu_simulation_ensure_reproduction_buffers(self.raw.as_ptr()) };
+        check_cuda_status(status, "moonai_gpu_simulation_ensure_reproduction_buffers")
+    }
+
+    pub fn ensure_metrics_buffer(&mut self) -> Result<()> {
+        let status = unsafe { moonai_gpu_simulation_ensure_metrics_buffer(self.raw.as_ptr()) };
+        check_cuda_status(status, "moonai_gpu_simulation_ensure_metrics_buffer")
+    }
+
+    pub fn ensure_spatial_grid_buffers(&mut self) -> Result<()> {
+        let status = unsafe { moonai_gpu_simulation_ensure_spatial_grid_buffers(self.raw.as_ptr()) };
+        check_cuda_status(status, "moonai_gpu_simulation_ensure_spatial_grid_buffers")
+    }
+
+    pub fn reset_counters(&mut self) -> Result<()> {
+        let status = unsafe { moonai_gpu_simulation_reset_counters(self.raw.as_ptr()) };
+        check_cuda_status(status, "moonai_gpu_simulation_reset_counters")
+    }
+
+    pub fn initialize_free_lists(&mut self) -> Result<()> {
+        let status = unsafe { moonai_gpu_simulation_initialize_free_lists(self.raw.as_ptr()) };
+        check_cuda_status(status, "moonai_gpu_simulation_initialize_free_lists")
+    }
+
+    pub fn seed_food(&mut self) -> Result<()> {
+        let status = unsafe { moonai_gpu_simulation_seed_food(self.raw.as_ptr()) };
+        check_cuda_status(status, "moonai_gpu_simulation_seed_food")
+    }
+
+    pub fn reset_reproduction_state(&mut self) -> Result<()> {
+        let status = unsafe { moonai_gpu_simulation_reset_reproduction_state(self.raw.as_ptr()) };
+        check_cuda_status(status, "moonai_gpu_simulation_reset_reproduction_state")
+    }
+
+    pub fn build_spatial_grid(&mut self) -> Result<()> {
+        let status = unsafe { moonai_gpu_simulation_build_spatial_grid(self.raw.as_ptr()) };
+        check_cuda_status(status, "moonai_gpu_simulation_build_spatial_grid")
+    }
+
+    pub fn compute_sensor_inputs(&mut self) -> Result<()> {
+        let status = unsafe { moonai_gpu_simulation_compute_sensor_inputs(self.raw.as_ptr()) };
+        check_cuda_status(status, "moonai_gpu_simulation_compute_sensor_inputs")
+    }
+
+    pub fn infer_population(&mut self, population_kind: PopulationKind) -> Result<()> {
+        let status = unsafe { moonai_gpu_simulation_infer_population(self.raw.as_ptr(), population_kind) };
+        check_cuda_status(status, "moonai_gpu_simulation_infer_population")
+    }
+
+    pub fn update_vitals(&mut self, population_kind: PopulationKind) -> Result<()> {
+        let status = unsafe { moonai_gpu_simulation_update_vitals(self.raw.as_ptr(), population_kind) };
+        check_cuda_status(status, "moonai_gpu_simulation_update_vitals")
+    }
+
+    pub fn resolve_food(&mut self) -> Result<()> {
+        let status = unsafe { moonai_gpu_simulation_resolve_food(self.raw.as_ptr()) };
+        check_cuda_status(status, "moonai_gpu_simulation_resolve_food")
+    }
+
+    pub fn resolve_combat(&mut self) -> Result<()> {
+        let status = unsafe { moonai_gpu_simulation_resolve_combat(self.raw.as_ptr()) };
+        check_cuda_status(status, "moonai_gpu_simulation_resolve_combat")
+    }
+
+    pub fn apply_movement(&mut self, population_kind: PopulationKind) -> Result<()> {
+        let status = unsafe { moonai_gpu_simulation_apply_movement(self.raw.as_ptr(), population_kind) };
+        check_cuda_status(status, "moonai_gpu_simulation_apply_movement")
+    }
+
+    pub fn reproduction_candidate_count(&mut self, population_kind: PopulationKind) -> Result<u32> {
+        readback("moonai_gpu_simulation_reproduction_candidate_count", |out| unsafe {
+            moonai_gpu_simulation_reproduction_candidate_count(self.raw.as_ptr(), population_kind, out)
         })
+    }
+
+    pub fn expand_population(&mut self, population_kind: PopulationKind, new_capacity: u32) -> Result<()> {
+        let status =
+            unsafe { moonai_gpu_simulation_expand_population(self.raw.as_ptr(), population_kind, new_capacity) };
+        check_cuda_status(status, "moonai_gpu_simulation_expand_population")
+    }
+
+    pub fn run_reproduction(&mut self, population_kind: PopulationKind) -> Result<()> {
+        let status = unsafe { moonai_gpu_simulation_run_reproduction(self.raw.as_ptr(), population_kind) };
+        check_cuda_status(status, "moonai_gpu_simulation_run_reproduction")
+    }
+
+    pub fn advance_tick(&mut self) -> Result<()> {
+        let status = unsafe { moonai_gpu_simulation_advance_tick(self.raw.as_ptr()) };
+        check_cuda_status(status, "moonai_gpu_simulation_advance_tick")
     }
 
     pub fn simulation_ui_stats(&self) -> Result<UiStatsReadback> {
         readback("moonai_gpu_simulation_ui_stats", |out| {
-            // SAFETY: `self.raw` is valid and `out` points to writable storage for the mapped UI stats snapshot.
+            // SAFETY: `self.raw` is valid and `out` points to writable storage for the compact UI stats readback.
             unsafe { moonai_gpu_simulation_ui_stats(self.raw.as_ptr(), out) }
         })
     }
@@ -164,6 +281,12 @@ impl EvolutionManager {
     pub fn simulation_refresh_reports(&mut self) -> Result<()> {
         let status = unsafe { moonai_gpu_simulation_refresh_reports(self.raw.as_ptr()) };
         check_cuda_status(status, "moonai_gpu_simulation_refresh_reports")
+    }
+
+    pub fn population_summary(&self, population_kind: PopulationKind) -> Result<PopulationSummaryReadback> {
+        readback("moonai_gpu_evolution_population_summary", |out| unsafe {
+            moonai_gpu_evolution_population_summary(self.raw.as_ptr(), population_kind, out)
+        })
     }
 
     pub fn sensor_snapshot(&self, population_kind: PopulationKind, slot: u32) -> Result<SensorSnapshotReadback> {
@@ -409,8 +532,43 @@ unsafe extern "C" {
     fn moonai_gpu_evolution_create(config: *const GpuEvolutionConfig, out_state: *mut *mut c_void) -> CudaStatus;
     fn moonai_gpu_evolution_destroy(state: *mut c_void);
     fn moonai_gpu_evolution_seed_initial_population(state: *mut c_void) -> CudaStatus;
-    fn moonai_gpu_simulation_initialize(state: *mut c_void, config: *const GpuSimulationConfig) -> CudaStatus;
-    fn moonai_gpu_simulation_step(state: *mut c_void, out_stats: *mut UiStatsReadback) -> CudaStatus;
+    fn moonai_gpu_evolution_population_summary(
+        state: *const c_void,
+        population_kind: PopulationKind,
+        out_summary: *mut PopulationSummaryReadback,
+    ) -> CudaStatus;
+    fn moonai_gpu_simulation_set_config(state: *mut c_void, config: *const GpuSimulationConfig) -> CudaStatus;
+    fn moonai_gpu_simulation_set_grid(state: *mut c_void, cell_size: f32, grid_cols: u32, grid_rows: u32)
+    -> CudaStatus;
+    fn moonai_gpu_simulation_ensure_food_buffer(state: *mut c_void) -> CudaStatus;
+    fn moonai_gpu_simulation_ensure_counter_buffer(state: *mut c_void) -> CudaStatus;
+    fn moonai_gpu_simulation_ensure_free_lists(state: *mut c_void) -> CudaStatus;
+    fn moonai_gpu_simulation_ensure_reproduction_buffers(state: *mut c_void) -> CudaStatus;
+    fn moonai_gpu_simulation_ensure_metrics_buffer(state: *mut c_void) -> CudaStatus;
+    fn moonai_gpu_simulation_ensure_spatial_grid_buffers(state: *mut c_void) -> CudaStatus;
+    fn moonai_gpu_simulation_reset_counters(state: *mut c_void) -> CudaStatus;
+    fn moonai_gpu_simulation_initialize_free_lists(state: *mut c_void) -> CudaStatus;
+    fn moonai_gpu_simulation_seed_food(state: *mut c_void) -> CudaStatus;
+    fn moonai_gpu_simulation_reset_reproduction_state(state: *mut c_void) -> CudaStatus;
+    fn moonai_gpu_simulation_build_spatial_grid(state: *mut c_void) -> CudaStatus;
+    fn moonai_gpu_simulation_compute_sensor_inputs(state: *mut c_void) -> CudaStatus;
+    fn moonai_gpu_simulation_infer_population(state: *mut c_void, population_kind: PopulationKind) -> CudaStatus;
+    fn moonai_gpu_simulation_update_vitals(state: *mut c_void, population_kind: PopulationKind) -> CudaStatus;
+    fn moonai_gpu_simulation_resolve_food(state: *mut c_void) -> CudaStatus;
+    fn moonai_gpu_simulation_resolve_combat(state: *mut c_void) -> CudaStatus;
+    fn moonai_gpu_simulation_apply_movement(state: *mut c_void, population_kind: PopulationKind) -> CudaStatus;
+    fn moonai_gpu_simulation_reproduction_candidate_count(
+        state: *mut c_void,
+        population_kind: PopulationKind,
+        out_pair_count: *mut u32,
+    ) -> CudaStatus;
+    fn moonai_gpu_simulation_expand_population(
+        state: *mut c_void,
+        population_kind: PopulationKind,
+        new_capacity: u32,
+    ) -> CudaStatus;
+    fn moonai_gpu_simulation_run_reproduction(state: *mut c_void, population_kind: PopulationKind) -> CudaStatus;
+    fn moonai_gpu_simulation_advance_tick(state: *mut c_void) -> CudaStatus;
     fn moonai_gpu_simulation_ui_stats(state: *const c_void, out_stats: *mut UiStatsReadback) -> CudaStatus;
     fn moonai_gpu_simulation_free_list_state(state: *const c_void, out_state: *mut FreeListStateReadback)
     -> CudaStatus;

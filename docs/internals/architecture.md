@@ -9,7 +9,7 @@ description: System Architecture.
 MoonAI follows a **GPU-first execution model**.
 
 - The GPU owns simulation state, evolution state, compiled networks, and report-window aggregation state.
-- The CPU is an orchestrator only: it loads config, allocates buffers, launches kernels, polls compact status, and writes exported artifacts.
+- The CPU is an orchestrator only: it loads config, allocates buffers, sequences narrow CUDA entrypoints, polls compact status, and writes exported artifacts.
 - There is **no duplicate host-side implementation** of simulation, evolution, inference, speciation, or verification logic.
 - Host-side Rust types may exist for FFI layouts, launch parameters, and compact readback structs only.
 
@@ -79,7 +79,7 @@ flowchart TD
     ROUTE -->|validate| EXIT
     ROUTE -->|run| INIT_SIM
     INIT_SIM --> INIT_LOG --> INIT_UI --> SEED --> TICK_LOOP
-    TICK_LOOP -->|run N ticks| GRID
+    TICK_LOOP -->|dispatch tick ops| GRID
     GRID --> SENSOR --> INFERENCE --> VITALS --> FOOD --> COMBAT --> MOVE
     MOVE --> REPRO
     REPRO --> EVAL --> FIND --> CROSS --> MUT --> COMPILE --> ACTIVATE
@@ -238,7 +238,7 @@ flowchart LR
 
     CLI --> HOST
     HOST -->|upload config and launch commands| GPUSTATE
-    GPUSTATE -->|mapped or staged compact snapshots| UIBUF
+    GPUSTATE -->|compact snapshots| UIBUF
     GPUSTATE -->|report-window reductions| METBUF
     UIBUF --> RENDER
     METBUF --> FILES
@@ -251,7 +251,7 @@ flowchart TD
     START[load config and allocate buffers]
     SEED[GPU seed kernel]
     LOOP{run ticks}
-    STEP[GPU simulation + evolution kernels]
+    STEP[host sequences kernel launches]
     REPORT{report interval}
     REDUCE[GPU species classify + metrics reduce]
     EXPORT[CPU writes compact exports]

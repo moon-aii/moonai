@@ -389,8 +389,6 @@ struct GpuEvolutionState {
   InnovationRecord *innovation_log;
   std::uint32_t *next_entity_id;
   SimulationCounters *counters;
-  UiStatsReadback *mapped_ui_stats_host;
-  UiStatsReadback *mapped_ui_stats_device;
   std::uint32_t *predator_free_list;
   std::uint32_t *prey_free_list;
   std::uint32_t *predator_free_len;

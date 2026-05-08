@@ -167,13 +167,30 @@ impl SimulationState {
 
         let mut evolution = EvolutionManager::create(evolution_config)?;
         evolution.seed_initial_population()?;
-        evolution.initialize_simulation(simulation_config)?;
+        evolution.set_simulation_config(simulation_config)?;
+        let grid_cell_size = simulation_config.vision_range.max(1.0);
+        let grid_cols = ((simulation_config.world_size / grid_cell_size).ceil() as u32).max(1);
+        let grid_rows = ((simulation_config.world_size / grid_cell_size).ceil() as u32).max(1);
+        evolution.set_spatial_grid(grid_cell_size, grid_cols, grid_rows)?;
+        evolution.ensure_food_buffer()?;
+        evolution.ensure_counter_buffer()?;
+        evolution.ensure_free_lists()?;
+        evolution.ensure_reproduction_buffers()?;
+        evolution.ensure_metrics_buffer()?;
+        evolution.ensure_spatial_grid_buffers()?;
+        evolution.reset_counters()?;
+        evolution.initialize_free_lists()?;
+        evolution.seed_food()?;
+        evolution.reset_reproduction_state()?;
         if evolution_config.predator_capacity > 0 {
             let _ = evolution.compile_population(PopulationKind::Predator, 0)?;
         }
         if evolution_config.prey_capacity > 0 {
             let _ = evolution.compile_population(PopulationKind::Prey, 0)?;
         }
+        evolution.build_spatial_grid()?;
+        evolution.compute_sensor_inputs()?;
+        evolution.simulation_refresh_reports()?;
 
         Ok(Self { evolution, config: simulation_config })
     }
@@ -183,7 +200,36 @@ impl SimulationState {
     }
 
     pub fn tick(&mut self) -> Result<UiStatsReadback> {
-        self.evolution.simulation_step()
+        self.evolution.build_spatial_grid()?;
+        self.evolution.compute_sensor_inputs()?;
+        self.evolution.infer_population(PopulationKind::Predator)?;
+        self.evolution.infer_population(PopulationKind::Prey)?;
+        self.evolution.update_vitals(PopulationKind::Predator)?;
+        self.evolution.update_vitals(PopulationKind::Prey)?;
+        self.evolution.resolve_food()?;
+        self.evolution.resolve_combat()?;
+        self.evolution.apply_movement(PopulationKind::Predator)?;
+        self.evolution.apply_movement(PopulationKind::Prey)?;
+
+        self.evolution.build_spatial_grid()?;
+        let predator_births = self.evolution.reproduction_candidate_count(PopulationKind::Predator)?;
+        self.ensure_birth_capacity(PopulationKind::Predator, predator_births)?;
+        self.evolution.run_reproduction(PopulationKind::Predator)?;
+
+        self.evolution.build_spatial_grid()?;
+        let prey_births = self.evolution.reproduction_candidate_count(PopulationKind::Prey)?;
+        self.ensure_birth_capacity(PopulationKind::Prey, prey_births)?;
+        self.evolution.run_reproduction(PopulationKind::Prey)?;
+
+        self.evolution.advance_tick()?;
+        self.evolution.build_spatial_grid()?;
+        self.evolution.compute_sensor_inputs()?;
+
+        let ui_stats = self.evolution.simulation_ui_stats()?;
+        if self.config.report_interval_ticks > 0 && ui_stats.tick % self.config.report_interval_ticks == 0 {
+            self.evolution.simulation_refresh_reports()?;
+        }
+        Ok(ui_stats)
     }
 
     pub fn ui_stats(&self) -> Result<UiStatsReadback> {
@@ -232,6 +278,34 @@ impl SimulationState {
 
     pub fn render_snapshot(&self, max_predators: u32, max_prey: u32, max_food: u32) -> Result<RenderSnapshotReadback> {
         self.evolution.render_snapshot(max_predators, max_prey, max_food)
+    }
+
+    fn ensure_birth_capacity(&mut self, population_kind: PopulationKind, births_pending: u32) -> Result<()> {
+        if births_pending == 0 {
+            return Ok(());
+        }
+
+        let summary = self.evolution.population_summary(population_kind)?;
+        let free_list_state = self.evolution.simulation_free_list_state()?;
+        let free_slots = match population_kind {
+            PopulationKind::Predator => free_list_state.predator_free_slots,
+            PopulationKind::Prey => free_list_state.prey_free_slots,
+        };
+        let capacity = summary.capacity;
+        let required_live = summary.live_count.saturating_add(births_pending);
+        if free_slots >= births_pending && required_live <= ((capacity * 9) / 10) {
+            return Ok(());
+        }
+
+        let mut new_capacity = if capacity == 0 { 1 } else { capacity };
+        while new_capacity.saturating_sub(summary.live_count) < births_pending
+            || required_live > ((new_capacity * 9) / 10)
+        {
+            new_capacity = if new_capacity == 0 { 1 } else { new_capacity.saturating_mul(2) };
+        }
+        self.evolution.expand_population(population_kind, new_capacity)?;
+        self.evolution.build_spatial_grid()?;
+        Ok(())
     }
 }
 
