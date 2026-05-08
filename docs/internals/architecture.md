@@ -13,6 +13,217 @@ MoonAI follows a **GPU-first execution model**.
 - There is **no duplicate host-side implementation** of simulation, evolution, inference, speciation, or verification logic.
 - Host-side Rust types may exist for FFI layouts, launch parameters, and compact readback structs only.
 
+### CLI routing
+
+```mermaid
+flowchart TB
+    Parse[parse CLI]
+    Load[load config.lua]
+    Route{Mode}
+    List[--list]
+    Validate[--validate]
+    RunOne[--experiment name]
+    RunAll[--all]
+    RunDefault[default]
+    Exit[exit]
+
+    Parse --> Load --> Route
+    Route -->|list| List --> Exit
+    Route -->|validate| Validate --> Exit
+    Route -->|experiment| RunOne --> Exit
+    Route -->|all| RunAll --> Exit
+    Route -->|default| RunDefault --> Exit
+```
+
+### Tick Execution Flow
+
+```mermaid
+flowchart TD
+    subgraph CPU["CPU Orchestrator"]
+        CLI[parse CLI]
+        LUA[load config.lua]
+        ROUTE{Route}
+        INIT_SIM[init src/tick]
+        INIT_LOG[init metrics]
+        INIT_UI[init src/ui]
+        TICK_LOOP{while running}
+        LOG[log CSV/JSON]
+        RENDER[wgpu_render_frame]
+        UI[egui_overlay_draw]
+        EXIT[exit]
+    end
+
+    subgraph GPU["GPU Persistent Kernel"]
+        SEED[seed_initial_population]
+        GRID[grid_build]
+        SENSOR[sensor_compute]
+        INFERENCE[neural_inference]
+        VITALS[update_vitals]
+        FOOD[resolve_food]
+        COMBAT[resolve_combat]
+        MOVE[apply_movement]
+        REPRO[reproduction]
+        EVAL[evaluate eligibility]
+        FIND[find_mate]
+        CROSS[gpu_crossover]
+        MUT[gpu_mutate]
+        COMPILE[gpu_compile_network]
+        ACTIVATE[activate_slot]
+        ATOMICS[write_atomics]
+        UISTATS[write_ui_stats]
+        REPORT[classify_species + reduce_metrics]
+    end
+
+    CLI --> LUA --> ROUTE
+    ROUTE -->|list| EXIT
+    ROUTE -->|validate| EXIT
+    ROUTE -->|run| INIT_SIM
+    INIT_SIM --> INIT_LOG --> INIT_UI --> SEED --> TICK_LOOP
+    TICK_LOOP -->|run N ticks| GRID
+    GRID --> SENSOR --> INFERENCE --> VITALS --> FOOD --> COMBAT --> MOVE
+    MOVE --> REPRO
+    REPRO --> EVAL --> FIND --> CROSS --> MUT --> COMPILE --> ACTIVATE
+    ACTIVATE --> ATOMICS --> UISTATS
+    TICK_LOOP -->|report_interval| REPORT --> LOG
+    TICK_LOOP -->|GUI mode| RENDER --> UI
+    TICK_LOOP -->|signal| EXIT
+```
+
+### GPU Memory Layout
+
+```mermaid
+classDiagram
+    class PredatorBuffer {
+        +float pos_x[N]
+        +float pos_y[N]
+        +float vel_x[N]
+        +float vel_y[N]
+        +float energy[N]
+        +float age[N]
+        +uint8 alive[N]
+        +uint32 species_id[N]
+        +uint32 entity_id[N]
+        +uint32 generation[N]
+        +int32 connection_from[N * max_connections]
+        +int32 connection_to[N * max_connections]
+        +float connection_weight[N * max_connections]
+        +uint32 connection_innovation[N * max_connections]
+        +uint8 connection_enabled[N * max_connections]
+        +uint8 node_types[N * (max_hidden + FIXED)]
+        +uint16 num_connections[N]
+        +uint16 num_nodes[N]
+        +uint8 birth_state[N]
+        +uint64 rng_state[N]
+    }
+
+    class PreyBuffer {
+        +float pos_x[N]
+        +float pos_y[N]
+        +float vel_x[N]
+        +float vel_y[N]
+        +float energy[N]
+        +float age[N]
+        +uint8 alive[N]
+        +uint32 species_id[N]
+        +uint32 entity_id[N]
+        +uint32 generation[N]
+        +int32 connection_from[N * max_connections]
+        +int32 connection_to[N * max_connections]
+        +float connection_weight[N * max_connections]
+        +uint32 connection_innovation[N * max_connections]
+        +uint8 connection_enabled[N * max_connections]
+        +uint8 node_types[N * (max_hidden + FIXED)]
+        +uint16 num_connections[N]
+        +uint16 num_nodes[N]
+        +uint8 birth_state[N]
+        +uint64 rng_state[N]
+    }
+
+    class FoodBuffer {
+        +float pos_x[N]
+        +float pos_y[N]
+        +uint8 active[N]
+    }
+
+    class UiStats {
+        +uint32 tick
+        +uint32 predator_count
+        +uint32 prey_count
+        +uint32 predator_births
+        +uint32 prey_births
+        +uint32 predator_deaths
+        +uint32 prey_deaths
+        +uint32 kills
+        +uint32 food_eaten
+        +float avg_predator_energy
+        +float avg_prey_energy
+    }
+```
+
+### CLI Interface
+
+| Flag                  | Description                                         |
+| --------------------- | --------------------------------------------------- |
+| `-c, --config <path>` | Path to Lua config file (default: binary directory) |
+| `--settings <path>`   | Path to settings.json (default: binary directory)   |
+| `-n, --ticks <n>`     | Override max ticks (`0` = infinite)                 |
+| `--headless`          | Run without visualization                           |
+| `-v, --verbose`       | Enable debug logging                                |
+| `--experiment <name>` | Select one experiment by name                       |
+| `--all`               | Run all experiments sequentially (headless only)    |
+| `--list`              | List experiment names and exit                      |
+| `--name <name>`       | Override output directory name                      |
+| `--validate`          | Load + validate config, print result, exit          |
+| `-h, --help`          | Show CLI help                                       |
+
+## Design Principles
+
+1. **GPU owns all simulation state** — positions, velocities, energy, age, alive flags, genomes, compiled networks, innovation counters, and species metadata live in GPU memory.
+2. **CPU is orchestrator only** — it loads config, allocates buffers, launches kernels, and writes files from compact readbacks. It does not maintain or execute a population-wide simulation, evolution, or verification path.
+3. **Tick-based cadence** — GPU runs initialization, simulation, evolution, report-window reduction, and on-demand inspection kernels. CPU only sequences those launches.
+4. **GPU-native evolution** — seeding, crossover, mutation, network compilation, and species classification happen entirely on GPU via the evolution portion of `src/tick/`.
+5. **Cadence separation** — `report_interval_ticks` controls CSV/JSON/species/genome export cadence, while UI `speed_multiplier` controls visualization refresh cadence. They are independent.
+6. **Readback/interop is minimal** — only the current UI-frame render snapshot, selected-agent inspection buffers, and report/export structs are transferred out of the simulation buffers.
+7. **No duplication** — there is no separate CPU algorithmic path for evolution, inference, speciation, or verification. Host Rust may define FFI layouts and export structs only.
+8. **Buffer expansion** — buffers grow by 2x when capacity threshold is reached. No artificial ceiling.
+
+## Desicions
+
+- `config.lua` contains **simulation config only** (no UI overrides).
+- `settings.json` contains **UI config** — loaded from binary directory or explicit path.
+- File locations: `config.lua` and `settings.json` live next to the binary executable.
+  Lookup order: explicit path via CLI flag → binary directory → fallback to defaults.
+- `UiConfig` defaults are hardcoded in Rust; `settings.json` overrides them.
+- `UiState` (paused, speed_multiplier, tick_requested, selected_agent_id) is **runtime state**,
+  lives in `src/ui/types.rs`. NOT in the config-loading modules.
+- Predator and prey use separate GPU buffers; no `AgentType` enum needed.
+- `config.lua` is loaded via `mlua`. `moonai_defaults` is injected as a global table.
+- CLI `--experiment` flag is a string passthrough; experiment selection logic lives in the root binary entrypoint.
+- Initial population seeding happens on GPU.
+- `report_interval_ticks` is the artifact-export cadence only. It controls when the runtime writes `stats.csv`, `species.csv`, `genomes.json`, and related report data.
+- UI `speed_multiplier` is the visualization cadence only. `1x` means refresh UI every tick, `8x` means refresh UI every 8 ticks, and so on.
+- A UI refresh must include all active predators, prey, and food needed for rendering, plus aggregate population statistics.
+- Reproduction is **sexual** — two parent genomes crossover on GPU, mutation applied on GPU, network compiled on GPU.
+- Species classification happens on GPU at report intervals so `species.csv`, species counts, and representative-genome export do not require a host-side genome walk.
+- FPS target: 120fps. Speed multiplier: 1x-1024x ticks per frame. Every frame renders everything live.
+- Selected-agent inspection is additive: the main view always renders the full population, and selection only requests extra vision/sensor/network data for that one agent.
+- UI needs fresh data every UI refresh: population counts, positions, and movement directions for all visible agents.
+- Verification must rely on GPU-side invariants, fixed-seed determinism, readback schema checks, and end-to-end runtime tests. There is no CPU reference implementation for algorithm validation.
+
+## Technology Choices
+
+| Concern            | C++           | Rust/GPU-First                          |
+| ------------------ | ------------- | --------------------------------------- |
+| Language           | C++17         | Rust 2024                               |
+| CUDA binding       | raw CUDA      | Rust FFI + `nvcc` via `build.rs` / `cc` |
+| Logging            | spdlog        | `tracing` + `tracing-subscriber`        |
+| JSON               | nlohmann/json | `serde` + `serde_json`                  |
+| Lua binding        | Lua C API     | `mlua` crate                            |
+| GUI framework      | SFML          | winit + egui + wgpu                     |
+| GPU rendering      | SFML shapes   | wgpu instanced rendering                |
+| Atomic counters    | —             | CUDA atomics for GPU-to-CPU events      |
+| Genome compilation | CPU (rayon)   | GPU (persistent kernel)                 |
+
 ## Ownership Boundaries
 
 ```mermaid
@@ -88,3 +299,192 @@ There is no separate CPU reference implementation used to confirm algorithm corr
 - A UI frame must include full-population render state, not only the selected agent.
 - CPU-visible inspection data should stay limited to compact snapshots such as overlay counters and selected-agent inspection results.
 - Metrics export must use GPU-side reduction first, then copy only compact report structs needed for `stats.csv`, `species.csv`, and `genomes.json`.
+
+
+## GPU Kernel Reference
+
+### `crossover.cu` — High-Level Algorithm
+
+```
+gpu_crossover_kernel(parent_a_ptr, parent_b_ptr, offspring_ptr, rng_state_ptr):
+    tid = blockIdx.x * blockDim.x + threadIdx.x
+    if tid >= num_offspring: return
+
+    // 1. Read parent connection arrays into shared memory (32 threads cooperatively)
+    // 2. Warp-level bitonic sort by innovation number
+    // 3. Merge phase:
+    //    for each innovation in union:
+    //      if in both parents:
+    //        inherit = (rand() < 0.50) ? parent_a : parent_b
+    //      elif in one parent:
+    //        inherit = (rand() < 0.50) ? parent_with_gene : DISABLED
+    // 4. Disable mismatched with 75% probability
+    // 5. Write child genome to offspring_ptr
+```
+
+### `mutation.cu` — High-Level Algorithm
+
+```
+gpu_mutate_kernel(genome_ptr, innovation_counter, rng_state_ptr, config):
+    tid = blockIdx.x * blockDim.x + threadIdx.x
+    if tid >= num_agents: return
+
+    // Per-agent mutations (independent):
+
+    // Weight perturbation
+    if rand() < config.weight_mutation_rate:
+        for each connection:
+            if rand() < config.prob_mutate_weight:
+                weight += Gaussian(rand(), config.weight_perturb_strength)
+
+    // Add connection
+    if rand() < config.add_connection_rate:
+        for attempt in 0..max_attempts:
+            from, to = random_node_pair()
+            if not has_connection(genome, from, to):
+                new_innov = atomic_inc(innovation_counter)
+                add_connection(genome, from, to, new_innov)
+                break
+
+    // Add node
+    if rand() < config.add_node_rate:
+        conn = random_enabled_connection(genome)
+        if conn exists:
+            new_node = atomic_inc(next_node_id)
+            disable_connection(genome, conn)
+            i1 = atomic_inc(innovation_counter)
+            i2 = atomic_inc(innovation_counter)
+            add_connection(genome, conn.from, new_node, i1)
+            add_connection(genome, new_node, conn.to, i2)
+```
+
+### `network_compilation.cu` — High-Level Algorithm
+
+```
+gpu_compile_network_kernel(slot_id, genome_ptr, inference_ptr):
+    // 1. Topological sort nodes → eval_order[]
+    // 2. Build conn_ptr[] — offset into conn_from[] for each node
+    // 3. Copy weights, enabled flags into inference arrays
+    // 4. Mark output node indices
+```
+
+## GPU-Side Innovation Tracking
+
+NEAT innovation tracking requires assigning globally unique innovation IDs to new structural mutations. A GPU hash map (open addressing) suffers from bank conflicts under heavy concurrent insert from thousands of threads. Instead, use **atomic counter + direct assignment**:
+
+```
+Global GPU state:
+  innovation_counter: atomic<uint32>   // monotonic, starts at (num_inputs + num_outputs + 1)
+  next_node_id: atomic<uint32>        // monotonic for hidden nodes
+
+Per-tick innovation log (append-only):
+  innovation_log[tick][innovation_id] = {from_node, to_node, innovation_type}
+  // Used for matching homologues during crossover
+```
+
+**Mutation -- add_connection**:
+
+1. Pick random `(from_node, to_node)` pair
+2. Check if connection exists by scanning this agent's connection array (O(C), typically <500)
+3. If not found and `num_connections < max_connections`: atomically increment `innovation_counter` -> new ID -> insert connection
+
+**Mutation -- add_node**:
+
+1. Pick random enabled connection `(a, b)` with innovation `I`
+2. Atomically increment `next_node_id` -> hidden node `h`
+3. Atomically increment `innovation_counter` twice -> `I1`, `I2`
+4. Disable connection `(a, b)`, insert `(a, h): I1`, `(h, b): I2`
+
+**Why this is fast**:
+
+- No hash map contention -- atomics only on counter increments (1-2 ops each)
+- Connection existence check is a simple linear scan -- O(C) is fine since most connections do not mutate
+- All other mutations (weight perturbation, enable/disable) are data movement, no atomics
+
+## UI Data Path
+
+`report_interval_ticks` and UI `speed_multiplier` are separate runtime cadences.
+
+- `report_interval_ticks` controls artifact export only.
+- UI `speed_multiplier` controls visualization refresh only.
+- `1x` means the UI refreshes every tick.
+- `8x` means the UI refreshes every 8 ticks, so the runtime publishes the latest render snapshot only when `tick % 8 == 0`.
+- These cadences are independent; a report tick may or may not coincide with a UI refresh tick.
+
+GPU writes a compact `UiStats` struct to a **pinned host-mapped buffer** on each UI refresh boundary. CPU reads it with a single `memcpy`.
+
+```
+UiStats (pinned, written on each UI refresh):
+  tick, predator_count, prey_count
+  predator_births, prey_births
+  predator_deaths, prey_deaths
+  kills, food_eaten
+  avg_predator_energy, avg_prey_energy
+
+UI frame snapshot (written on each UI refresh):
+  predator positions + movement directions -> render buffer
+  prey positions + movement directions -> render buffer
+  food positions -> render buffer
+  aggregate overlay stats -> UiStats
+
+render pass:
+  main scene renders all active predators, prey, and food from the latest UI-frame snapshot
+  selected-agent overlays are optional extras layered on top of the full scene
+```
+
+**Selected Agent Readback (On Demand)**:
+
+```
+User clicks agent:
+  GPU: kernel_compute_selected_agent_features(slot_id, staging_buffer)
+    - sensor lines (5 nearest predators, prey, food)
+    - vision circle
+    - node activations (forward pass)
+  CPU: cudaMemcpy async -> read staging buffer -> update NN panel
+```
+
+The selected-agent path does **not** replace the population render path. It augments the existing full-population view with extra inspection data for the chosen agent.
+
+## Buffer Expansion
+
+```
+Trigger: when live_count > capacity * 0.9
+
+Expansion:
+  new_capacity = capacity * 2
+  allocate new buffer (all SoA arrays)
+  gpu_copy_all(old_buffer, new_buffer, live_count)
+  swap buffer pointers
+
+No artificial ceiling. Buffers grow as needed.
+```
+
+## Compaction
+
+Compaction is NOT for ceiling avoidance -- it is for reclaiming dead slots when expansion is undesirable (e.g., nearing max GPU memory). It runs lazily when free list is empty but births are pending.
+
+```
+Trigger: free_list empty AND births pending AND we want to reclaim slots
+
+Pass 1 -- Mark:
+  for each slot i:
+    if alive[i]:
+      remap[i] = atomic_counter++
+
+Pass 2 -- Scatter:
+  for each slot i:
+    if alive[i]:
+      new_pos = remap[i]
+      copy agent[i] -> buffer[new_pos]
+
+Swap buffer pointers
+Reset free_list to dead slots at end of new buffer
+```
+
+## Sensor Layout (35 inputs, unchanged)
+
+- 5 nearest predators x 2 values (dx, dy)
+- 5 nearest prey x 2 values
+- 5 nearest food x 2 values
+- Self energy, vel x, vel y (3 values)
+- Wall proximity x, y (2 values)
