@@ -9,7 +9,7 @@ from .pipeline import run_analysis
 
 
 def build_parser() -> argparse.ArgumentParser:
-    project_root = Path(__file__).resolve().parents[2]
+    project_root = Path(__file__).resolve().parents[1]
     default_input = project_root / "output" / "experiments"
     default_output = project_root / "output" / "analysis"
 

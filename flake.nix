@@ -7,7 +7,7 @@
 
   outputs = { self, nixpkgs }: 
   let
-    name = "moonai-shell";
+    name = "moonai-flake";
 
     libs = with pkgs; [
       cudatoolkit
@@ -15,7 +15,6 @@
       libxkbcommon
       vulkan-loader
       libGL
-      stdenv.cc.cc.lib
     ];
 
     system = "x86_64-linux";
