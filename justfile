@@ -25,7 +25,7 @@ build:
 [default]
 [group('run')]
 run *args: build
-  cargo run --release {{args}}
+  cargo run --release -- {{args}} --experiment pop_small_seed42
 
 # Run the debug build with default config (pass additional args after --)
 [group('run')]

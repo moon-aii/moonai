@@ -52,53 +52,6 @@ pub struct SelectedAgentData {
     pub genome: RepresentativeGenomeReadback,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct RenderAgent {
-    pub population_kind: PopulationKind,
-    pub slot: u32,
-    pub entity_id: u32,
-    pub species_id: u32,
-    pub generation: u32,
-    pub pos_x: f32,
-    pub pos_y: f32,
-    pub dir_x: f32,
-    pub dir_y: f32,
-    pub energy: f32,
-}
-
-impl From<RenderAgentReadback> for RenderAgent {
-    fn from(value: RenderAgentReadback) -> Self {
-        Self {
-            population_kind: value.population_kind,
-            slot: value.slot,
-            entity_id: value.entity_id,
-            species_id: value.species_id,
-            generation: value.generation,
-            pos_x: value.pos_x,
-            pos_y: value.pos_y,
-            dir_x: value.dir_x,
-            dir_y: value.dir_y,
-            energy: value.energy,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct RenderFood {
-    pub slot: u32,
-    pub pos_x: f32,
-    pub pos_y: f32,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct RenderLine {
-    pub x0: f32,
-    pub y0: f32,
-    pub x1: f32,
-    pub y1: f32,
-    pub population_kind: PopulationKind,
-}
-
 #[derive(Debug, Clone)]
 pub struct OverlayStats {
     pub ui_stats: UiStatsReadback,

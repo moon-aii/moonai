@@ -245,9 +245,10 @@ impl App {
     }
 
     fn draw_side_panel(&mut self, ui: &mut egui::Ui) {
-        egui::Panel::right("moonai_side_panel").resizable(false).default_size(self.ui_config.ui_side_margin).show_inside(
-            ui,
-            |ui| {
+        egui::Panel::right("moonai_side_panel")
+            .resizable(false)
+            .default_size(self.ui_config.ui_side_margin)
+            .show_inside(ui, |ui| {
                 ui.heading("MoonAI");
                 ui.label(format!("Experiment: {}", self.run_label));
 
@@ -332,8 +333,7 @@ impl App {
                     let (rect, _) = ui.allocate_exact_size(egui::vec2(width, height), Sense::hover());
                     render::paint_network(ui, rect, &self.ui_config, selected);
                 }
-            },
-        );
+            });
     }
 
     fn draw_world(&mut self, ui: &mut egui::Ui) {

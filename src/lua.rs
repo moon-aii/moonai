@@ -91,8 +91,7 @@ pub fn load_config(path: &str) -> Result<HashMap<String, SimulationConfig>, Conf
     globals.set("moonai_defaults", moonai_defaults).map_err(|e| ConfigError::LuaParse(e.to_string()))?;
 
     let content = std::fs::read_to_string(path).map_err(ConfigError::Io)?;
-    let experiments_table: mlua::Table =
-        lua.load(&content).eval().map_err(|e| ConfigError::LuaParse(e.to_string()))?;
+    let experiments_table: mlua::Table = lua.load(&content).eval().map_err(|e| ConfigError::LuaParse(e.to_string()))?;
 
     let mut experiments = HashMap::new();
     for pair in experiments_table.pairs::<String, mlua::Table>() {

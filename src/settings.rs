@@ -223,13 +223,6 @@ pub fn load_settings(path: Option<&str>) -> Result<UiConfig, ConfigError> {
     Ok(settings)
 }
 
-pub fn settings_path_from_binary() -> Option<std::path::PathBuf> {
-    let binary_path = std::env::current_exe().ok()?;
-    let binary_dir = binary_path.parent()?;
-    let settings_path = binary_dir.join("config").join("settings.json");
-    if settings_path.exists() { Some(settings_path) } else { None }
-}
-
 pub fn config_path_from_binary() -> Option<std::path::PathBuf> {
     let binary_path = std::env::current_exe().ok()?;
     let binary_dir = binary_path.parent()?;

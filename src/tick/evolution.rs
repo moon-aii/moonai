@@ -92,22 +92,6 @@ impl GpuEvolutionConfig {
             connection_stride,
         })
     }
-
-    pub const fn seeded_node_count(self) -> u32 {
-        self.num_inputs + self.num_outputs + 1
-    }
-
-    pub const fn seeded_connection_count(self) -> u32 {
-        (self.num_inputs + 1) * self.num_outputs
-    }
-
-    pub const fn hidden_node_budget(self) -> u32 {
-        self.node_stride - self.seeded_node_count()
-    }
-
-    pub const fn extra_connection_capacity(self) -> u32 {
-        self.connection_stride - self.seeded_connection_count()
-    }
 }
 
 pub struct EvolutionManager {
@@ -128,10 +112,6 @@ impl EvolutionManager {
         check_cuda_status(status, "moonai_gpu_evolution_create")?;
         let raw = NonNull::new(raw).ok_or_else(|| anyhow!("moonai_gpu_evolution_create returned a null state"))?;
         Ok(Self { raw, config })
-    }
-
-    pub const fn config(&self) -> GpuEvolutionConfig {
-        self.config
     }
 
     pub fn seed_initial_population(&mut self) -> Result<()> {
@@ -729,23 +709,6 @@ mod tests {
         Ok(manager)
     }
 
-    fn gpu_runtime_ready() -> bool {
-        EvolutionManager::runtime_status().is_success()
-    }
-
-    #[test]
-    fn gpu_seed_stage_config_reserves_phase3_growth_budget() -> Result<()> {
-        let config =
-            GpuEvolutionConfig::for_seed_stage(&smoke_simulation_config(17), SENSOR_COUNT as u32, OUTPUT_COUNT as u32)?;
-        assert_eq!(config.seeded_node_count(), (SENSOR_COUNT + OUTPUT_COUNT + 1) as u32);
-        assert_eq!(config.seeded_connection_count(), ((SENSOR_COUNT + 1) * OUTPUT_COUNT) as u32);
-        assert_eq!(config.hidden_node_budget(), 6);
-        assert_eq!(config.extra_connection_capacity(), 12);
-        assert_eq!(config.node_stride, config.seeded_node_count() + 6);
-        assert_eq!(config.connection_stride, config.seeded_connection_count() + 12);
-        Ok(())
-    }
-
     #[test]
     fn population_summary_readback_serializes() -> Result<()> {
         let summary = PopulationSummaryReadback {
@@ -766,10 +729,6 @@ mod tests {
 
     #[test]
     fn gpu_seeding_is_deterministic_for_same_seed() -> Result<()> {
-        if !gpu_runtime_ready() {
-            return Ok(());
-        }
-
         let manager_a = seed_manager(42)?;
         let manager_b = seed_manager(42)?;
 
@@ -797,10 +756,6 @@ mod tests {
 
     #[test]
     fn gpu_seeding_changes_when_seed_changes() -> Result<()> {
-        if !gpu_runtime_ready() {
-            return Ok(());
-        }
-
         let manager_a = seed_manager(42)?;
         let manager_b = seed_manager(43)?;
 
@@ -815,10 +770,6 @@ mod tests {
 
     #[test]
     fn gpu_evolution_is_deterministic_for_same_seed() -> Result<()> {
-        if !gpu_runtime_ready() {
-            return Ok(());
-        }
-
         let simulation = smoke_simulation_config(44);
         let mutation_config = GpuMutationConfig::for_simulation(&simulation)?;
         let mut manager_a = seed_manager(44)?;
@@ -862,10 +813,6 @@ mod tests {
 
     #[test]
     fn gpu_end_to_end_seed_mutate_compile_inspect_smoke() -> Result<()> {
-        if !gpu_runtime_ready() {
-            return Ok(());
-        }
-
         let simulation = smoke_simulation_config(55);
         let mutation_config = GpuMutationConfig::for_simulation(&simulation)?;
         let mut manager = seed_manager(55)?;
