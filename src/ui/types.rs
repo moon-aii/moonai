@@ -1,10 +1,9 @@
 use std::collections::VecDeque;
 
-use crate::tick::buffers::{RenderAgentReadback, UiStatsReadback};
-use crate::tick::genome::PopulationKind;
-use crate::tick::inference::SensorSnapshotReadback;
-use crate::tick::metrics_reduce::MetricsSummaryReadback;
+use crate::tick::buffers::{MetricsSummaryReadback, RenderAgentReadback, UiStatsReadback};
 use crate::tick::network::SelectedAgentNetworkReadback;
+use crate::tick::network::SensorSnapshotReadback;
+use crate::tick::simulation::PopulationKind;
 use crate::tick::species::RepresentativeGenomeReadback;
 
 #[derive(Debug, Clone)]

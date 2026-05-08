@@ -6,10 +6,9 @@ use eframe::egui::{self, Color32, Key, Pos2, Sense, Shape, Stroke, TextureHandle
 
 use crate::config::SimulationConfig;
 use crate::settings::UiConfig;
+use crate::tick::buffers::{FreeListStateReadback, MetricsSummaryReadback};
 use crate::tick::buffers::{RenderAgentReadback, RenderSnapshotReadback, UiStatsReadback};
-use crate::tick::compaction::FreeListStateReadback;
-use crate::tick::genome::PopulationKind;
-use crate::tick::metrics_reduce::MetricsSummaryReadback;
+use crate::tick::simulation::PopulationKind;
 use crate::tick::simulation::SimulationState;
 use crate::ui::render;
 use crate::ui::types::{

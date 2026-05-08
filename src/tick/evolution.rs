@@ -6,15 +6,27 @@ use anyhow::{Context as _, Result, anyhow, bail};
 
 use crate::config::SimulationConfig;
 use crate::tick::buffers::{
-    RenderAgentReadback, RenderFoodReadback, RenderSnapshotHeader, RenderSnapshotReadback, UiStatsReadback,
+    FreeListStateReadback, MetricsSummaryReadback, RenderAgentReadback, RenderFoodReadback, RenderSnapshotHeader,
+    RenderSnapshotReadback, UiStatsReadback,
 };
-use crate::tick::checks::{CudaStatus, check_cuda};
-use crate::tick::compaction::FreeListStateReadback;
-use crate::tick::compiled::CompiledNetworkReadbackHeader;
-use crate::tick::genome::PopulationKind;
-use crate::tick::inference::SensorSnapshotReadback;
-use crate::tick::metrics_reduce::MetricsSummaryReadback;
-use crate::tick::network::SelectedAgentNetworkReadback;
+use crate::tick::network::{CompiledNetworkReadbackHeader, SelectedAgentNetworkReadback, SensorSnapshotReadback};
+use crate::tick::simulation::PopulationKind;
+
+#[repr(i32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CudaStatus {
+    Success = 0,
+}
+
+impl CudaStatus {
+    pub const fn is_success(self) -> bool {
+        matches!(self, Self::Success)
+    }
+}
+
+pub fn check_cuda(status: CudaStatus, context: &str) -> anyhow::Result<()> {
+    if status.is_success() { Ok(()) } else { Err(anyhow::anyhow!("{context} failed with status {status:?}")) }
+}
 use crate::tick::simulation::GpuSimulationConfig;
 use crate::tick::species::{
     GenomeConnectionReadback, GenomeNodeReadback, RepresentativeGenomeHeader, RepresentativeGenomeReadback,
@@ -459,8 +471,8 @@ unsafe extern "C" {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tick::genome::PopulationKind;
-    use crate::tick::inference::{OUTPUT_COUNT, SENSOR_COUNT};
+    use crate::tick::network::{OUTPUT_COUNT, SENSOR_COUNT};
+    use crate::tick::simulation::PopulationKind;
 
     fn smoke_simulation_config(seed: i32) -> SimulationConfig {
         SimulationConfig {

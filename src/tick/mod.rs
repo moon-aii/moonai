@@ -1,11 +1,5 @@
 pub mod buffers;
-pub mod checks;
-pub mod compaction;
-pub mod compiled;
 pub mod evolution;
-pub mod genome;
-pub mod inference;
-pub mod metrics_reduce;
 pub mod network;
 pub mod simulation;
 pub mod species;

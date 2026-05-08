@@ -14,8 +14,8 @@ use anyhow::{Context as _, Result, bail};
 
 use crate::config::{ConfigError, SimulationConfig, validate_config};
 use crate::metrics::Logger;
-use crate::tick::checks::CudaStatus;
-use crate::tick::genome::PopulationKind;
+use crate::tick::evolution::CudaStatus;
+use crate::tick::simulation::PopulationKind;
 use crate::tick::simulation::SimulationState;
 use crate::tick::species::MAX_SPECIES_SUMMARIES;
 use crate::ui::app::App;

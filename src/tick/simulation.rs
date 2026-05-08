@@ -1,16 +1,19 @@
 use anyhow::{Context as _, Result, bail};
 
 use crate::config::SimulationConfig;
-use crate::tick::buffers::{RenderSnapshotReadback, UiStatsReadback};
-use crate::tick::compaction::FreeListStateReadback;
+use crate::tick::buffers::{FreeListStateReadback, MetricsSummaryReadback, RenderSnapshotReadback, UiStatsReadback};
 use crate::tick::evolution::{EvolutionManager, GpuEvolutionConfig};
-use crate::tick::genome::PopulationKind;
-use crate::tick::inference::{OUTPUT_COUNT, SENSOR_COUNT, SensorSnapshotReadback};
-use crate::tick::metrics_reduce::MetricsSummaryReadback;
-use crate::tick::network::SelectedAgentNetworkReadback;
+use crate::tick::network::{OUTPUT_COUNT, SENSOR_COUNT, SelectedAgentNetworkReadback, SensorSnapshotReadback};
 use crate::tick::species::{
     RepresentativeGenomeHeader, RepresentativeGenomeReadback, SpeciesBatchReadbackHeader, SpeciesSummaryReadback,
 };
+
+#[repr(u32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum PopulationKind {
+    Predator = 0,
+    Prey = 1,
+}
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]

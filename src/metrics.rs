@@ -6,8 +6,8 @@ use anyhow::Result;
 use serde::Serialize;
 
 use crate::config::SimulationConfig;
-use crate::tick::genome::PopulationKind;
-use crate::tick::metrics_reduce::MetricsSummaryReadback;
+use crate::tick::buffers::MetricsSummaryReadback;
+use crate::tick::simulation::PopulationKind;
 use crate::tick::species::{RepresentativeGenomeReadback, SpeciesSummaryReadback};
 
 pub struct Logger {
