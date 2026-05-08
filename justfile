@@ -95,3 +95,9 @@ clean-outputs:
 docs:
   rm -rf site/
   uv run --group docs zensical serve
+
+upgrade-check:
+  cargo upgrade -i --dry-run
+
+upgrade:
+  cargo upgrade -i
