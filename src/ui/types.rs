@@ -1,7 +1,9 @@
-use crate::tick::buffers::{RenderAgentReadback, RenderSnapshotReadback, UiStatsReadback};
-use crate::tick::genome::PopulationKind;
-use crate::tick::inference::SensorSnapshotReadback;
+use std::collections::VecDeque;
+
+use crate::tick::buffers::{MetricsSummaryReadback, RenderAgentReadback, UiStatsReadback};
 use crate::tick::network::SelectedAgentNetworkReadback;
+use crate::tick::network::SensorSnapshotReadback;
+use crate::tick::simulation::PopulationKind;
 use crate::tick::species::RepresentativeGenomeReadback;
 
 #[derive(Debug, Clone)]
@@ -52,80 +54,69 @@ pub struct SelectedAgentData {
     pub genome: RepresentativeGenomeReadback,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct RenderAgent {
-    pub population_kind: PopulationKind,
-    pub slot: u32,
-    pub entity_id: u32,
-    pub species_id: u32,
-    pub generation: u32,
-    pub pos_x: f32,
-    pub pos_y: f32,
-    pub dir_x: f32,
-    pub dir_y: f32,
-    pub energy: f32,
-}
-
-impl From<RenderAgentReadback> for RenderAgent {
-    fn from(value: RenderAgentReadback) -> Self {
-        Self {
-            population_kind: value.population_kind,
-            slot: value.slot,
-            entity_id: value.entity_id,
-            species_id: value.species_id,
-            generation: value.generation,
-            pos_x: value.pos_x,
-            pos_y: value.pos_y,
-            dir_x: value.dir_x,
-            dir_y: value.dir_y,
-            energy: value.energy,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct RenderFood {
-    pub slot: u32,
-    pub pos_x: f32,
-    pub pos_y: f32,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct RenderLine {
-    pub x0: f32,
-    pub y0: f32,
-    pub x1: f32,
-    pub y1: f32,
-    pub population_kind: PopulationKind,
-}
-
 #[derive(Debug, Clone)]
 pub struct OverlayStats {
     pub ui_stats: UiStatsReadback,
+    pub metrics_summary: MetricsSummaryReadback,
     pub speed_multiplier: u32,
     pub paused: bool,
     pub fps: f32,
-    pub predators_returned: usize,
-    pub prey_returned: usize,
-    pub food_returned: usize,
+    pub active_food_count: u32,
 }
 
 impl OverlayStats {
     pub const fn from_snapshot(
-        snapshot: &RenderSnapshotReadback,
         ui_stats: UiStatsReadback,
+        metrics_summary: MetricsSummaryReadback,
+        active_food_count: u32,
         speed_multiplier: u32,
         paused: bool,
         fps: f32,
     ) -> Self {
-        Self {
-            ui_stats,
-            speed_multiplier,
-            paused,
-            fps,
-            predators_returned: snapshot.predators.len(),
-            prey_returned: snapshot.prey.len(),
-            food_returned: snapshot.food.len(),
+        Self { ui_stats, metrics_summary, speed_multiplier, paused, fps, active_food_count }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct PopulationHistoryPoint {
+    pub predators: u32,
+    pub prey: u32,
+    pub food: u32,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct PairHistoryPoint {
+    pub predator: f32,
+    pub prey: f32,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct OverlayHistory {
+    pub last_tick: Option<u32>,
+    pub population: VecDeque<PopulationHistoryPoint>,
+    pub complexity: VecDeque<PairHistoryPoint>,
+    pub energy: VecDeque<PairHistoryPoint>,
+}
+
+impl OverlayHistory {
+    pub fn push(&mut self, overlay: &OverlayStats) {
+        if self.last_tick == Some(overlay.ui_stats.tick) {
+            return;
         }
+
+        self.last_tick = Some(overlay.ui_stats.tick);
+        self.population.push_back(PopulationHistoryPoint {
+            predators: overlay.ui_stats.predator_count,
+            prey: overlay.ui_stats.prey_count,
+            food: overlay.active_food_count,
+        });
+        self.complexity.push_back(PairHistoryPoint {
+            predator: overlay.metrics_summary.avg_predator_complexity,
+            prey: overlay.metrics_summary.avg_prey_complexity,
+        });
+        self.energy.push_back(PairHistoryPoint {
+            predator: overlay.ui_stats.avg_predator_energy,
+            prey: overlay.ui_stats.avg_prey_energy,
+        });
     }
 }

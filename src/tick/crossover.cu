@@ -1,6 +1,5 @@
 #include "evolution_cuda.cuh"
 
-using moonai_gpu::CrossoverSummaryReadback;
 using moonai_gpu::CudaStatus;
 using moonai_gpu::DevicePopulationBuffers;
 using moonai_gpu::GpuEvolutionState;
@@ -38,7 +37,7 @@ __device__ void write_connection_gene(const DevicePopulationBuffers &population,
 __global__ void crossover_kernel(DevicePopulationBuffers population, const std::uint32_t *next_entity_id,
                                  PopulationKind population_kind, std::uint32_t parent_a_slot,
                                  std::uint32_t parent_b_slot, std::uint32_t offspring_slot,
-                                 std::uint32_t num_inputs, float initial_energy, CrossoverSummaryReadback *out_summary) {
+                                 float initial_energy) {
   if (blockIdx.x != 0U || threadIdx.x != 0U) {
     return;
   }
@@ -179,27 +178,20 @@ __global__ void crossover_kernel(DevicePopulationBuffers population, const std::
         moonai_gpu::hash_mix(genome_hash, static_cast<std::uint64_t>(__float_as_uint(population.genome.connection_weight[entry])));
   }
 
-  out_summary->population_kind = population_kind;
-  out_summary->parent_a_slot = parent_a_slot;
-  out_summary->parent_b_slot = parent_b_slot;
-  out_summary->offspring_slot = offspring_slot;
-  out_summary->offspring_entity_id = population.entity_id[offspring_slot];
-  out_summary->offspring_generation = population.generation[offspring_slot];
-  out_summary->inherited_connections = child_connection_count;
-  out_summary->matching_genes = matching_genes;
-  out_summary->disjoint_genes = disjoint_genes;
-  out_summary->excess_genes = excess_genes;
-  out_summary->offspring_genome_hash = genome_hash;
+  static_cast<void>(population_kind);
+  static_cast<void>(matching_genes);
+  static_cast<void>(disjoint_genes);
+  static_cast<void>(excess_genes);
+  static_cast<void>(genome_hash);
 }
 
 } // namespace
 
 extern "C" std::int32_t moonai_gpu_evolution_crossover(void *state_ptr, PopulationKind population_kind,
                                                          std::uint32_t parent_a_slot, std::uint32_t parent_b_slot,
-                                                         std::uint32_t offspring_slot,
-                                                         CrossoverSummaryReadback *out_summary) {
+                                                         std::uint32_t offspring_slot) {
   auto *state = static_cast<GpuEvolutionState *>(state_ptr);
-  if (state == nullptr || out_summary == nullptr) {
+  if (state == nullptr) {
     return static_cast<std::int32_t>(CudaStatus::InvalidArgument);
   }
 
@@ -208,26 +200,9 @@ extern "C" std::int32_t moonai_gpu_evolution_crossover(void *state_ptr, Populati
     return static_cast<std::int32_t>(CudaStatus::InvalidArgument);
   }
 
-  CrossoverSummaryReadback *device_summary = nullptr;
-  auto status = moonai_gpu::alloc_array(&device_summary, 1U);
-  if (status != CudaStatus::Success) {
-    return static_cast<std::int32_t>(status);
-  }
-
-  const CrossoverSummaryReadback initial_summary{population_kind, parent_a_slot, parent_b_slot, offspring_slot, 0U, 0U,
-                                                 0U,             0U,            0U,            0U,             0U};
-  status = moonai_gpu::copy_host_data_to_device(device_summary, &initial_summary, sizeof(initial_summary));
-  if (status == CudaStatus::Success) {
-    const auto offspring_energy =
-        state->simulation.offspring_initial_energy > 0.0F ? state->simulation.offspring_initial_energy : state->config.initial_energy;
-    crossover_kernel<<<1U, 1U>>>(population, state->next_entity_id, population_kind, parent_a_slot, parent_b_slot,
-                                  offspring_slot, state->config.num_inputs, offspring_energy, device_summary);
-    status = moonai_gpu::synchronize_kernels();
-  }
-  if (status == CudaStatus::Success) {
-    status = moonai_gpu::copy_compact_device_readback(device_summary, out_summary, sizeof(*out_summary));
-  }
-
-  moonai_gpu::free_array(device_summary);
-  return static_cast<std::int32_t>(status);
+  const auto offspring_energy =
+      state->simulation.offspring_initial_energy > 0.0F ? state->simulation.offspring_initial_energy : state->config.initial_energy;
+  crossover_kernel<<<1U, 1U>>>(population, state->next_entity_id, population_kind, parent_a_slot, parent_b_slot,
+                                offspring_slot, offspring_energy);
+  return static_cast<std::int32_t>(moonai_gpu::synchronize_kernels());
 }

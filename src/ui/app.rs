@@ -2,15 +2,19 @@ use std::path::PathBuf;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context as _, Result};
-use eframe::egui::{self, Key, Sense, TextureHandle, TextureOptions};
+use eframe::egui::{self, Color32, Key, Pos2, Sense, Shape, Stroke, TextureHandle, TextureOptions, Vec2};
 
 use crate::config::SimulationConfig;
 use crate::settings::UiConfig;
+use crate::tick::buffers::{FreeListStateReadback, MetricsSummaryReadback};
 use crate::tick::buffers::{RenderAgentReadback, RenderSnapshotReadback, UiStatsReadback};
-use crate::tick::genome::PopulationKind;
+use crate::tick::simulation::PopulationKind;
 use crate::tick::simulation::SimulationState;
 use crate::ui::render;
-use crate::ui::types::{CameraState, OverlayStats, SelectedAgent, SelectedAgentData, UiState};
+use crate::ui::types::{
+    CameraState, OverlayHistory, OverlayStats, PairHistoryPoint, PopulationHistoryPoint, SelectedAgent,
+    SelectedAgentData, UiState,
+};
 
 pub struct App {
     run_label: String,
@@ -20,7 +24,10 @@ pub struct App {
     ui_state: UiState,
     camera: CameraState,
     ui_stats: UiStatsReadback,
+    metrics_summary: MetricsSummaryReadback,
+    free_list_state: FreeListStateReadback,
     snapshot: RenderSnapshotReadback,
+    overlay_history: OverlayHistory,
     selected: Option<SelectedAgent>,
     selected_data: Option<SelectedAgentData>,
     texture: Option<TextureHandle>,
@@ -52,7 +59,7 @@ impl App {
         eframe::run_native(
             "MoonAI",
             native_options,
-            Box::new(move |creation_context| {
+            Box::new(move |_creation_context| {
                 Self::new(&run_label, config_for_app.clone(), ui_for_app.clone())
                     .map(|app| -> Box<dyn eframe::App> { Box::new(app) })
                     .map_err(|error| -> Box<dyn std::error::Error + Send + Sync> {
@@ -66,7 +73,11 @@ impl App {
     fn new(run_label: &str, config: SimulationConfig, ui_config: UiConfig) -> Result<Self> {
         let mut state = SimulationState::init_from_config(&config)?;
         let camera = render::default_camera(config.grid_size as f32);
-        let (ui_stats, snapshot) = refresh_snapshot(&mut state)?;
+        let (ui_stats, metrics_summary, free_list_state, snapshot) = refresh_snapshot(&mut state)?;
+        let initial_overlay =
+            OverlayStats::from_snapshot(ui_stats, metrics_summary, free_list_state.active_food_count, 1, false, 0.0);
+        let mut overlay_history = OverlayHistory::default();
+        overlay_history.push(&initial_overlay);
 
         Ok(Self {
             run_label: run_label.to_owned(),
@@ -76,7 +87,10 @@ impl App {
             ui_state: UiState::default(),
             camera,
             ui_stats,
+            metrics_summary,
+            free_list_state,
             snapshot,
+            overlay_history,
             selected: None,
             selected_data: None,
             texture: None,
@@ -181,11 +195,26 @@ impl App {
         }
         self.ui_state.tick_requested = false;
 
-        let (ui_stats, snapshot) = refresh_snapshot(&mut self.state)?;
+        let (ui_stats, metrics_summary, free_list_state, snapshot) = refresh_snapshot(&mut self.state)?;
         self.ui_stats = ui_stats;
+        self.metrics_summary = metrics_summary;
+        self.free_list_state = free_list_state;
         self.snapshot = snapshot;
+        let overlay = self.overlay_stats();
+        self.overlay_history.push(&overlay);
         self.sync_selected_agent()?;
         Ok(())
+    }
+
+    const fn overlay_stats(&self) -> OverlayStats {
+        OverlayStats::from_snapshot(
+            self.ui_stats,
+            self.metrics_summary,
+            self.free_list_state.active_food_count,
+            self.ui_state.speed_multiplier,
+            self.ui_state.paused,
+            self.fps,
+        )
     }
 
     fn sync_selected_agent(&mut self) -> Result<()> {
@@ -244,100 +273,193 @@ impl App {
         }
     }
 
-    fn draw_side_panel(&mut self, ctx: &egui::Context) {
-        egui::SidePanel::right("moonai_side_panel").resizable(false).default_width(self.ui_config.ui_side_margin).show(
-            ctx,
-            |ui| {
-                ui.heading("MoonAI");
-                ui.label(format!("Experiment: {}", self.run_label));
-
-                let overlay = OverlayStats::from_snapshot(
-                    &self.snapshot,
-                    self.ui_stats,
-                    self.ui_state.speed_multiplier,
-                    self.ui_state.paused,
-                    self.fps,
-                );
-                ui.separator();
-                ui.label(format!("Tick: {}", overlay.ui_stats.tick));
-                ui.label(format!("FPS: {:.1}", overlay.fps));
-                ui.label(format!("Speed: {}x", overlay.speed_multiplier));
-                ui.label(if overlay.paused { "State: paused" } else { "State: running" });
-                ui.label(format!("Predators: {}", overlay.ui_stats.predator_count));
-                ui.label(format!("Prey: {}", overlay.ui_stats.prey_count));
-                ui.label(format!("Food rendered: {}", overlay.food_returned));
-                ui.label(format!("Kills: {}", overlay.ui_stats.kills));
-                ui.label(format!("Food eaten: {}", overlay.ui_stats.food_eaten));
-                ui.label(format!(
-                    "Predator births/deaths: {}/{}",
-                    overlay.ui_stats.predator_births, overlay.ui_stats.predator_deaths
-                ));
-                ui.label(format!(
-                    "Prey births/deaths: {}/{}",
-                    overlay.ui_stats.prey_births, overlay.ui_stats.prey_deaths
-                ));
-                ui.label(format!("Avg predator energy: {:.3}", overlay.ui_stats.avg_predator_energy));
-                ui.label(format!("Avg prey energy: {:.3}", overlay.ui_stats.avg_prey_energy));
-
-                ui.separator();
-                ui.label("Controls");
-                ui.label("Space: pause/resume");
-                ui.label("Up/Down or +/-: speed");
-                ui.label(".: single tick while paused");
-                ui.label("S: screenshot");
-                ui.label("Home: reset camera");
-                ui.label("Scroll: zoom");
-                ui.label("Middle/right drag: pan");
-                ui.label("Left click: select agent");
-
-                if let Some(message) = &self.status_message {
-                    ui.separator();
-                    ui.colored_label(egui::Color32::LIGHT_GREEN, message);
-                }
-                if let Some(error) = &self.error_message {
-                    ui.separator();
-                    ui.colored_label(egui::Color32::LIGHT_RED, error);
-                }
-
-                if let Some(selected) = &self.selected_data {
-                    ui.separator();
-                    ui.heading("Selected Agent");
-                    ui.label(format!("Population: {:?}", selected.agent.population_kind));
-                    ui.label(format!("Entity: {}", selected.agent.entity_id));
-                    ui.label(format!("Slot: {}", selected.agent.slot));
-                    ui.label(format!("Species: {}", selected.agent.species_id));
-                    ui.label(format!("Generation: {}", selected.agent.generation));
-                    ui.label(format!("Energy: {:.3}", selected.agent.energy));
-                    ui.label(format!("Outputs: {:.3}, {:.3}", selected.network.output_0, selected.network.output_1));
-                    ui.label(format!("Nodes: {}", selected.network.node_count));
-                    ui.label(format!("Connections: {}", selected.genome.header.num_connections));
+    fn draw_side_panel(&mut self, ui: &mut egui::Ui) {
+        egui::Panel::left("moonai_left_panel")
+            .resizable(false)
+            .default_size(self.ui_config.ui_side_margin)
+            .show_inside(ui, |ui| {
+                let overlay = self.overlay_stats();
+                egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+                    ui.heading("MoonAI");
+                    ui.label(format!("Experiment: {}", self.run_label));
 
                     ui.separator();
-                    ui.label("Sensor Summary");
-                    ui.label(format!("Energy input: {:.3}", selected.sensors.inputs[30]));
+                    ui.label(format!("Tick: {}", overlay.ui_stats.tick));
+                    ui.label(format!("FPS: {:.1}", overlay.fps));
+                    ui.label(format!("Speed: {}x", overlay.speed_multiplier));
+                    ui.colored_label(
+                        if overlay.paused { rgb(self.ui_config.pause_color) } else { rgb(self.ui_config.muted_color) },
+                        if overlay.paused { "State: paused" } else { "State: running" },
+                    );
+
+                    ui.separator();
+                    ui.label("Controls");
+                    ui.label("Space: pause/resume");
+                    ui.label("Up/Down or +/-: speed");
+                    ui.label(".: single tick while paused");
+                    ui.label("S: screenshot");
+                    ui.label("Home: reset camera");
+                    ui.label("Scroll: zoom");
+                    ui.label("Middle/right drag: pan");
+                    ui.label("Left click: select agent");
+
+                    if let Some(message) = &self.status_message {
+                        ui.separator();
+                        ui.colored_label(egui::Color32::LIGHT_GREEN, message);
+                    }
+                    if let Some(error) = &self.error_message {
+                        ui.separator();
+                        ui.colored_label(egui::Color32::LIGHT_RED, error);
+                    }
+
+                    if let Some(selected) = &self.selected_data {
+                        ui.separator();
+                        ui.heading("Selected Agent");
+                        ui.label(format!("Population: {:?}", selected.agent.population_kind));
+                        ui.label(format!("Entity: {}", selected.agent.entity_id));
+                        ui.label(format!("Slot: {}", selected.agent.slot));
+                        ui.label(format!("Species: {}", selected.agent.species_id));
+                        ui.label(format!("Generation: {}", selected.agent.generation));
+                        ui.label(format!("Age: {:.0}", selected.agent.age));
+                        ui.label(format!("Energy: {:.3}", selected.agent.energy));
+                        ui.label(format!(
+                            "Complexity: {}",
+                            usize::from(selected.genome.header.num_nodes)
+                                + usize::from(selected.genome.header.num_connections)
+                        ));
+                        ui.label(format!(
+                            "Outputs: {:.3}, {:.3}",
+                            selected.network.output_0, selected.network.output_1
+                        ));
+                        ui.label(format!("Nodes: {}", selected.network.node_count));
+                        ui.label(format!("Connections: {}", selected.genome.header.num_connections));
+
+                        ui.separator();
+                        ui.label("Sensor Summary");
+                        ui.label(format!("Energy input: {:.3}", selected.sensors.inputs[30]));
+                        ui.label(format!(
+                            "Velocity x/y: {:.3}, {:.3}",
+                            selected.sensors.inputs[31], selected.sensors.inputs[32]
+                        ));
+                        ui.label(format!(
+                            "Wall x/y: {:.3}, {:.3}",
+                            selected.sensors.inputs[33], selected.sensors.inputs[34]
+                        ));
+
+                        ui.separator();
+                        let width = ui
+                            .available_width()
+                            .clamp(self.ui_config.nn_panel_min_width, self.ui_config.nn_panel_max_width);
+                        let height = self.ui_config.nn_panel_min_height.max(ui.available_height() - 8.0);
+                        let (rect, _) = ui.allocate_exact_size(egui::vec2(width, height), Sense::hover());
+                        render::paint_network(ui, rect, &self.ui_config, selected);
+                    }
+                });
+            });
+
+        egui::Panel::right("moonai_right_panel")
+            .resizable(false)
+            .default_size(self.ui_config.ui_side_margin)
+            .show_inside(ui, |ui| {
+                let overlay = self.overlay_stats();
+                egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+                    ui.heading("Stats");
+                    colored_stat(
+                        ui,
+                        self.ui_config.predator_color,
+                        "Predators",
+                        overlay.ui_stats.predator_count.to_string(),
+                    );
+                    colored_stat(ui, self.ui_config.prey_color, "Prey", overlay.ui_stats.prey_count.to_string());
+                    colored_stat(ui, self.ui_config.food_color, "Food", overlay.active_food_count.to_string());
+                    ui.separator();
+
+                    ui.colored_label(rgb(self.ui_config.predator_color), "Predator");
+                    ui.label(format!("Species: {}", overlay.metrics_summary.predator_species));
+                    ui.label(format!("Energy: {:.2}", overlay.ui_stats.avg_predator_energy));
+                    ui.label(format!("Complexity: {:.1}", overlay.metrics_summary.avg_predator_complexity));
+                    ui.label(format!("Births: {}", overlay.ui_stats.predator_births));
+                    ui.label(format!("Deaths: {}", overlay.ui_stats.predator_deaths));
                     ui.label(format!(
-                        "Velocity x/y: {:.3}, {:.3}",
-                        selected.sensors.inputs[31], selected.sensors.inputs[32]
+                        "Generation: max={} avg={:.1}",
+                        overlay.metrics_summary.max_predator_generation,
+                        overlay.metrics_summary.avg_predator_generation
                     ));
-                    ui.label(format!(
-                        "Wall x/y: {:.3}, {:.3}",
-                        selected.sensors.inputs[33], selected.sensors.inputs[34]
-                    ));
+                    ui.label(format!("Kills: {}", overlay.ui_stats.kills));
 
                     ui.separator();
-                    let width = ui
-                        .available_width()
-                        .clamp(self.ui_config.nn_panel_min_width, self.ui_config.nn_panel_max_width);
-                    let height = self.ui_config.nn_panel_min_height.max(ui.available_height() - 8.0);
-                    let (rect, _) = ui.allocate_exact_size(egui::vec2(width, height), Sense::hover());
-                    render::paint_network(ui, rect, &self.ui_config, selected);
-                }
-            },
-        );
+                    ui.colored_label(rgb(self.ui_config.prey_color), "Prey");
+                    ui.label(format!("Species: {}", overlay.metrics_summary.prey_species));
+                    ui.label(format!("Energy: {:.2}", overlay.ui_stats.avg_prey_energy));
+                    ui.label(format!("Complexity: {:.1}", overlay.metrics_summary.avg_prey_complexity));
+                    ui.label(format!("Births: {}", overlay.ui_stats.prey_births));
+                    ui.label(format!("Deaths: {}", overlay.ui_stats.prey_deaths));
+                    ui.label(format!(
+                        "Generation: max={} avg={:.1}",
+                        overlay.metrics_summary.max_prey_generation, overlay.metrics_summary.avg_prey_generation
+                    ));
+                    ui.label(format!("Food eaten: {}", overlay.ui_stats.food_eaten));
+
+                    ui.separator();
+                    draw_chart_panel(
+                        ui,
+                        &self.ui_config,
+                        "Population",
+                        &[
+                            ChartSeries::population(
+                                &self.overlay_history.population,
+                                self.ui_config.predator_color,
+                                |point| point.predators as f32,
+                            ),
+                            ChartSeries::population(
+                                &self.overlay_history.population,
+                                self.ui_config.prey_color,
+                                |point| point.prey as f32,
+                            ),
+                            ChartSeries::population(
+                                &self.overlay_history.population,
+                                self.ui_config.food_color,
+                                |point| point.food as f32,
+                            ),
+                        ],
+                        180.0,
+                    );
+                    draw_chart_panel(
+                        ui,
+                        &self.ui_config,
+                        "Complexity",
+                        &[
+                            ChartSeries::pair(
+                                &self.overlay_history.complexity,
+                                self.ui_config.predator_color,
+                                |point| point.predator,
+                            ),
+                            ChartSeries::pair(&self.overlay_history.complexity, self.ui_config.prey_color, |point| {
+                                point.prey
+                            }),
+                        ],
+                        120.0,
+                    );
+                    draw_chart_panel(
+                        ui,
+                        &self.ui_config,
+                        "Energy",
+                        &[
+                            ChartSeries::pair(&self.overlay_history.energy, self.ui_config.predator_color, |point| {
+                                point.predator
+                            }),
+                            ChartSeries::pair(&self.overlay_history.energy, self.ui_config.prey_color, |point| {
+                                point.prey
+                            }),
+                        ],
+                        120.0,
+                    );
+                });
+            });
     }
 
-    fn draw_world(&mut self, ctx: &egui::Context) {
-        egui::CentralPanel::default().show(ctx, |ui| {
+    fn draw_world(&mut self, ui: &mut egui::Ui) {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             let available = ui.available_size();
             let width = available.x.max(1.0) as usize;
             let height = available.y.max(1.0) as usize;
@@ -366,13 +488,13 @@ impl App {
                 egui::Image::new((texture.id(), available.max(egui::vec2(1.0, 1.0)))).sense(Sense::click_and_drag()),
             );
 
-            self.handle_view_input(ctx, response.rect, &response);
+            self.handle_view_input(ui.ctx(), response.rect, &response);
         });
     }
 
     fn handle_view_input(&mut self, ctx: &egui::Context, rect: egui::Rect, response: &egui::Response) {
         if response.hovered() {
-            let scroll = ctx.input(|input| input.raw_scroll_delta.y);
+            let scroll = ctx.input(|input| input.smooth_scroll_delta.y);
             if scroll.abs() > f32::EPSILON {
                 let hover = ctx.input(|input| input.pointer.hover_pos()).unwrap_or(rect.center());
                 let world_before = render::screen_to_world(rect, self.camera, self.config.grid_size as f32, hover);
@@ -435,25 +557,29 @@ impl App {
 }
 
 impl eframe::App for App {
-    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.update_fps();
         self.error_message = None;
-        self.handle_shortcuts(ctx, frame);
+        self.handle_shortcuts(ui.ctx(), _frame);
         if let Err(error) = self.drive_simulation() {
             self.error_message = Some(error.to_string());
             self.ui_state.paused = true;
         }
 
-        self.draw_side_panel(ctx);
-        self.draw_world(ctx);
-        ctx.request_repaint();
+        self.draw_side_panel(ui);
+        self.draw_world(ui);
+        ui.ctx().request_repaint();
     }
 }
 
-fn refresh_snapshot(state: &mut SimulationState) -> Result<(UiStatsReadback, RenderSnapshotReadback)> {
+fn refresh_snapshot(
+    state: &mut SimulationState,
+) -> Result<(UiStatsReadback, MetricsSummaryReadback, FreeListStateReadback, RenderSnapshotReadback)> {
     let ui_stats = state.ui_stats()?;
+    let metrics_summary = state.metrics_summary()?;
+    let free_list_state = state.free_list_state()?;
     let snapshot = state.render_snapshot(ui_stats.predator_count, ui_stats.prey_count, state.config().food_capacity)?;
-    Ok((ui_stats, snapshot))
+    Ok((ui_stats, metrics_summary, free_list_state, snapshot))
 }
 
 fn find_agent_by_entity(
@@ -484,4 +610,87 @@ fn load_icon() -> Option<egui::IconData> {
 fn screenshot_path(run_label: &str, tick: u32) -> Result<PathBuf> {
     let seconds = SystemTime::now().duration_since(UNIX_EPOCH).context("system time is before UNIX_EPOCH")?.as_secs();
     Ok(PathBuf::from("output").join("screenshots").join(format!("{run_label}_tick{tick}_{seconds}.png")))
+}
+
+struct ChartSeries<'a> {
+    values: Vec<f32>,
+    color: Color32,
+    _marker: std::marker::PhantomData<&'a ()>,
+}
+
+impl<'a> ChartSeries<'a> {
+    fn population(
+        points: &std::collections::VecDeque<PopulationHistoryPoint>,
+        color: [f32; 3],
+        map: impl Fn(&PopulationHistoryPoint) -> f32,
+    ) -> Self {
+        Self { values: points.iter().map(map).collect(), color: rgb(color), _marker: std::marker::PhantomData }
+    }
+
+    fn pair(
+        points: &std::collections::VecDeque<PairHistoryPoint>,
+        color: [f32; 3],
+        map: impl Fn(&PairHistoryPoint) -> f32,
+    ) -> Self {
+        Self { values: points.iter().map(map).collect(), color: rgb(color), _marker: std::marker::PhantomData }
+    }
+}
+
+fn colored_stat(ui: &mut egui::Ui, color: [f32; 3], label: &str, value: String) {
+    ui.horizontal(|ui| {
+        ui.colored_label(rgb(color), label);
+        ui.label(value);
+    });
+}
+
+fn draw_chart_panel(ui: &mut egui::Ui, ui_config: &UiConfig, title: &str, series: &[ChartSeries<'_>], height: f32) {
+    ui.label(title);
+    let width = ui.available_width().max(1.0);
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(width, height), Sense::hover());
+    let painter = ui.painter_at(rect);
+    painter.rect_filled(rect, 8.0, panel_fill(ui_config));
+    painter.rect_stroke(rect, 8.0, Stroke::new(1.0, rgb(ui_config.panel_outline_color)), egui::StrokeKind::Outside);
+
+    let content = rect.shrink2(Vec2::new(8.0, 12.0));
+    let max_value = series.iter().flat_map(|entry| entry.values.iter().copied()).fold(1.0_f32, f32::max).max(1.0);
+
+    for entry in series {
+        if entry.values.len() < 2 {
+            continue;
+        }
+
+        let last_index = (entry.values.len() - 1) as f32;
+        let points: Vec<Pos2> = entry
+            .values
+            .iter()
+            .enumerate()
+            .map(|(index, value)| {
+                let x = if last_index <= f32::EPSILON {
+                    content.left()
+                } else {
+                    content.left() + ((index as f32 / last_index) * content.width())
+                };
+                let y = content.bottom() - ((value / max_value) * content.height());
+                Pos2::new(x, y)
+            })
+            .collect();
+        painter.add(Shape::line(points, Stroke::new(1.5, entry.color)));
+    }
+}
+
+fn rgb(color: [f32; 3]) -> Color32 {
+    Color32::from_rgb(
+        (color[0].clamp(0.0, 1.0) * 255.0) as u8,
+        (color[1].clamp(0.0, 1.0) * 255.0) as u8,
+        (color[2].clamp(0.0, 1.0) * 255.0) as u8,
+    )
+}
+
+fn panel_fill(ui_config: &UiConfig) -> Color32 {
+    Color32::from_rgba_unmultiplied(
+        (ui_config.panel_bg_color[0].clamp(0.0, 1.0) * 255.0) as u8,
+        (ui_config.panel_bg_color[1].clamp(0.0, 1.0) * 255.0) as u8,
+        (ui_config.panel_bg_color[2].clamp(0.0, 1.0) * 255.0) as u8,
+        (ui_config.panel_alpha.clamp(0.0, 1.0) * 255.0) as u8,
+    )
 }

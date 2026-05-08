@@ -1,8 +1,7 @@
 use mlua::Lua;
 use std::collections::HashMap;
 
-use crate::config::SimulationConfig;
-use crate::config_error::ConfigError;
+use crate::config::{ConfigError, SimulationConfig};
 
 pub fn load_config(path: &str) -> Result<HashMap<String, SimulationConfig>, ConfigError> {
     let lua = Lua::new();
@@ -91,11 +90,10 @@ pub fn load_config(path: &str) -> Result<HashMap<String, SimulationConfig>, Conf
     globals.set("moonai_defaults", moonai_defaults).map_err(|e| ConfigError::LuaParse(e.to_string()))?;
 
     let content = std::fs::read_to_string(path).map_err(ConfigError::Io)?;
-    let experiments_table: mlua::Table<'_> =
-        lua.load(&content).eval().map_err(|e| ConfigError::LuaParse(e.to_string()))?;
+    let experiments_table: mlua::Table = lua.load(&content).eval().map_err(|e| ConfigError::LuaParse(e.to_string()))?;
 
     let mut experiments = HashMap::new();
-    for pair in experiments_table.pairs::<String, mlua::Table<'_>>() {
+    for pair in experiments_table.pairs::<String, mlua::Table>() {
         let (name, cfg_table) = pair.map_err(|e| ConfigError::LuaParse(e.to_string()))?;
         let config = table_to_config(&cfg_table)?;
         experiments.insert(name, config);
@@ -103,18 +101,18 @@ pub fn load_config(path: &str) -> Result<HashMap<String, SimulationConfig>, Conf
     Ok(experiments)
 }
 
-fn table_to_config(table: &mlua::Table<'_>) -> Result<SimulationConfig, ConfigError> {
+fn table_to_config(table: &mlua::Table) -> Result<SimulationConfig, ConfigError> {
     let mut config = SimulationConfig::default();
     macro_rules! set_i32 {
         ($k:literal, $f:ident) => {
-            if let Ok(v) = table.get::<_, f64>($k) {
+            if let Ok(v) = table.get::<f64>($k) {
                 config.$f = v as i32;
             }
         };
     }
     macro_rules! set_f32 {
         ($k:literal, $f:ident) => {
-            if let Ok(v) = table.get::<_, f64>($k) {
+            if let Ok(v) = table.get::<f64>($k) {
                 config.$f = v as f32;
             }
         };

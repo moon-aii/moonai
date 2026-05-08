@@ -28,9 +28,6 @@ constexpr std::uint8_t kInputNodeType = 0;
 constexpr std::uint8_t kHiddenNodeType = 1;
 constexpr std::uint8_t kOutputNodeType = 2;
 constexpr std::uint8_t kBiasNodeType = 3;
-constexpr std::uint32_t kInnovationRecordAddConnection = 1U;
-constexpr std::uint32_t kInnovationRecordAddNodeIncoming = 2U;
-constexpr std::uint32_t kInnovationRecordAddNodeOutgoing = 3U;
 constexpr std::uint32_t kCompileScratchNodeLimit = 128U;
 constexpr std::uint32_t kCompileScratchConnectionLimit = 256U;
 constexpr std::uint32_t kSpeciesBucketCount = 64U;
@@ -104,22 +101,6 @@ struct FoodBuffer {
 struct DeviceInnovationState {
   std::uint32_t next_innovation;
   std::uint32_t next_node_id;
-  std::uint32_t log_capacity;
-  std::uint32_t log_len;
-};
-
-struct InnovationRecord {
-  std::uint32_t from_node;
-  std::uint32_t to_node;
-  std::uint32_t innovation;
-  std::uint32_t record_kind;
-};
-
-struct InnovationLogReadbackHeader {
-  std::uint32_t total_len;
-  std::uint32_t stored_len;
-  std::uint32_t returned_len;
-  std::uint32_t dropped_len;
 };
 
 struct GpuEvolutionConfig {
@@ -141,31 +122,6 @@ struct PopulationSummaryReadback {
   PopulationKind population_kind;
   std::uint32_t live_count;
   std::uint32_t capacity;
-  std::uint32_t next_entity_id;
-  std::uint32_t innovation_counter;
-  std::uint32_t next_node_id;
-  float avg_energy;
-  float avg_connections;
-};
-
-struct SeededAgentSnapshot {
-  PopulationKind population_kind;
-  std::uint32_t slot;
-  std::uint32_t entity_id;
-  std::uint32_t generation;
-  std::uint32_t species_id;
-  std::uint8_t alive;
-  std::uint8_t reserved0;
-  std::uint16_t reserved1;
-  float pos_x;
-  float pos_y;
-  float vel_x;
-  float vel_y;
-  float energy;
-  float age;
-  std::uint16_t num_nodes;
-  std::uint16_t num_connections;
-  std::uint64_t genome_hash;
 };
 
 struct UiStatsReadback {
@@ -216,29 +172,6 @@ struct GpuMutationConfig {
   float add_connection_rate;
   float delete_connection_rate;
   std::uint32_t max_connection_attempts;
-};
-
-struct MutationSummaryReadback {
-  PopulationKind population_kind;
-  std::uint32_t agents_mutated;
-  std::uint32_t weight_perturbations;
-  std::uint32_t added_connections;
-  std::uint32_t added_nodes;
-  std::uint32_t deleted_connections;
-};
-
-struct CrossoverSummaryReadback {
-  PopulationKind population_kind;
-  std::uint32_t parent_a_slot;
-  std::uint32_t parent_b_slot;
-  std::uint32_t offspring_slot;
-  std::uint32_t offspring_entity_id;
-  std::uint32_t offspring_generation;
-  std::uint32_t inherited_connections;
-  std::uint32_t matching_genes;
-  std::uint32_t disjoint_genes;
-  std::uint32_t excess_genes;
-  std::uint64_t offspring_genome_hash;
 };
 
 struct SpeciesSummaryReadback {
@@ -326,6 +259,7 @@ struct RenderAgentReadback {
   std::uint32_t entity_id;
   std::uint32_t species_id;
   std::uint32_t generation;
+  float age;
   float pos_x;
   float pos_y;
   float dir_x;
@@ -342,27 +276,9 @@ struct RenderFoodReadback {
   float pos_y;
 };
 
-struct SpatialGridReadback {
-  std::uint32_t grid_cols;
-  std::uint32_t grid_rows;
-  std::uint32_t cell_count;
-  std::uint32_t predator_entries;
-  std::uint32_t prey_entries;
-  std::uint32_t food_entries;
-  float cell_size;
-};
-
 struct ReproductionPair {
   std::uint32_t parent_a_slot;
   std::uint32_t parent_b_slot;
-};
-
-struct ReproductionSummaryReadback {
-  PopulationKind population_kind;
-  std::uint32_t eligible_parents;
-  std::uint32_t candidate_pairs;
-  std::uint32_t births;
-  std::uint32_t failed_pairs;
 };
 
 struct FreeListStateReadback {
@@ -371,19 +287,6 @@ struct FreeListStateReadback {
   std::uint32_t prey_free_slots;
   std::uint32_t active_food_count;
   std::uint32_t food_capacity;
-};
-
-struct InvariantCheckReadback {
-  std::uint32_t predator_agents_checked;
-  std::uint32_t prey_agents_checked;
-  std::uint32_t invalid_node_counts;
-  std::uint32_t invalid_connection_counts;
-  std::uint32_t invalid_connection_bounds;
-  std::uint32_t invalid_compiled_offsets;
-  std::uint32_t invalid_eval_nodes;
-  std::uint32_t invalid_output_indices;
-  std::uint32_t invalid_species_assignments;
-  std::uint32_t innovation_log_overflow;
 };
 
 struct MetricsSummaryReadback {
@@ -404,14 +307,6 @@ struct MetricsSummaryReadback {
   float avg_predator_generation;
   std::uint32_t max_prey_generation;
   float avg_prey_generation;
-};
-
-struct CompactionSummaryReadback {
-  PopulationKind population_kind;
-  std::uint32_t previous_capacity;
-  std::uint32_t live_count;
-  std::uint32_t free_slots_after;
-  std::uint32_t compacted;
 };
 
 struct SimulationCounters {
@@ -443,11 +338,8 @@ struct GpuEvolutionState {
   DevicePopulationBuffers prey;
   FoodBuffer food;
   DeviceInnovationState *innovation;
-  InnovationRecord *innovation_log;
   std::uint32_t *next_entity_id;
   SimulationCounters *counters;
-  UiStatsReadback *mapped_ui_stats_host;
-  UiStatsReadback *mapped_ui_stats_device;
   std::uint32_t *predator_free_list;
   std::uint32_t *prey_free_list;
   std::uint32_t *predator_free_len;
@@ -458,9 +350,14 @@ struct GpuEvolutionState {
   ReproductionPair *prey_reproduction_pairs;
   std::uint32_t *predator_pair_count;
   std::uint32_t *prey_pair_count;
-  ReproductionSummaryReadback *predator_reproduction_summary;
-  ReproductionSummaryReadback *prey_reproduction_summary;
   MetricsSummaryReadback *metrics_summary;
+  SpeciesSummaryReadback *species_summaries_scratch;
+  RepresentativeGenomeHeader *representative_headers_scratch;
+  std::uint32_t *species_count_scratch;
+  RenderSnapshotHeader *render_header_scratch;
+  RenderAgentReadback *render_predators_scratch;
+  RenderAgentReadback *render_prey_scratch;
+  RenderFoodReadback *render_food_scratch;
   std::uint32_t *predator_cell_counts;
   std::uint32_t *predator_cell_offsets;
   std::uint32_t *predator_cell_write_offsets;
@@ -530,6 +427,23 @@ inline CudaStatus synchronize_kernels() {
   return map_cuda_runtime_error(cudaDeviceSynchronize(), CudaStatus::KernelLaunchFailed);
 }
 
+template <typename T, typename LaunchFn>
+inline CudaStatus launch_single_value_readback(T *host_ptr, LaunchFn &&launch) {
+  T *device_ptr = nullptr;
+  auto status = alloc_array(&device_ptr, 1U);
+  if (status == CudaStatus::Success) {
+    status = launch(device_ptr);
+  }
+  if (status == CudaStatus::Success) {
+    status = synchronize_kernels();
+  }
+  if (status == CudaStatus::Success) {
+    status = copy_compact_device_readback(device_ptr, host_ptr, sizeof(*host_ptr));
+  }
+  free_array(device_ptr);
+  return status;
+}
+
 inline const DevicePopulationBuffers &population_for_kind(const GpuEvolutionState &state, PopulationKind population_kind) {
   return population_kind == PopulationKind::Predator ? state.predator : state.prey;
 }
@@ -558,13 +472,70 @@ __device__ inline std::uint64_t hash_mix(std::uint64_t hash, std::uint64_t value
   return hash;
 }
 
-__device__ inline void append_innovation_record(DeviceInnovationState *innovation, InnovationRecord *innovation_log,
-                                                std::uint32_t from_node, std::uint32_t to_node,
-                                                std::uint32_t innovation_id, std::uint32_t record_kind) {
-  const auto log_index = atomicAdd(&innovation->log_len, 1U);
-  if (log_index < innovation->log_capacity) {
-    innovation_log[log_index] = InnovationRecord{from_node, to_node, innovation_id, record_kind};
+__device__ inline std::uint16_t count_enabled_connections(const DevicePopulationBuffers &population,
+                                                          std::uint32_t slot,
+                                                          std::uint16_t connection_count) {
+  const auto connection_base = static_cast<std::size_t>(slot) * population.genome.connection_stride;
+  std::uint16_t enabled_count = 0U;
+  for (std::uint16_t connection = 0; connection < connection_count; ++connection) {
+    enabled_count = static_cast<std::uint16_t>(enabled_count +
+                                               (population.genome.connection_enabled[connection_base + connection] != 0U));
   }
+  return enabled_count;
+}
+
+__device__ inline std::uint16_t evaluate_compiled_network(const DevicePopulationBuffers &population,
+                                                          std::uint32_t slot, std::uint32_t num_inputs,
+                                                          float (&activations)[kCompileScratchNodeLimit]) {
+  const auto node_count = population.compiled.node_counts[slot];
+  if (node_count == 0U || node_count > kCompileScratchNodeLimit) {
+    return 0U;
+  }
+
+  if (population.sensor_inputs != nullptr) {
+    const auto sensor_base = static_cast<std::size_t>(slot) * num_inputs;
+    for (std::uint32_t input = 0; input < num_inputs && input < node_count; ++input) {
+      activations[input] = population.sensor_inputs[sensor_base + input];
+    }
+  }
+  if (num_inputs < node_count) {
+    activations[num_inputs] = 1.0F;
+  }
+
+  const auto eval_count = population.compiled.eval_counts[slot];
+  const auto offset_base = static_cast<std::size_t>(slot) * (population.compiled.node_stride + 1U);
+  const auto eval_base = static_cast<std::size_t>(slot) * population.compiled.node_stride;
+  const auto compiled_connection_base = static_cast<std::size_t>(slot) * population.compiled.connection_stride;
+  for (std::uint16_t eval_index = 0; eval_index < eval_count; ++eval_index) {
+    const auto node = population.compiled.eval_order[eval_base + eval_index];
+    if (node >= node_count) {
+      continue;
+    }
+    const auto start = population.compiled.connection_offsets[offset_base + node];
+    const auto end = population.compiled.connection_offsets[offset_base + node + 1U];
+    float sum = 0.0F;
+    for (std::uint32_t connection = start; connection < end; ++connection) {
+      const auto source = population.compiled.connection_sources[compiled_connection_base + connection];
+      if (source < node_count) {
+        sum += activations[source] * population.compiled.connection_weights[compiled_connection_base + connection];
+      }
+    }
+    activations[node] = tanhf(sum);
+  }
+
+  return node_count;
+}
+
+__device__ inline float compiled_output_activation(const DevicePopulationBuffers &population, std::uint32_t slot,
+                                                   std::uint16_t node_count,
+                                                   const float (&activations)[kCompileScratchNodeLimit],
+                                                   std::uint32_t output_index) {
+  if (output_index >= population.compiled.output_stride) {
+    return 0.0F;
+  }
+  const auto output_base = static_cast<std::size_t>(slot) * population.compiled.output_stride;
+  const auto output_node = population.compiled.output_indices[output_base + output_index];
+  return output_node < node_count ? activations[output_node] : 0.0F;
 }
 
 } // namespace moonai_gpu

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::tick::genome::PopulationKind;
+use crate::tick::simulation::PopulationKind;
 
 pub const MAX_SPECIES_SUMMARIES: u32 = 64;
 

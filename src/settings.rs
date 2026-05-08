@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::config_error::ConfigError;
+use crate::config::ConfigError;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UiConfig {
@@ -221,13 +221,6 @@ pub fn load_settings(path: Option<&str>) -> Result<UiConfig, ConfigError> {
     };
     let settings: UiConfig = serde_json::from_reader(file)?;
     Ok(settings)
-}
-
-pub fn settings_path_from_binary() -> Option<std::path::PathBuf> {
-    let binary_path = std::env::current_exe().ok()?;
-    let binary_dir = binary_path.parent()?;
-    let settings_path = binary_dir.join("config").join("settings.json");
-    if settings_path.exists() { Some(settings_path) } else { None }
 }
 
 pub fn config_path_from_binary() -> Option<std::path::PathBuf> {

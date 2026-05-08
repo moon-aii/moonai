@@ -2,12 +2,11 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use anyhow::{Context as _, Result};
-use eframe::egui::{self, Color32, ColorImage, Painter, Pos2, Rect, Stroke, StrokeKind, Vec2};
+use eframe::egui::{self, Color32, ColorImage, Pos2, Rect, Stroke, StrokeKind, Vec2};
 use image::ImageEncoder as _;
 
 use crate::settings::UiConfig;
 use crate::tick::buffers::{RenderAgentReadback, RenderFoodReadback, RenderSnapshotReadback};
-use crate::tick::genome::PopulationKind;
 use crate::ui::types::{CameraState, SelectedAgentData};
 
 const GRID_DIVISIONS: u32 = 12;
@@ -150,15 +149,26 @@ pub fn paint_network(ui: &mut egui::Ui, rect: Rect, ui_config: &UiConfig, select
 fn draw_grid(raster: &mut Raster, ui_config: &UiConfig, camera: CameraState, world_size: f32) {
     let border = color_with_alpha(ui_config.border_color, 255);
     let grid = color_with_alpha(ui_config.grid_color, 255);
-    raster.draw_rect_outline(0, 0, raster.width as i32 - 1, raster.height as i32 - 1, border);
 
     for index in 1..GRID_DIVISIONS {
         let world = world_size * (index as f32 / GRID_DIVISIONS as f32);
-        let x = project_to_image(raster.size(), camera, world_size, world, 0.0).0;
-        let y = project_to_image(raster.size(), camera, world_size, 0.0, world).1;
-        raster.draw_line((x, 0.0), (x, raster.height as f32 - 1.0), grid);
-        raster.draw_line((0.0, y), (raster.width as f32 - 1.0, y), grid);
+        let vertical_top = project_to_image(raster.size(), camera, world_size, world, world_size);
+        let vertical_bottom = project_to_image(raster.size(), camera, world_size, world, 0.0);
+        raster.draw_line(vertical_top, vertical_bottom, grid);
+
+        let horizontal_left = project_to_image(raster.size(), camera, world_size, 0.0, world);
+        let horizontal_right = project_to_image(raster.size(), camera, world_size, world_size, world);
+        raster.draw_line(horizontal_left, horizontal_right, grid);
     }
+
+    let bottom_left = project_to_image(raster.size(), camera, world_size, 0.0, 0.0);
+    let bottom_right = project_to_image(raster.size(), camera, world_size, world_size, 0.0);
+    let top_right = project_to_image(raster.size(), camera, world_size, world_size, world_size);
+    let top_left = project_to_image(raster.size(), camera, world_size, 0.0, world_size);
+    raster.draw_line(top_left, top_right, border);
+    raster.draw_line(top_right, bottom_right, border);
+    raster.draw_line(bottom_right, bottom_left, border);
+    raster.draw_line(bottom_left, top_left, border);
 }
 
 fn draw_food(
@@ -402,13 +412,6 @@ impl Raster {
         ColorImage::new([self.width, self.height], self.pixels)
     }
 
-    fn draw_rect_outline(&mut self, left: i32, top: i32, right: i32, bottom: i32, color: Color32) {
-        self.draw_line((left as f32, top as f32), (right as f32, top as f32), color);
-        self.draw_line((right as f32, top as f32), (right as f32, bottom as f32), color);
-        self.draw_line((right as f32, bottom as f32), (left as f32, bottom as f32), color);
-        self.draw_line((left as f32, bottom as f32), (left as f32, top as f32), color);
-    }
-
     fn draw_line(&mut self, start: (f32, f32), end: (f32, f32), color: Color32) {
         let dx = end.0 - start.0;
         let dy = end.1 - start.1;
@@ -537,5 +540,24 @@ const fn clamp_f32(value: f32, min: f32, max: f32) -> f32 {
         max
     } else {
         value
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn vision_radius_matches_world_projection_distance() {
+        let size = [1280, 720];
+        let camera = CameraState::new(1800.0, 1800.0, 1.75);
+        let world_size = 3600.0;
+        let vision_range = 128.0;
+        let center = project_to_image(size, camera, world_size, 1400.0, 1400.0);
+        let edge = project_to_image(size, camera, world_size, 1528.0, 1400.0);
+        let rendered_radius = scaled_radius(size, camera, world_size, vision_range);
+        let projected_distance = (edge.0 - center.0).abs();
+
+        assert!((rendered_radius - projected_distance).abs() <= 0.001);
     }
 }
