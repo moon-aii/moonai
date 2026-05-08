@@ -62,12 +62,7 @@ __device__ void build_representative_header(const DevicePopulationBuffers &popul
   out_header->num_connections = population.genome.num_connections[slot];
 }
 
-__global__ void compile_population_kernel(DevicePopulationBuffers population, std::uint32_t output_stride) {
-  const auto idx = (blockIdx.x * blockDim.x) + threadIdx.x;
-  if (idx >= population.capacity) {
-    return;
-  }
-
+__device__ void compile_slot_device(DevicePopulationBuffers population, std::uint32_t idx, std::uint32_t output_stride) {
   if (population.alive[idx] == 0U) {
     population.compiled.node_counts[idx] = 0U;
     population.compiled.eval_counts[idx] = 0U;
@@ -212,6 +207,22 @@ __global__ void compile_population_kernel(DevicePopulationBuffers population, st
   population.compiled.node_counts[idx] = node_count;
   population.compiled.eval_counts[idx] = eval_count;
   population.compiled.connection_counts[idx] = active_connection_count;
+}
+
+__global__ void compile_population_kernel(DevicePopulationBuffers population, std::uint32_t output_stride) {
+  const auto idx = (blockIdx.x * blockDim.x) + threadIdx.x;
+  if (idx >= population.capacity) {
+    return;
+  }
+  compile_slot_device(population, idx, output_stride);
+}
+
+__global__ void compile_single_slot_kernel(DevicePopulationBuffers population, std::uint32_t slot,
+                                           std::uint32_t output_stride) {
+  if (blockIdx.x != 0U || threadIdx.x != 0U || slot >= population.capacity) {
+    return;
+  }
+  compile_slot_device(population, slot, output_stride);
 }
 
 __global__ void compiled_header_kernel(const DevicePopulationBuffers population, PopulationKind population_kind,
@@ -476,8 +487,8 @@ __global__ void invariant_check_kernel(const DevicePopulationBuffers predator, c
 } // namespace
 
 extern "C" std::int32_t moonai_gpu_evolution_compile_population(void *state_ptr, PopulationKind population_kind,
-                                                                  std::uint32_t inspected_slot,
-                                                                  CompiledNetworkReadbackHeader *out_header) {
+                                                                   std::uint32_t inspected_slot,
+                                                                   CompiledNetworkReadbackHeader *out_header) {
   auto *state = static_cast<GpuEvolutionState *>(state_ptr);
   if (state == nullptr || out_header == nullptr) {
     return static_cast<std::int32_t>(CudaStatus::InvalidArgument);
@@ -509,9 +520,42 @@ extern "C" std::int32_t moonai_gpu_evolution_compile_population(void *state_ptr,
   return static_cast<std::int32_t>(status);
 }
 
+extern "C" std::int32_t moonai_gpu_evolution_compile_slot(void *state_ptr, PopulationKind population_kind,
+                                                             std::uint32_t slot,
+                                                             CompiledNetworkReadbackHeader *out_header) {
+  auto *state = static_cast<GpuEvolutionState *>(state_ptr);
+  if (state == nullptr || out_header == nullptr) {
+    return static_cast<std::int32_t>(CudaStatus::InvalidArgument);
+  }
+
+  auto &population = moonai_gpu::population_for_kind(*state, population_kind);
+  if (slot >= population.capacity) {
+    return static_cast<std::int32_t>(CudaStatus::InvalidArgument);
+  }
+
+  CompiledNetworkReadbackHeader *device_header = nullptr;
+  auto status = moonai_gpu::alloc_array(&device_header, 1U);
+  if (status != CudaStatus::Success) {
+    return static_cast<std::int32_t>(status);
+  }
+
+  compile_single_slot_kernel<<<1U, 1U>>>(population, slot, state->config.num_outputs);
+  status = moonai_gpu::synchronize_kernels();
+  if (status == CudaStatus::Success) {
+    compiled_header_kernel<<<1U, 1U>>>(population, population_kind, slot, state->config.num_outputs, device_header);
+    status = moonai_gpu::synchronize_kernels();
+  }
+  if (status == CudaStatus::Success) {
+    status = moonai_gpu::copy_compact_device_readback(device_header, out_header, sizeof(*out_header));
+  }
+
+  moonai_gpu::free_array(device_header);
+  return static_cast<std::int32_t>(status);
+}
+
 extern "C" std::int32_t moonai_gpu_evolution_selected_agent_network(const void *state_ptr,
-                                                                      PopulationKind population_kind,
-                                                                      std::uint32_t slot,
+                                                                       PopulationKind population_kind,
+                                                                       std::uint32_t slot,
                                                                       SelectedAgentNetworkReadback *out_network) {
   auto *state = static_cast<const GpuEvolutionState *>(state_ptr);
   if (state == nullptr || out_network == nullptr) {

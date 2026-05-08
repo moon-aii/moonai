@@ -47,6 +47,7 @@ constexpr std::uint32_t kVelocityXInputIndex = kSelfEnergyInputIndex + 1U;
 constexpr std::uint32_t kVelocityYInputIndex = kSelfEnergyInputIndex + 2U;
 constexpr std::uint32_t kWallXInputIndex = kSelfEnergyInputIndex + kSelfStateSensorCount;
 constexpr std::uint32_t kWallYInputIndex = kWallXInputIndex + 1U;
+constexpr std::uint32_t kUnclaimedMate = 0xFFFF'FFFFU;
 
 struct DeviceGenomeBuffers {
   std::int32_t *connection_from;
@@ -188,12 +189,23 @@ struct GpuSimulationConfig {
   float prey_speed;
   float vision_range;
   float interaction_range;
+  float mate_range;
   float energy_drain_per_tick;
   float energy_gain_from_kill;
   float energy_gain_from_food;
   float initial_energy;
   float max_energy;
+  float reproduction_energy_threshold;
+  float reproduction_energy_cost;
+  float offspring_initial_energy;
+  float mutation_rate;
+  float weight_mutation_power;
+  float add_node_rate;
+  float add_connection_rate;
+  float delete_connection_rate;
+  std::uint32_t max_connection_attempts;
   std::uint32_t max_age;
+  std::uint32_t report_interval_ticks;
   std::uint64_t seed;
 };
 
@@ -323,6 +335,19 @@ struct SpatialGridReadback {
   float cell_size;
 };
 
+struct ReproductionPair {
+  std::uint32_t parent_a_slot;
+  std::uint32_t parent_b_slot;
+};
+
+struct ReproductionSummaryReadback {
+  PopulationKind population_kind;
+  std::uint32_t eligible_parents;
+  std::uint32_t candidate_pairs;
+  std::uint32_t births;
+  std::uint32_t failed_pairs;
+};
+
 struct FreeListStateReadback {
   std::uint32_t tick;
   std::uint32_t predator_free_slots;
@@ -342,6 +367,34 @@ struct InvariantCheckReadback {
   std::uint32_t invalid_output_indices;
   std::uint32_t invalid_species_assignments;
   std::uint32_t innovation_log_overflow;
+};
+
+struct MetricsSummaryReadback {
+  std::uint32_t tick;
+  std::uint32_t predator_count;
+  std::uint32_t prey_count;
+  std::uint32_t predator_births;
+  std::uint32_t prey_births;
+  std::uint32_t predator_deaths;
+  std::uint32_t prey_deaths;
+  std::uint32_t predator_species;
+  std::uint32_t prey_species;
+  float avg_predator_complexity;
+  float avg_prey_complexity;
+  float avg_predator_energy;
+  float avg_prey_energy;
+  std::uint32_t max_predator_generation;
+  float avg_predator_generation;
+  std::uint32_t max_prey_generation;
+  float avg_prey_generation;
+};
+
+struct CompactionSummaryReadback {
+  PopulationKind population_kind;
+  std::uint32_t previous_capacity;
+  std::uint32_t live_count;
+  std::uint32_t free_slots_after;
+  std::uint32_t compacted;
 };
 
 struct SimulationCounters {
@@ -382,6 +435,15 @@ struct GpuEvolutionState {
   std::uint32_t *prey_free_list;
   std::uint32_t *predator_free_len;
   std::uint32_t *prey_free_len;
+  std::uint32_t *predator_mate_claims;
+  std::uint32_t *prey_mate_claims;
+  ReproductionPair *predator_reproduction_pairs;
+  ReproductionPair *prey_reproduction_pairs;
+  std::uint32_t *predator_pair_count;
+  std::uint32_t *prey_pair_count;
+  ReproductionSummaryReadback *predator_reproduction_summary;
+  ReproductionSummaryReadback *prey_reproduction_summary;
+  MetricsSummaryReadback *metrics_summary;
   std::uint32_t *predator_cell_counts;
   std::uint32_t *predator_cell_offsets;
   std::uint32_t *predator_cell_write_offsets;

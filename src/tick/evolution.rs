@@ -10,14 +10,16 @@ use crate::tick::buffers::{
     SpatialGridReadback, UiStatsReadback,
 };
 use crate::tick::checks::{CudaStatus, InvariantCheckReadback, check_cuda};
-use crate::tick::compaction::FreeListStateReadback;
+use crate::tick::compaction::{CompactionSummaryReadback, FreeListStateReadback};
 use crate::tick::compiled::CompiledNetworkReadbackHeader;
 use crate::tick::crossover::CrossoverSummaryReadback;
 use crate::tick::genome::{PopulationKind, SeededAgentSnapshot};
 use crate::tick::inference::SensorSnapshotReadback;
 use crate::tick::innovation::{DeviceInnovationState, InnovationLogReadbackHeader, InnovationRecord};
+use crate::tick::metrics_reduce::MetricsSummaryReadback;
 use crate::tick::mutation::{GpuMutationConfig, MutationSummaryReadback};
 use crate::tick::network::SelectedAgentNetworkReadback;
+use crate::tick::reproduction::ReproductionSummaryReadback;
 use crate::tick::simulation::GpuSimulationConfig;
 use crate::tick::species::{RepresentativeGenomeHeader, SpeciesBatchReadbackHeader, SpeciesSummaryReadback};
 
@@ -194,6 +196,33 @@ impl EvolutionManager {
         readback("moonai_gpu_simulation_spatial_grid_state", |out| {
             // SAFETY: `self.raw` is valid and `out` points to writable storage for the compact spatial-grid readback.
             unsafe { moonai_gpu_simulation_spatial_grid_state(self.raw.as_ptr(), out) }
+        })
+    }
+
+    pub fn simulation_reproduction_summary(
+        &self,
+        population_kind: PopulationKind,
+    ) -> Result<ReproductionSummaryReadback> {
+        readback("moonai_gpu_simulation_reproduction_summary", |out| {
+            // SAFETY: `self.raw` is valid and `out` points to writable storage for the compact reproduction readback.
+            unsafe { moonai_gpu_simulation_reproduction_summary(self.raw.as_ptr(), population_kind, out) }
+        })
+    }
+
+    pub fn simulation_metrics_summary(&self) -> Result<MetricsSummaryReadback> {
+        readback("moonai_gpu_simulation_metrics_summary", |out| {
+            // SAFETY: `self.raw` is valid and `out` points to writable storage for the compact metrics readback.
+            unsafe { moonai_gpu_simulation_metrics_summary(self.raw.as_ptr(), out) }
+        })
+    }
+
+    pub fn simulation_compact_population(
+        &mut self,
+        population_kind: PopulationKind,
+    ) -> Result<CompactionSummaryReadback> {
+        readback("moonai_gpu_simulation_compact_population", |out| {
+            // SAFETY: `self.raw` is valid and `out` points to writable storage for the compact compaction readback.
+            unsafe { moonai_gpu_simulation_compact_population(self.raw.as_ptr(), population_kind, out) }
         })
     }
 
@@ -501,6 +530,20 @@ unsafe extern "C" {
     fn moonai_gpu_simulation_spatial_grid_state(
         state: *const c_void,
         out_state: *mut SpatialGridReadback,
+    ) -> CudaStatus;
+    fn moonai_gpu_simulation_reproduction_summary(
+        state: *const c_void,
+        population_kind: PopulationKind,
+        out_summary: *mut ReproductionSummaryReadback,
+    ) -> CudaStatus;
+    fn moonai_gpu_simulation_metrics_summary(
+        state: *const c_void,
+        out_summary: *mut MetricsSummaryReadback,
+    ) -> CudaStatus;
+    fn moonai_gpu_simulation_compact_population(
+        state: *mut c_void,
+        population_kind: PopulationKind,
+        out_summary: *mut CompactionSummaryReadback,
     ) -> CudaStatus;
     fn moonai_gpu_simulation_sensor_snapshot(
         state: *const c_void,

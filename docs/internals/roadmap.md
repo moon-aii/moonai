@@ -426,13 +426,13 @@ src/
 | 5   | `resolve_food`      | —                          | Prey claim food in range                       | [x]    |
 | 6   | `resolve_combat`    | —                          | Predator claim prey in range                   | [x]    |
 | 7   | `apply_movement`    | —                          | NN output → position update                    | [x]    |
-| 8   | `reproduction`      | —                          |                                                | [ ]    |
-| 8a  | evaluate            | —                          | Energy >= threshold, not used this tick        | [ ]    |
-| 8b  | find_mate           | —                          | DenseReproductionGrid search                   | [ ]    |
-| 8c  | gpu_crossover       | **tick evolution modules** | Calls crossover.cu kernel                      | [ ]    |
-| 8d  | gpu_mutate          | **tick evolution modules** | Calls mutation.cu kernel                       | [ ]    |
-| 8e  | gpu_compile_network | **tick evolution modules** | Calls network_compilation.cu                   | [ ]    |
-| 8f  | activate_slot       | —                          | Mark birth_state=ACTIVE                        | [ ]    |
+| 8   | `reproduction`      | —                          |                                                | [x]    |
+| 8a  | evaluate            | —                          | Energy >= threshold, not used this tick        | [x]    |
+| 8b  | find_mate           | —                          | DenseReproductionGrid search                   | [x]    |
+| 8c  | gpu_crossover       | **tick evolution modules** | Calls crossover.cu kernel                      | [x]    |
+| 8d  | gpu_mutate          | **tick evolution modules** | Calls mutation.cu kernel                       | [x]    |
+| 8e  | gpu_compile_network | **tick evolution modules** | Calls network_compilation.cu                   | [x]    |
+| 8f  | activate_slot       | —                          | Mark birth_state=ACTIVE                        | [x]    |
 | 9   | `write_ui_stats`    | —                          | Pinned memory write on UI refresh cadence      | [x]    |
 | 10  | `write_ui_frame`    | —                          | Publish all-agent render snapshot for UI frame | [x]    |
 
@@ -440,14 +440,14 @@ src/
 
 | #   | Task                                                | Notes                           | Status |
 | --- | --------------------------------------------------- | ------------------------------- | ------ |
-| 11  | Launch `metrics_reduce_kernel` at `report_interval` | Warp reduction → compact struct | [ ]    |
+| 11  | Launch `metrics_reduce_kernel` at `report_interval` | Warp reduction → compact struct | [x]    |
 
 #### 4d. Buffer Management
 
 | #   | Task                           | Trigger                             | Status |
 | --- | ------------------------------ | ----------------------------------- | ------ |
-| 12  | Buffer expansion               | `live_count > capacity * 0.9`       | [ ]    |
-| 13  | Compaction (mark-scatter-swap) | `free_list empty && births pending` | [ ]    |
+| 12  | Buffer expansion               | `live_count > capacity * 0.9`       | [x]    |
+| 13  | Compaction (mark-scatter-swap) | `free_list empty && births pending` | [x]    |
 
 ### Phase 5 — Metrics
 
