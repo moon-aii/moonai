@@ -300,7 +300,6 @@ There is no separate CPU reference implementation used to confirm algorithm corr
 - CPU-visible inspection data should stay limited to compact snapshots such as overlay counters and selected-agent inspection results.
 - Metrics export must use GPU-side reduction first, then copy only compact report structs needed for `stats.csv`, `species.csv`, and `genomes.json`.
 
-
 ## GPU Kernel Reference
 
 ### `crossover.cu` — High-Level Algorithm

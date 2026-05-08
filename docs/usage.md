@@ -111,10 +111,10 @@ just experiment-run
 | `S`                    | Save screenshot                               |
 | `Esc`                  | Quit                                          |
 | Left-click             | Select an agent (shows stats + live NN panel) |
-| Middle-click drag | Pan camera                                                                |
+| Middle-click drag      | Pan camera                                    |
 | Right-click drag       | Pan camera                                    |
 | Scroll wheel           | Zoom                                          |
-| Home              | Reset camera to default zoom and center                                   |
+| Home                   | Reset camera to default zoom and center       |
 
 The main scene always renders the full active population: all predators, prey, and food with current positions, plus predator/prey movement directions and population overlay statistics.
 

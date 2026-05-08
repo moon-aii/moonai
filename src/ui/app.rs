@@ -244,9 +244,9 @@ impl App {
         }
     }
 
-    fn draw_side_panel(&mut self, ctx: &egui::Context) {
-        egui::SidePanel::right("moonai_side_panel").resizable(false).default_width(self.ui_config.ui_side_margin).show(
-            ctx,
+    fn draw_side_panel(&mut self, ui: &mut egui::Ui) {
+        egui::Panel::right("moonai_side_panel").resizable(false).default_size(self.ui_config.ui_side_margin).show_inside(
+            ui,
             |ui| {
                 ui.heading("MoonAI");
                 ui.label(format!("Experiment: {}", self.run_label));
@@ -336,8 +336,8 @@ impl App {
         );
     }
 
-    fn draw_world(&mut self, ctx: &egui::Context) {
-        egui::CentralPanel::default().show(ctx, |ui| {
+    fn draw_world(&mut self, ui: &mut egui::Ui) {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             let available = ui.available_size();
             let width = available.x.max(1.0) as usize;
             let height = available.y.max(1.0) as usize;
@@ -366,13 +366,13 @@ impl App {
                 egui::Image::new((texture.id(), available.max(egui::vec2(1.0, 1.0)))).sense(Sense::click_and_drag()),
             );
 
-            self.handle_view_input(ctx, response.rect, &response);
+            self.handle_view_input(ui.ctx(), response.rect, &response);
         });
     }
 
     fn handle_view_input(&mut self, ctx: &egui::Context, rect: egui::Rect, response: &egui::Response) {
         if response.hovered() {
-            let scroll = ctx.input(|input| input.raw_scroll_delta.y);
+            let scroll = ctx.input(|input| input.smooth_scroll_delta.y);
             if scroll.abs() > f32::EPSILON {
                 let hover = ctx.input(|input| input.pointer.hover_pos()).unwrap_or(rect.center());
                 let world_before = render::screen_to_world(rect, self.camera, self.config.grid_size as f32, hover);
@@ -435,18 +435,18 @@ impl App {
 }
 
 impl eframe::App for App {
-    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.update_fps();
         self.error_message = None;
-        self.handle_shortcuts(ctx, frame);
+        self.handle_shortcuts(ui.ctx(), _frame);
         if let Err(error) = self.drive_simulation() {
             self.error_message = Some(error.to_string());
             self.ui_state.paused = true;
         }
 
-        self.draw_side_panel(ctx);
-        self.draw_world(ctx);
-        ctx.request_repaint();
+        self.draw_side_panel(ui);
+        self.draw_world(ui);
+        ui.ctx().request_repaint();
     }
 }
 
