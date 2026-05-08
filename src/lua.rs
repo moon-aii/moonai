@@ -1,9 +1,11 @@
+use crate::config::{ConfigError, SimulationConfig};
 use mlua::Lua;
 use std::collections::HashMap;
+use std::path::Path;
 
-use crate::config::{ConfigError, SimulationConfig};
+pub fn load_config(root_dir: &Path) -> Result<HashMap<String, SimulationConfig>, ConfigError> {
+    let config_path = root_dir.join("config").join("config.lua");
 
-pub fn load_config(path: &str) -> Result<HashMap<String, SimulationConfig>, ConfigError> {
     let lua = Lua::new();
     let defaults = SimulationConfig::default();
     let globals = lua.globals();
@@ -89,7 +91,7 @@ pub fn load_config(path: &str) -> Result<HashMap<String, SimulationConfig>, Conf
 
     globals.set("moonai_defaults", moonai_defaults).map_err(|e| ConfigError::LuaParse(e.to_string()))?;
 
-    let content = std::fs::read_to_string(path).map_err(ConfigError::Io)?;
+    let content = std::fs::read_to_string(config_path).map_err(ConfigError::Io)?;
     let experiments_table: mlua::Table = lua.load(&content).eval().map_err(|e| ConfigError::LuaParse(e.to_string()))?;
 
     let mut experiments = HashMap::new();

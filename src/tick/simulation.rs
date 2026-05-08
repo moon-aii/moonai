@@ -340,16 +340,8 @@ mod tests {
         }
     }
 
-    fn runtime_ready() -> bool {
-        EvolutionManager::runtime_status().is_success()
-    }
-
     #[test]
     fn simulation_initializes_food_and_ui_state() -> Result<()> {
-        if !runtime_ready() {
-            return Ok(());
-        }
-
         let state = SimulationState::init_from_config(&simulation_config(61))?;
         let stats = state.ui_stats()?;
         let free_list = state.free_list_state()?;
@@ -374,10 +366,6 @@ mod tests {
 
     #[test]
     fn simulation_ticks_are_deterministic_for_same_seed() -> Result<()> {
-        if !runtime_ready() {
-            return Ok(());
-        }
-
         let mut state_a = SimulationState::init_from_config(&simulation_config(62))?;
         let mut state_b = SimulationState::init_from_config(&simulation_config(62))?;
 
@@ -399,10 +387,6 @@ mod tests {
 
     #[test]
     fn simulation_tick_advances_positions_and_counters() -> Result<()> {
-        if !runtime_ready() {
-            return Ok(());
-        }
-
         let mut state = SimulationState::init_from_config(&simulation_config(63))?;
         let stats = state.tick()?;
         let free_list = state.free_list_state()?;
@@ -421,10 +405,6 @@ mod tests {
 
     #[test]
     fn simulation_sensor_snapshot_encodes_targets_and_walls() -> Result<()> {
-        if !runtime_ready() {
-            return Ok(());
-        }
-
         let state = SimulationState::init_from_config(&simulation_config(64))?;
         let sensors = state.sensor_snapshot(PopulationKind::Predator, 0)?;
 
@@ -443,10 +423,6 @@ mod tests {
 
     #[test]
     fn simulation_metrics_summary_refreshes_on_report_interval() -> Result<()> {
-        if !runtime_ready() {
-            return Ok(());
-        }
-
         let mut config = simulation_config(67);
         config.report_interval_ticks = 1;
         let mut state = SimulationState::init_from_config(&config)?;

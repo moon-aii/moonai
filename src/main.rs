@@ -24,16 +24,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 #[derive(Debug, Parser)]
 #[command(author, version, about)]
 pub struct CliArgs {
-    #[arg(short, long)]
-    pub config: Option<String>,
-    #[arg(long)]
-    pub settings: Option<String>,
     #[arg(short = 'n', long)]
     pub ticks: Option<i32>,
     #[arg(long)]
     pub headless: bool,
-    #[arg(short, long)]
-    pub verbose: bool,
     #[arg(long)]
     pub experiment: Option<String>,
     #[arg(long)]
@@ -47,18 +41,7 @@ pub struct CliArgs {
 }
 
 pub static SHOULD_STOP: AtomicBool = AtomicBool::new(false);
-
 static HANDLER_INIT: Once = Once::new();
-
-pub fn setup_signal_handlers() {
-    SHOULD_STOP.store(false, Ordering::SeqCst);
-    HANDLER_INIT.call_once(|| {
-        let _ = ctrlc::set_handler(|| {
-            SHOULD_STOP.store(true, Ordering::SeqCst);
-        });
-    });
-}
-
 pub fn is_signal_pending() -> bool {
     SHOULD_STOP.load(Ordering::SeqCst)
 }
@@ -73,62 +56,6 @@ fn stderr_line(message: &str) {
     let mut stderr = io::stderr().lock();
     let _ = stderr.write_all(message.as_bytes());
     let _ = stderr.write_all(b"\n");
-}
-
-fn resolve_config_path(args: &CliArgs) -> Option<String> {
-    args.config.as_ref().map_or_else(
-        || settings::config_path_from_binary().map(|path| path.to_string_lossy().into_owned()),
-        |path| Some(path.clone()),
-    )
-}
-
-fn default_or_only_experiment(experiments: &HashMap<String, SimulationConfig>) -> Option<SimulationConfig> {
-    experiments
-        .get("default")
-        .cloned()
-        .or_else(|| if experiments.len() == 1 { experiments.values().next().cloned() } else { None })
-}
-
-fn do_list(config_path: &str) -> Result<(), ConfigError> {
-    let experiments = load_experiments(config_path)?;
-    let mut names: Vec<_> = experiments.keys().map(String::as_str).collect();
-    names.sort_unstable();
-    stdout_line("Available experiments:");
-    for name in names {
-        stdout_line(&format!("  {name}"));
-    }
-    Ok(())
-}
-
-fn do_validate(config_path: &str, experiment_name: Option<&str>) -> Result<(), ConfigError> {
-    let experiments = load_experiments(config_path)?;
-
-    let config = experiment_name.map_or_else(
-        || {
-            default_or_only_experiment(&experiments).unwrap_or_else(|| {
-                stderr_line("Error: no 'default' experiment found and multiple experiments exist");
-                std::process::exit(1);
-            })
-        },
-        |name| {
-            experiments.get(name).cloned().unwrap_or_else(|| {
-                stderr_line(&format!("Error: experiment '{name}' not found"));
-                std::process::exit(1);
-            })
-        },
-    );
-
-    match validate_config(&config) {
-        Ok(()) => {
-            stdout_line("Configuration is valid.");
-            Ok(())
-        }
-        Err(ConfigError::InvalidConfig(msg)) => {
-            stderr_line(&format!("Configuration is invalid: {msg}"));
-            std::process::exit(1);
-        }
-        Err(e) => Err(e),
-    }
 }
 
 fn select_named_experiment(
@@ -166,11 +93,6 @@ fn select_named_experiment(
                 .ok_or_else(|| ConfigError::InvalidConfig(format!("experiment '{n}' not found")))
         },
     )
-}
-
-fn cuda_runtime_ready() -> Result<()> {
-    let status = crate::tick::evolution::EvolutionManager::runtime_status();
-    if status == CudaStatus::Success { Ok(()) } else { bail!("CUDA runtime unavailable: {status:?}") }
 }
 
 fn resolve_run_name(experiment_name: &str, explicit_name: Option<&str>) -> String {
@@ -215,10 +137,6 @@ fn log_report_snapshot(state: &mut SimulationState, logger: &mut Logger) -> Resu
 }
 
 fn run_headless_experiment(run_label: &str, config: &SimulationConfig, run_dir: &Path) -> Result<()> {
-    validate_config(config)?;
-    cuda_runtime_ready()?;
-    setup_signal_handlers();
-
     let report_interval = u32::try_from(config.report_interval_ticks).with_context(|| {
         format!("report_interval_ticks could not be converted to u32: {}", config.report_interval_ticks)
     })?;
@@ -263,29 +181,64 @@ fn run_headless_experiment(run_label: &str, config: &SimulationConfig, run_dir: 
     Ok(())
 }
 
-fn run() -> Result<()> {
-
-}
-
 fn main() -> Result<()> {
     let args = CliArgs::parse();
 
-    let Some(config_path) = resolve_config_path(&args) else {
-        stderr_line("Error: config.lua not found. Provide with --config or place next to binary.");
+    let Some(root_dir) = std::env::current_exe().ok().map(|mut p| {
+        p.pop();
+        p
+    }) else {
+        stderr_line("Error: Filesystem error.");
         std::process::exit(1);
     };
 
-    let experiments = lua::load_config(&config_path)?;
+    let ui_config = settings::load_settings(&root_dir)?;
+    let experiments = lua::load_config(&root_dir)?;
+
+    let mut names: Vec<_> = experiments.keys().map(String::as_str).collect();
+    names.sort_unstable();
 
     if args.list {
-        do_list(&config_path)?;
+        stdout_line("Available experiments:");
+        for name in names {
+            stdout_line(&format!("  {name}"));
+        }
         return Ok(());
+    }
+
+    for name in names {
+        let config = experiments.get(name).cloned().unwrap_or_else(|| {
+            stderr_line(&format!("Error: experiment '{name}' not found"));
+            std::process::exit(1);
+        });
+        match validate_config(&config) {
+            Err(ConfigError::InvalidConfig(msg)) => {
+                stderr_line(&format!("Configuration is invalid: {msg}"));
+                std::process::exit(1);
+            }
+            Err(e) => return Err(anyhow::anyhow!(e)),
+            _ => (),
+        }
     }
 
     if args.validate {
-        do_validate(&config_path, args.experiment.as_deref())?;
+        stdout_line("Configuration is valid.");
         return Ok(());
     }
+
+    // check cuda
+    let cuda_status = crate::tick::evolution::EvolutionManager::runtime_status();
+    if cuda_status != CudaStatus::Success { 
+        bail!("CUDA runtime unavailable: {cuda_status:?}")
+    }
+
+    // setup signal handlers
+    SHOULD_STOP.store(false, Ordering::SeqCst);
+    HANDLER_INIT.call_once(|| {
+        let _ = ctrlc::set_handler(|| {
+            SHOULD_STOP.store(true, Ordering::SeqCst);
+        });
+    });
 
     if args.all {
         if !args.headless {
@@ -328,13 +281,6 @@ fn main() -> Result<()> {
         let run_dir = resolve_run_dir(&config.output_dir, Some(run_name.as_str()), config.seed);
         return run_headless_experiment(&selected_name, &config, &run_dir);
     }
-
-    validate_config(&config)?;
-    cuda_runtime_ready()?;
-
-    let ui_config = settings::load_settings(args.settings.as_deref())?;
-
-    setup_signal_handlers();
 
     App::run(&selected_name, &config, &ui_config)
 }

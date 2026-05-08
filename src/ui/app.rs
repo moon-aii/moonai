@@ -41,17 +41,13 @@ pub struct App {
 
 impl App {
     pub fn run(run_label: &str, config: &SimulationConfig, ui_config: &UiConfig) -> Result<()> {
-        let icon = load_icon();
-        let mut native_options = eframe::NativeOptions {
+        let native_options = eframe::NativeOptions {
             renderer: eframe::Renderer::Wgpu,
             viewport: egui::ViewportBuilder::default()
                 .with_title(format!("MoonAI - {run_label}"))
                 .with_inner_size([ui_config.window_width as f32, ui_config.window_height as f32]),
             ..Default::default()
         };
-        if let Some(icon) = icon {
-            native_options.viewport = native_options.viewport.with_icon(icon);
-        }
 
         let run_label = run_label.to_owned();
         let config_for_app = config.clone();
@@ -592,19 +588,6 @@ fn find_agent_by_entity(
         PopulationKind::Prey => &snapshot.prey,
     };
     collection.iter().find(|agent| agent.entity_id == entity_id)
-}
-
-fn resolve_logo_path() -> Option<PathBuf> {
-    let binary = std::env::current_exe().ok()?;
-    let binary_dir = binary.parent()?;
-    let candidate = binary_dir.join("logo.png");
-    candidate.is_file().then_some(candidate)
-}
-
-fn load_icon() -> Option<egui::IconData> {
-    let path = resolve_logo_path()?;
-    let bytes = std::fs::read(&path).ok()?;
-    eframe::icon_data::from_png_bytes(&bytes).ok()
 }
 
 fn screenshot_path(run_label: &str, tick: u32) -> Result<PathBuf> {

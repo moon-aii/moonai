@@ -60,19 +60,17 @@ Set `seed` to `0` for random seed, or a fixed value for reproducible experiments
 
 ### CLI flags
 
-| Flag                  | Purpose                                             |
-| --------------------- | --------------------------------------------------- |
-| `-h, --help`          | Show CLI help                                       |
-| `-c, --config <path>` | Path to Lua config file (default: binary directory) |
-| `--settings <path>`   | Path to settings.json (default: binary directory)   |
-| `-n, --ticks <n>`     | Override max ticks (`0` = infinite)                 |
-| `--headless`          | Run without visualization                           |
-| `-v, --verbose`       | Enable debug logging                                |
-| `--experiment <name>` | Select one experiment by name                       |
-| `--all`               | Run all experiments sequentially (headless only)    |
-| `--list`              | List experiment names and exit                      |
-| `--name <name>`       | Override output directory name                      |
-| `--validate`          | Load + validate config, print result, exit          |
+| Flag                  | Purpose                                          |
+| --------------------- | ------------------------------------------------ |
+| `-h, --help`          | Show CLI help                                    |
+| `-n, --ticks <n>`     | Override max ticks (`0` = infinite)              |
+| `--headless`          | Run without visualization                        |
+| `-v, --verbose`       | Enable debug logging                             |
+| `--experiment <name>` | Select one experiment by name                    |
+| `--all`               | Run all experiments sequentially (headless only) |
+| `--list`              | List experiment names and exit                   |
+| `--name <name>`       | Override output directory name                   |
+| `--validate`          | Load + validate config, print result, exit       |
 
 ## Running Simulation
 
