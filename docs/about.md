@@ -13,13 +13,22 @@ The platform enables researchers to:
 
 ## Features
 
+### Configuration
+
+- **Simulation**: Simulation parameters are defined in the Lua-based `config.lua` experiment file, covering population sizes, mutation rates, NEAT parameters, and energy system settings. Custom experiment sets can be specified at runtime without recompilation.
+- **Visualization**: UI configuration (colors, sizes, panel layout, window settings) is defined in `settings.json`.
+
+### Reproducible Experiments
+
+Seeded RNG with deterministic behavior on a fixed runtime environment
+
 ### Real-Time Analytics
 
-Researchers observe emergent behaviors through a real-time visualization layer. The system concurrently logs extensive telemetry, including population metrics and genome histories, exporting structured data for rigorous offline analysis using Python-based tools.
+Researchers observe emergent behaviors through a real-time visualization layer.
 
 ### Data Export
 
-CSV/JSON output (including optional per-tick trajectories) compatible with Python analysis tools
+The system concurrently logs extensive telemetry (CSV/JSON output), including population metrics and genome histories, exporting structured data for rigorous offline analysis using Python-based tools.
 
 ### Cross-Platform
 
@@ -33,20 +42,6 @@ To achieve high-performance execution, MoonAI uses a CUDA for all of the simulat
 
 The simulation operates within a deterministic, time-ticked 2D world. This virtual ecosystem imposes selective pressures on agents—predators and prey—with configurable attributes including speed, vision, stamina, and reproduction rates. Each agent is controlled by a neural network that reads 35 local inputs: the 5 closest predators, prey, and food items as signed proximity-weighted dx and dy pairs, plus self energy, velocity x/y, and signed wall proximity x/y.
 
-### Evolutionary Core
-
-MoonAI implements the NeuroEvolution of Augmenting Topologies (NEAT) algorithm to optimize agent behaviors. By evolving both neural network weights and topological structures, the system enables emergence of complex behavioral strategies through mutation, crossover, and speciation across successive generations.
-
 ### NEAT
 
-NEAT (NeuroEvolution of Augmenting Topologies) is a genetic algorithm for evolving artificial neural networks. It was chosen because it simultaneously evolves both the topology and weights of networks, allowing complex structures to emerge from simple beginnings without requiring manual architecture design.
-
-### Configuration
-
-Simulation parameters are defined in the Lua-based `config.lua` experiment file, covering population sizes, mutation rates, NEAT parameters, and energy system settings. UI configuration (colors, sizes, panel layout, window settings) is defined separately in `settings.json`. Custom experiment sets can be specified at runtime without recompilation.
-
-- **Lua Configuration** - Define named experiments and parameter sweeps in `config.lua` without recompilation
-
-### Reproducible Experiments
-
-Seeded RNG with deterministic behavior on a fixed runtime environment
+NEAT (NeuroEvolution of Augmenting Topologies) is a genetic algorithm for evolving artificial neural networks. It was chosen because it simultaneously evolves both the topology and weights of networks, allowing complex structures to emerge from simple beginnings without requiring manual architecture design. MoonAI implements the NeuroEvolution of Augmenting Topologies (NEAT) algorithm to optimize agent behaviors. By evolving both neural network weights and topological structures, the system enables emergence of complex behavioral strategies through mutation, crossover, and speciation across successive generations.
