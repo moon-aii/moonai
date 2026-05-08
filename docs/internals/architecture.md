@@ -458,28 +458,6 @@ Expansion:
 No artificial ceiling. Buffers grow as needed.
 ```
 
-## Compaction
-
-Compaction is NOT for ceiling avoidance -- it is for reclaiming dead slots when expansion is undesirable (e.g., nearing max GPU memory). It runs lazily when free list is empty but births are pending.
-
-```
-Trigger: free_list empty AND births pending AND we want to reclaim slots
-
-Pass 1 -- Mark:
-  for each slot i:
-    if alive[i]:
-      remap[i] = atomic_counter++
-
-Pass 2 -- Scatter:
-  for each slot i:
-    if alive[i]:
-      new_pos = remap[i]
-      copy agent[i] -> buffer[new_pos]
-
-Swap buffer pointers
-Reset free_list to dead slots at end of new buffer
-```
-
 ## Sensor Layout (35 inputs, unchanged)
 
 - 5 nearest predators x 2 values (dx, dy)

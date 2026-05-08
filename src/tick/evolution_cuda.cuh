@@ -115,13 +115,6 @@ struct InnovationRecord {
   std::uint32_t record_kind;
 };
 
-struct InnovationLogReadbackHeader {
-  std::uint32_t total_len;
-  std::uint32_t stored_len;
-  std::uint32_t returned_len;
-  std::uint32_t dropped_len;
-};
-
 struct GpuEvolutionConfig {
   std::uint32_t predator_capacity;
   std::uint32_t prey_capacity;
@@ -146,26 +139,6 @@ struct PopulationSummaryReadback {
   std::uint32_t next_node_id;
   float avg_energy;
   float avg_connections;
-};
-
-struct SeededAgentSnapshot {
-  PopulationKind population_kind;
-  std::uint32_t slot;
-  std::uint32_t entity_id;
-  std::uint32_t generation;
-  std::uint32_t species_id;
-  std::uint8_t alive;
-  std::uint8_t reserved0;
-  std::uint16_t reserved1;
-  float pos_x;
-  float pos_y;
-  float vel_x;
-  float vel_y;
-  float energy;
-  float age;
-  std::uint16_t num_nodes;
-  std::uint16_t num_connections;
-  std::uint64_t genome_hash;
 };
 
 struct UiStatsReadback {
@@ -343,16 +316,6 @@ struct RenderFoodReadback {
   float pos_y;
 };
 
-struct SpatialGridReadback {
-  std::uint32_t grid_cols;
-  std::uint32_t grid_rows;
-  std::uint32_t cell_count;
-  std::uint32_t predator_entries;
-  std::uint32_t prey_entries;
-  std::uint32_t food_entries;
-  float cell_size;
-};
-
 struct ReproductionPair {
   std::uint32_t parent_a_slot;
   std::uint32_t parent_b_slot;
@@ -374,19 +337,6 @@ struct FreeListStateReadback {
   std::uint32_t food_capacity;
 };
 
-struct InvariantCheckReadback {
-  std::uint32_t predator_agents_checked;
-  std::uint32_t prey_agents_checked;
-  std::uint32_t invalid_node_counts;
-  std::uint32_t invalid_connection_counts;
-  std::uint32_t invalid_connection_bounds;
-  std::uint32_t invalid_compiled_offsets;
-  std::uint32_t invalid_eval_nodes;
-  std::uint32_t invalid_output_indices;
-  std::uint32_t invalid_species_assignments;
-  std::uint32_t innovation_log_overflow;
-};
-
 struct MetricsSummaryReadback {
   std::uint32_t tick;
   std::uint32_t predator_count;
@@ -405,14 +355,6 @@ struct MetricsSummaryReadback {
   float avg_predator_generation;
   std::uint32_t max_prey_generation;
   float avg_prey_generation;
-};
-
-struct CompactionSummaryReadback {
-  PopulationKind population_kind;
-  std::uint32_t previous_capacity;
-  std::uint32_t live_count;
-  std::uint32_t free_slots_after;
-  std::uint32_t compacted;
 };
 
 struct SimulationCounters {

@@ -38,7 +38,7 @@ __device__ void write_connection_gene(const DevicePopulationBuffers &population,
 __global__ void crossover_kernel(DevicePopulationBuffers population, const std::uint32_t *next_entity_id,
                                  PopulationKind population_kind, std::uint32_t parent_a_slot,
                                  std::uint32_t parent_b_slot, std::uint32_t offspring_slot,
-                                 std::uint32_t num_inputs, float initial_energy, CrossoverSummaryReadback *out_summary) {
+                                 float initial_energy, CrossoverSummaryReadback *out_summary) {
   if (blockIdx.x != 0U || threadIdx.x != 0U) {
     return;
   }
@@ -221,7 +221,7 @@ extern "C" std::int32_t moonai_gpu_evolution_crossover(void *state_ptr, Populati
     const auto offspring_energy =
         state->simulation.offspring_initial_energy > 0.0F ? state->simulation.offspring_initial_energy : state->config.initial_energy;
     crossover_kernel<<<1U, 1U>>>(population, state->next_entity_id, population_kind, parent_a_slot, parent_b_slot,
-                                  offspring_slot, state->config.num_inputs, offspring_energy, device_summary);
+                                  offspring_slot, offspring_energy, device_summary);
     status = moonai_gpu::synchronize_kernels();
   }
   if (status == CudaStatus::Success) {
