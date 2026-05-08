@@ -29,9 +29,9 @@
   in {
     devShells.${system}.default = pkgs.mkShell {
       inherit name;
-      # strictDeps = true;
+      strictDeps = true;
       buildInputs = libs;
-      LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath libs;
+      NIX_LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath libs;
 
       packages = with pkgs; [
         clang-tools
