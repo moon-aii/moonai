@@ -473,6 +473,23 @@ inline CudaStatus synchronize_kernels() {
   return map_cuda_runtime_error(cudaDeviceSynchronize(), CudaStatus::KernelLaunchFailed);
 }
 
+template <typename T, typename LaunchFn>
+inline CudaStatus launch_single_value_readback(T *host_ptr, LaunchFn &&launch) {
+  T *device_ptr = nullptr;
+  auto status = alloc_array(&device_ptr, 1U);
+  if (status == CudaStatus::Success) {
+    status = launch(device_ptr);
+  }
+  if (status == CudaStatus::Success) {
+    status = synchronize_kernels();
+  }
+  if (status == CudaStatus::Success) {
+    status = copy_compact_device_readback(device_ptr, host_ptr, sizeof(*host_ptr));
+  }
+  free_array(device_ptr);
+  return status;
+}
+
 inline const DevicePopulationBuffers &population_for_kind(const GpuEvolutionState &state, PopulationKind population_kind) {
   return population_kind == PopulationKind::Predator ? state.predator : state.prey;
 }
@@ -499,6 +516,72 @@ __device__ inline float next_signed_float(std::uint64_t &state) { return (next_u
 __device__ inline std::uint64_t hash_mix(std::uint64_t hash, std::uint64_t value) {
   hash ^= value + 0x9e3779b97f4a7c15ULL + (hash << 6U) + (hash >> 2U);
   return hash;
+}
+
+__device__ inline std::uint16_t count_enabled_connections(const DevicePopulationBuffers &population,
+                                                          std::uint32_t slot,
+                                                          std::uint16_t connection_count) {
+  const auto connection_base = static_cast<std::size_t>(slot) * population.genome.connection_stride;
+  std::uint16_t enabled_count = 0U;
+  for (std::uint16_t connection = 0; connection < connection_count; ++connection) {
+    enabled_count = static_cast<std::uint16_t>(enabled_count +
+                                               (population.genome.connection_enabled[connection_base + connection] != 0U));
+  }
+  return enabled_count;
+}
+
+__device__ inline std::uint16_t evaluate_compiled_network(const DevicePopulationBuffers &population,
+                                                          std::uint32_t slot, std::uint32_t num_inputs,
+                                                          float (&activations)[kCompileScratchNodeLimit]) {
+  const auto node_count = population.compiled.node_counts[slot];
+  if (node_count == 0U || node_count > kCompileScratchNodeLimit) {
+    return 0U;
+  }
+
+  if (population.sensor_inputs != nullptr) {
+    const auto sensor_base = static_cast<std::size_t>(slot) * num_inputs;
+    for (std::uint32_t input = 0; input < num_inputs && input < node_count; ++input) {
+      activations[input] = population.sensor_inputs[sensor_base + input];
+    }
+  }
+  if (num_inputs < node_count) {
+    activations[num_inputs] = 1.0F;
+  }
+
+  const auto eval_count = population.compiled.eval_counts[slot];
+  const auto offset_base = static_cast<std::size_t>(slot) * (population.compiled.node_stride + 1U);
+  const auto eval_base = static_cast<std::size_t>(slot) * population.compiled.node_stride;
+  const auto compiled_connection_base = static_cast<std::size_t>(slot) * population.compiled.connection_stride;
+  for (std::uint16_t eval_index = 0; eval_index < eval_count; ++eval_index) {
+    const auto node = population.compiled.eval_order[eval_base + eval_index];
+    if (node >= node_count) {
+      continue;
+    }
+    const auto start = population.compiled.connection_offsets[offset_base + node];
+    const auto end = population.compiled.connection_offsets[offset_base + node + 1U];
+    float sum = 0.0F;
+    for (std::uint32_t connection = start; connection < end; ++connection) {
+      const auto source = population.compiled.connection_sources[compiled_connection_base + connection];
+      if (source < node_count) {
+        sum += activations[source] * population.compiled.connection_weights[compiled_connection_base + connection];
+      }
+    }
+    activations[node] = tanhf(sum);
+  }
+
+  return node_count;
+}
+
+__device__ inline float compiled_output_activation(const DevicePopulationBuffers &population, std::uint32_t slot,
+                                                   std::uint16_t node_count,
+                                                   const float (&activations)[kCompileScratchNodeLimit],
+                                                   std::uint32_t output_index) {
+  if (output_index >= population.compiled.output_stride) {
+    return 0.0F;
+  }
+  const auto output_base = static_cast<std::size_t>(slot) * population.compiled.output_stride;
+  const auto output_node = population.compiled.output_indices[output_base + output_index];
+  return output_node < node_count ? activations[output_node] : 0.0F;
 }
 
 __device__ inline void append_innovation_record(DeviceInnovationState *innovation, InnovationRecord *innovation_log,

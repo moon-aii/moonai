@@ -208,26 +208,17 @@ extern "C" std::int32_t moonai_gpu_evolution_crossover(void *state_ptr, Populati
     return static_cast<std::int32_t>(CudaStatus::InvalidArgument);
   }
 
-  CrossoverSummaryReadback *device_summary = nullptr;
-  auto status = moonai_gpu::alloc_array(&device_summary, 1U);
-  if (status != CudaStatus::Success) {
-    return static_cast<std::int32_t>(status);
-  }
-
   const CrossoverSummaryReadback initial_summary{population_kind, parent_a_slot, parent_b_slot, offspring_slot, 0U, 0U,
                                                  0U,             0U,            0U,            0U,             0U};
-  status = moonai_gpu::copy_host_data_to_device(device_summary, &initial_summary, sizeof(initial_summary));
-  if (status == CudaStatus::Success) {
-    const auto offspring_energy =
-        state->simulation.offspring_initial_energy > 0.0F ? state->simulation.offspring_initial_energy : state->config.initial_energy;
-    crossover_kernel<<<1U, 1U>>>(population, state->next_entity_id, population_kind, parent_a_slot, parent_b_slot,
-                                  offspring_slot, offspring_energy, device_summary);
-    status = moonai_gpu::synchronize_kernels();
-  }
-  if (status == CudaStatus::Success) {
-    status = moonai_gpu::copy_compact_device_readback(device_summary, out_summary, sizeof(*out_summary));
-  }
-
-  moonai_gpu::free_array(device_summary);
+  const auto offspring_energy =
+      state->simulation.offspring_initial_energy > 0.0F ? state->simulation.offspring_initial_energy : state->config.initial_energy;
+  const auto status = moonai_gpu::launch_single_value_readback(out_summary, [&](CrossoverSummaryReadback *device_summary) {
+    auto launch_status = moonai_gpu::copy_host_data_to_device(device_summary, &initial_summary, sizeof(initial_summary));
+    if (launch_status == CudaStatus::Success) {
+      crossover_kernel<<<1U, 1U>>>(population, state->next_entity_id, population_kind, parent_a_slot, parent_b_slot,
+                                    offspring_slot, offspring_energy, device_summary);
+    }
+    return launch_status;
+  });
   return static_cast<std::int32_t>(status);
 }

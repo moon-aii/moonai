@@ -16,16 +16,6 @@ using moonai_gpu::SpeciesSummaryReadback;
 
 namespace {
 
-__device__ std::uint16_t count_enabled_connections(const DevicePopulationBuffers &population, std::uint32_t slot,
-                                                   std::uint16_t connection_count) {
-  const auto connection_base = static_cast<std::size_t>(slot) * population.genome.connection_stride;
-  std::uint16_t enabled_count = 0U;
-  for (std::uint16_t connection = 0; connection < connection_count; ++connection) {
-    enabled_count = static_cast<std::uint16_t>(enabled_count + (population.genome.connection_enabled[connection_base + connection] != 0U));
-  }
-  return enabled_count;
-}
-
 __device__ std::uint64_t genome_hash(const DevicePopulationBuffers &population, std::uint32_t slot,
                                      std::uint16_t node_count, std::uint16_t connection_count) {
   std::uint64_t hash = 1469598103934665603ULL;
@@ -47,7 +37,7 @@ __device__ std::uint64_t genome_hash(const DevicePopulationBuffers &population, 
 
 __device__ std::uint32_t species_bucket(const DevicePopulationBuffers &population, std::uint32_t slot,
                                         std::uint16_t node_count, std::uint16_t connection_count) {
-  const auto enabled_count = count_enabled_connections(population, slot, connection_count);
+  const auto enabled_count = moonai_gpu::count_enabled_connections(population, slot, connection_count);
   const auto complexity = static_cast<std::uint32_t>(node_count) + static_cast<std::uint32_t>(enabled_count);
   const auto hash = genome_hash(population, slot, node_count, connection_count);
   return (complexity + static_cast<std::uint32_t>(hash & 31U)) % moonai_gpu::kSpeciesBucketCount;
@@ -250,32 +240,7 @@ __global__ void selected_agent_network_kernel(const DevicePopulationBuffers popu
   }
 
   float activations[moonai_gpu::kCompileScratchNodeLimit]{};
-  const auto node_count = population.compiled.node_counts[slot];
-  const auto eval_count = population.compiled.eval_counts[slot];
-  const auto offset_base = static_cast<std::size_t>(slot) * (population.compiled.node_stride + 1U);
-  const auto eval_base = static_cast<std::size_t>(slot) * population.compiled.node_stride;
-  const auto output_base = static_cast<std::size_t>(slot) * population.compiled.output_stride;
-  const auto compiled_connection_base = static_cast<std::size_t>(slot) * population.compiled.connection_stride;
-
-  if (node_count > 0U && num_inputs < node_count) {
-    activations[num_inputs] = 1.0F;
-  }
-  for (std::uint16_t eval_index = 0; eval_index < eval_count; ++eval_index) {
-    const auto node = population.compiled.eval_order[eval_base + eval_index];
-    if (node >= node_count) {
-      continue;
-    }
-    const auto start = population.compiled.connection_offsets[offset_base + node];
-    const auto end = population.compiled.connection_offsets[offset_base + node + 1U];
-    float sum = 0.0F;
-    for (std::uint32_t connection = start; connection < end; ++connection) {
-      const auto source = population.compiled.connection_sources[compiled_connection_base + connection];
-      if (source < node_count) {
-        sum += activations[source] * population.compiled.connection_weights[compiled_connection_base + connection];
-      }
-    }
-    activations[node] = tanhf(sum);
-  }
+  const auto node_count = moonai_gpu::evaluate_compiled_network(population, slot, num_inputs, activations);
 
   out_network->population_kind = population_kind;
   out_network->slot = slot;
@@ -283,14 +248,8 @@ __global__ void selected_agent_network_kernel(const DevicePopulationBuffers popu
   out_network->output_count = static_cast<std::uint16_t>(population.compiled.output_stride);
   out_network->activation_count = node_count;
   out_network->reserved = 0U;
-  out_network->output_0 =
-      population.compiled.output_stride > 0U && population.compiled.output_indices[output_base] < node_count
-          ? activations[population.compiled.output_indices[output_base]]
-          : 0.0F;
-  out_network->output_1 =
-      population.compiled.output_stride > 1U && population.compiled.output_indices[output_base + 1U] < node_count
-          ? activations[population.compiled.output_indices[output_base + 1U]]
-          : 0.0F;
+  out_network->output_0 = moonai_gpu::compiled_output_activation(population, slot, node_count, activations, 0U);
+  out_network->output_1 = moonai_gpu::compiled_output_activation(population, slot, node_count, activations, 1U);
 }
 
 __global__ void classify_species_batch_kernel(DevicePopulationBuffers population, PopulationKind population_kind,
@@ -313,7 +272,7 @@ __global__ void classify_species_batch_kernel(DevicePopulationBuffers population
 
     const auto node_count = population.genome.num_nodes[idx];
     const auto connection_count = population.genome.num_connections[idx];
-    const auto enabled_count = count_enabled_connections(population, idx, connection_count);
+    const auto enabled_count = moonai_gpu::count_enabled_connections(population, idx, connection_count);
     const auto species_id = species_bucket(population, idx, node_count, connection_count);
     population.species_id[idx] = species_id;
 
@@ -395,23 +354,14 @@ extern "C" std::int32_t moonai_gpu_evolution_compile_slot(void *state_ptr, Popul
     return static_cast<std::int32_t>(CudaStatus::InvalidArgument);
   }
 
-  CompiledNetworkReadbackHeader *device_header = nullptr;
-  auto status = moonai_gpu::alloc_array(&device_header, 1U);
-  if (status != CudaStatus::Success) {
-    return static_cast<std::int32_t>(status);
-  }
-
-  compile_single_slot_kernel<<<1U, 1U>>>(population, slot, state->config.num_outputs);
-  status = moonai_gpu::synchronize_kernels();
-  if (status == CudaStatus::Success) {
-    compiled_header_kernel<<<1U, 1U>>>(population, population_kind, slot, state->config.num_outputs, device_header);
-    status = moonai_gpu::synchronize_kernels();
-  }
-  if (status == CudaStatus::Success) {
-    status = moonai_gpu::copy_compact_device_readback(device_header, out_header, sizeof(*out_header));
-  }
-
-  moonai_gpu::free_array(device_header);
+  const auto status = moonai_gpu::launch_single_value_readback(out_header, [&](CompiledNetworkReadbackHeader *device_header) {
+    compile_single_slot_kernel<<<1U, 1U>>>(population, slot, state->config.num_outputs);
+    auto launch_status = moonai_gpu::synchronize_kernels();
+    if (launch_status == CudaStatus::Success) {
+      compiled_header_kernel<<<1U, 1U>>>(population, population_kind, slot, state->config.num_outputs, device_header);
+    }
+    return launch_status;
+  });
   return static_cast<std::int32_t>(status);
 }
 
@@ -429,19 +379,10 @@ extern "C" std::int32_t moonai_gpu_evolution_selected_agent_network(const void *
     return static_cast<std::int32_t>(CudaStatus::InvalidArgument);
   }
 
-  SelectedAgentNetworkReadback *device_network = nullptr;
-  auto status = moonai_gpu::alloc_array(&device_network, 1U);
-  if (status != CudaStatus::Success) {
-    return static_cast<std::int32_t>(status);
-  }
-
-  selected_agent_network_kernel<<<1U, 1U>>>(population, population_kind, slot, state->config.num_inputs, device_network);
-  status = moonai_gpu::synchronize_kernels();
-  if (status == CudaStatus::Success) {
-    status = moonai_gpu::copy_compact_device_readback(device_network, out_network, sizeof(*out_network));
-  }
-
-  moonai_gpu::free_array(device_network);
+  const auto status = moonai_gpu::launch_single_value_readback(out_network, [&](SelectedAgentNetworkReadback *device_network) {
+    selected_agent_network_kernel<<<1U, 1U>>>(population, population_kind, slot, state->config.num_inputs, device_network);
+    return CudaStatus::Success;
+  });
   return static_cast<std::int32_t>(status);
 }
 
