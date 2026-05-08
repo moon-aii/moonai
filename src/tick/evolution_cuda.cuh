@@ -28,9 +28,6 @@ constexpr std::uint8_t kInputNodeType = 0;
 constexpr std::uint8_t kHiddenNodeType = 1;
 constexpr std::uint8_t kOutputNodeType = 2;
 constexpr std::uint8_t kBiasNodeType = 3;
-constexpr std::uint32_t kInnovationRecordAddConnection = 1U;
-constexpr std::uint32_t kInnovationRecordAddNodeIncoming = 2U;
-constexpr std::uint32_t kInnovationRecordAddNodeOutgoing = 3U;
 constexpr std::uint32_t kCompileScratchNodeLimit = 128U;
 constexpr std::uint32_t kCompileScratchConnectionLimit = 256U;
 constexpr std::uint32_t kSpeciesBucketCount = 64U;
@@ -104,15 +101,6 @@ struct FoodBuffer {
 struct DeviceInnovationState {
   std::uint32_t next_innovation;
   std::uint32_t next_node_id;
-  std::uint32_t log_capacity;
-  std::uint32_t log_len;
-};
-
-struct InnovationRecord {
-  std::uint32_t from_node;
-  std::uint32_t to_node;
-  std::uint32_t innovation;
-  std::uint32_t record_kind;
 };
 
 struct GpuEvolutionConfig {
@@ -134,11 +122,6 @@ struct PopulationSummaryReadback {
   PopulationKind population_kind;
   std::uint32_t live_count;
   std::uint32_t capacity;
-  std::uint32_t next_entity_id;
-  std::uint32_t innovation_counter;
-  std::uint32_t next_node_id;
-  float avg_energy;
-  float avg_connections;
 };
 
 struct UiStatsReadback {
@@ -189,29 +172,6 @@ struct GpuMutationConfig {
   float add_connection_rate;
   float delete_connection_rate;
   std::uint32_t max_connection_attempts;
-};
-
-struct MutationSummaryReadback {
-  PopulationKind population_kind;
-  std::uint32_t agents_mutated;
-  std::uint32_t weight_perturbations;
-  std::uint32_t added_connections;
-  std::uint32_t added_nodes;
-  std::uint32_t deleted_connections;
-};
-
-struct CrossoverSummaryReadback {
-  PopulationKind population_kind;
-  std::uint32_t parent_a_slot;
-  std::uint32_t parent_b_slot;
-  std::uint32_t offspring_slot;
-  std::uint32_t offspring_entity_id;
-  std::uint32_t offspring_generation;
-  std::uint32_t inherited_connections;
-  std::uint32_t matching_genes;
-  std::uint32_t disjoint_genes;
-  std::uint32_t excess_genes;
-  std::uint64_t offspring_genome_hash;
 };
 
 struct SpeciesSummaryReadback {
@@ -321,14 +281,6 @@ struct ReproductionPair {
   std::uint32_t parent_b_slot;
 };
 
-struct ReproductionSummaryReadback {
-  PopulationKind population_kind;
-  std::uint32_t eligible_parents;
-  std::uint32_t candidate_pairs;
-  std::uint32_t births;
-  std::uint32_t failed_pairs;
-};
-
 struct FreeListStateReadback {
   std::uint32_t tick;
   std::uint32_t predator_free_slots;
@@ -386,7 +338,6 @@ struct GpuEvolutionState {
   DevicePopulationBuffers prey;
   FoodBuffer food;
   DeviceInnovationState *innovation;
-  InnovationRecord *innovation_log;
   std::uint32_t *next_entity_id;
   SimulationCounters *counters;
   std::uint32_t *predator_free_list;
@@ -399,9 +350,14 @@ struct GpuEvolutionState {
   ReproductionPair *prey_reproduction_pairs;
   std::uint32_t *predator_pair_count;
   std::uint32_t *prey_pair_count;
-  ReproductionSummaryReadback *predator_reproduction_summary;
-  ReproductionSummaryReadback *prey_reproduction_summary;
   MetricsSummaryReadback *metrics_summary;
+  SpeciesSummaryReadback *species_summaries_scratch;
+  RepresentativeGenomeHeader *representative_headers_scratch;
+  std::uint32_t *species_count_scratch;
+  RenderSnapshotHeader *render_header_scratch;
+  RenderAgentReadback *render_predators_scratch;
+  RenderAgentReadback *render_prey_scratch;
+  RenderFoodReadback *render_food_scratch;
   std::uint32_t *predator_cell_counts;
   std::uint32_t *predator_cell_offsets;
   std::uint32_t *predator_cell_write_offsets;
@@ -580,15 +536,6 @@ __device__ inline float compiled_output_activation(const DevicePopulationBuffers
   const auto output_base = static_cast<std::size_t>(slot) * population.compiled.output_stride;
   const auto output_node = population.compiled.output_indices[output_base + output_index];
   return output_node < node_count ? activations[output_node] : 0.0F;
-}
-
-__device__ inline void append_innovation_record(DeviceInnovationState *innovation, InnovationRecord *innovation_log,
-                                                std::uint32_t from_node, std::uint32_t to_node,
-                                                std::uint32_t innovation_id, std::uint32_t record_kind) {
-  const auto log_index = atomicAdd(&innovation->log_len, 1U);
-  if (log_index < innovation->log_capacity) {
-    innovation_log[log_index] = InnovationRecord{from_node, to_node, innovation_id, record_kind};
-  }
 }
 
 } // namespace moonai_gpu

@@ -59,11 +59,24 @@ pub struct PopulationSummaryReadback {
     pub population_kind: PopulationKind,
     pub live_count: u32,
     pub capacity: u32,
-    pub next_entity_id: u32,
-    pub innovation_counter: u32,
-    pub next_node_id: u32,
-    pub avg_energy: f32,
-    pub avg_connections: f32,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct GpuMutationConfig {
+    pub mutation_rate: f32,
+    pub weight_mutation_power: f32,
+    pub add_node_rate: f32,
+    pub add_connection_rate: f32,
+    pub delete_connection_rate: f32,
+    pub max_connection_attempts: u32,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ReproductionPairReadback {
+    pub parent_a_slot: u32,
+    pub parent_b_slot: u32,
 }
 
 impl GpuEvolutionConfig {
@@ -116,7 +129,7 @@ impl GpuEvolutionConfig {
 
 pub struct EvolutionManager {
     raw: NonNull<c_void>,
-    config: GpuEvolutionConfig,
+    simulation: Option<GpuSimulationConfig>,
 }
 
 impl EvolutionManager {
@@ -131,7 +144,7 @@ impl EvolutionManager {
         let status = unsafe { moonai_gpu_evolution_create(&config, &mut raw) };
         check_cuda_status(status, "moonai_gpu_evolution_create")?;
         let raw = NonNull::new(raw).ok_or_else(|| anyhow!("moonai_gpu_evolution_create returned a null state"))?;
-        Ok(Self { raw, config })
+        Ok(Self { raw, simulation: None })
     }
 
     pub fn seed_initial_population(&mut self) -> Result<()> {
@@ -142,7 +155,9 @@ impl EvolutionManager {
 
     pub fn set_simulation_config(&mut self, config: GpuSimulationConfig) -> Result<()> {
         let status = unsafe { moonai_gpu_simulation_set_config(self.raw.as_ptr(), &config) };
-        check_cuda_status(status, "moonai_gpu_simulation_set_config")
+        check_cuda_status(status, "moonai_gpu_simulation_set_config")?;
+        self.simulation = Some(config);
+        Ok(())
     }
 
     pub fn set_spatial_grid(&mut self, cell_size: f32, grid_cols: u32, grid_rows: u32) -> Result<()> {
@@ -248,8 +263,28 @@ impl EvolutionManager {
     }
 
     pub fn run_reproduction(&mut self, population_kind: PopulationKind) -> Result<()> {
-        let status = unsafe { moonai_gpu_simulation_run_reproduction(self.raw.as_ptr(), population_kind) };
-        check_cuda_status(status, "moonai_gpu_simulation_run_reproduction")
+        let pair_count = self.reproduction_candidate_count(population_kind)?;
+        if pair_count == 0 {
+            return Ok(());
+        }
+
+        let free_slots = self.reproduction_free_slots(population_kind, pair_count)?;
+        if free_slots.is_empty() {
+            return Ok(());
+        }
+
+        let pairs = self.reproduction_pairs(population_kind, pair_count)?;
+        let mutation_config = self.mutation_config()?;
+        let births_applied = pairs.len().min(free_slots.len());
+        for index in 0..births_applied {
+            let pair = pairs[index];
+            let offspring_slot = free_slots[index];
+            self.crossover_slot(population_kind, pair.parent_a_slot, pair.parent_b_slot, offspring_slot)?;
+            self.mutate_slot(population_kind, offspring_slot, mutation_config)?;
+            let _ = self.compile_slot(population_kind, offspring_slot)?;
+        }
+
+        self.apply_reproduction_energy(population_kind, births_applied as u32)
     }
 
     pub fn advance_tick(&mut self) -> Result<()> {
@@ -370,6 +405,17 @@ impl EvolutionManager {
         })
     }
 
+    pub fn compile_slot(
+        &mut self,
+        population_kind: PopulationKind,
+        slot: u32,
+    ) -> Result<CompiledNetworkReadbackHeader> {
+        readback("moonai_gpu_evolution_compile_slot", |out| {
+            // SAFETY: `self.raw` is valid and `out` points to writable storage for the compile readback header.
+            unsafe { moonai_gpu_evolution_compile_slot(self.raw.as_ptr(), population_kind, slot, out) }
+        })
+    }
+
     pub fn selected_agent_network(
         &self,
         population_kind: PopulationKind,
@@ -443,55 +489,173 @@ impl EvolutionManager {
         population_kind: PopulationKind,
         slot: u32,
     ) -> Result<RepresentativeGenomeReadback> {
-        let node_capacity =
-            usize::try_from(self.config.node_stride).context("representative genome node capacity overflowed")?;
-        let connection_capacity = usize::try_from(self.config.connection_stride)
-            .context("representative genome connection capacity overflowed")?;
-        let mut header = MaybeUninit::<RepresentativeGenomeHeader>::uninit();
-        let empty_node = GenomeNodeReadback { id: 0, node_type: 0, reserved0: 0, reserved1: 0 };
-        let empty_connection = GenomeConnectionReadback {
-            from_node: 0,
-            to_node: 0,
-            weight: 0.0,
-            innovation: 0,
-            enabled: 0,
-            reserved0: 0,
-            reserved1: 0,
-        };
-        let mut nodes = vec![empty_node; node_capacity];
-        let mut connections = vec![empty_connection; connection_capacity];
-        let nodes_ptr = if nodes.is_empty() { ptr::null_mut() } else { nodes.as_mut_ptr() };
-        let connections_ptr = if connections.is_empty() { ptr::null_mut() } else { connections.as_mut_ptr() };
-
-        let status = unsafe {
-            moonai_gpu_evolution_representative_genome(
-                self.raw.as_ptr(),
-                population_kind,
-                slot,
-                header.as_mut_ptr(),
-                self.config.node_stride,
-                nodes_ptr,
-                self.config.connection_stride,
-                connections_ptr,
-            )
-        };
-        check_cuda_status(status, "moonai_gpu_evolution_representative_genome")?;
-        let header = unsafe { header.assume_init() };
-
+        let header = readback("moonai_gpu_evolution_representative_genome_header", |out| unsafe {
+            moonai_gpu_evolution_representative_genome_header(self.raw.as_ptr(), population_kind, slot, out)
+        })?;
         let returned_nodes = usize::from(header.num_nodes);
         let returned_connections = usize::from(header.num_connections);
-        if returned_nodes > nodes.len() || returned_connections > connections.len() {
+
+        let mut node_types = vec![0_u8; returned_nodes];
+        if !node_types.is_empty() {
+            let status = unsafe {
+                moonai_gpu_evolution_representative_genome_node_types(
+                    self.raw.as_ptr(),
+                    population_kind,
+                    slot,
+                    header.num_nodes.into(),
+                    node_types.as_mut_ptr(),
+                )
+            };
+            check_cuda_status(status, "moonai_gpu_evolution_representative_genome_node_types")?;
+        }
+
+        let nodes = node_types
+            .into_iter()
+            .enumerate()
+            .map(|(id, node_type)| GenomeNodeReadback { id: id as u32, node_type, reserved0: 0, reserved1: 0 })
+            .collect();
+
+        let mut from_nodes = vec![0_i32; returned_connections];
+        let mut to_nodes = vec![0_i32; returned_connections];
+        let mut weights = vec![0.0_f32; returned_connections];
+        let mut innovations = vec![0_u32; returned_connections];
+        let mut enabled_flags = vec![0_u8; returned_connections];
+        if returned_connections > 0 {
+            let status = unsafe {
+                moonai_gpu_evolution_representative_genome_connections(
+                    self.raw.as_ptr(),
+                    population_kind,
+                    slot,
+                    header.num_connections.into(),
+                    from_nodes.as_mut_ptr(),
+                    to_nodes.as_mut_ptr(),
+                    weights.as_mut_ptr(),
+                    innovations.as_mut_ptr(),
+                    enabled_flags.as_mut_ptr(),
+                )
+            };
+            check_cuda_status(status, "moonai_gpu_evolution_representative_genome_connections")?;
+        }
+
+        let connections = from_nodes
+            .into_iter()
+            .zip(to_nodes)
+            .zip(weights)
+            .zip(innovations)
+            .zip(enabled_flags)
+            .map(|((((from_node, to_node), weight), innovation), enabled)| GenomeConnectionReadback {
+                from_node,
+                to_node,
+                weight,
+                innovation,
+                enabled,
+                reserved0: 0,
+                reserved1: 0,
+            })
+            .collect();
+
+        Ok(RepresentativeGenomeReadback { header, nodes, connections })
+    }
+
+    fn reproduction_pairs(
+        &self,
+        population_kind: PopulationKind,
+        pair_count: u32,
+    ) -> Result<Vec<ReproductionPairReadback>> {
+        let capacity = usize::try_from(pair_count).context("reproduction pair capacity overflowed")?;
+        let mut pairs = vec![ReproductionPairReadback { parent_a_slot: 0, parent_b_slot: 0 }; capacity];
+        let mut returned_pairs = 0_u32;
+        let pairs_ptr = if pairs.is_empty() { ptr::null_mut() } else { pairs.as_mut_ptr() };
+        let status = unsafe {
+            moonai_gpu_simulation_read_reproduction_pairs(
+                self.raw.as_ptr(),
+                population_kind,
+                pair_count,
+                pairs_ptr,
+                &mut returned_pairs,
+            )
+        };
+        check_cuda_status(status, "moonai_gpu_simulation_read_reproduction_pairs")?;
+        let returned_pairs = usize::try_from(returned_pairs).context("reproduction pair length overflowed")?;
+        if returned_pairs > pairs.len() {
             bail!(
-                "representative genome returned {} nodes and {} connections but the host buffers only allocated {} nodes and {} connections",
-                returned_nodes,
-                returned_connections,
-                nodes.len(),
-                connections.len()
+                "reproduction pair readback returned {} entries but the host buffer only allocated {}",
+                returned_pairs,
+                pairs.len()
             );
         }
-        nodes.truncate(returned_nodes);
-        connections.truncate(returned_connections);
-        Ok(RepresentativeGenomeReadback { header, nodes, connections })
+        pairs.truncate(returned_pairs);
+        Ok(pairs)
+    }
+
+    fn reproduction_free_slots(&self, population_kind: PopulationKind, slot_count: u32) -> Result<Vec<u32>> {
+        let capacity = usize::try_from(slot_count).context("free-slot capacity overflowed")?;
+        let mut slots = vec![0_u32; capacity];
+        let mut returned_slots = 0_u32;
+        let slots_ptr = if slots.is_empty() { ptr::null_mut() } else { slots.as_mut_ptr() };
+        let status = unsafe {
+            moonai_gpu_simulation_read_free_slots(
+                self.raw.as_ptr(),
+                population_kind,
+                slot_count,
+                slots_ptr,
+                &mut returned_slots,
+            )
+        };
+        check_cuda_status(status, "moonai_gpu_simulation_read_free_slots")?;
+        let returned_slots = usize::try_from(returned_slots).context("free-slot length overflowed")?;
+        if returned_slots > slots.len() {
+            bail!(
+                "free-slot readback returned {} entries but the host buffer only allocated {}",
+                returned_slots,
+                slots.len()
+            );
+        }
+        slots.truncate(returned_slots);
+        Ok(slots)
+    }
+
+    fn mutation_config(&self) -> Result<GpuMutationConfig> {
+        let simulation = self.simulation.context("simulation config must be set before reproduction")?;
+        Ok(GpuMutationConfig {
+            mutation_rate: simulation.mutation_rate,
+            weight_mutation_power: simulation.weight_mutation_power,
+            add_node_rate: simulation.add_node_rate,
+            add_connection_rate: simulation.add_connection_rate,
+            delete_connection_rate: simulation.delete_connection_rate,
+            max_connection_attempts: simulation.max_connection_attempts,
+        })
+    }
+
+    fn crossover_slot(
+        &mut self,
+        population_kind: PopulationKind,
+        parent_a_slot: u32,
+        parent_b_slot: u32,
+        offspring_slot: u32,
+    ) -> Result<()> {
+        let status = unsafe {
+            moonai_gpu_evolution_crossover(
+                self.raw.as_ptr(),
+                population_kind,
+                parent_a_slot,
+                parent_b_slot,
+                offspring_slot,
+            )
+        };
+        check_cuda_status(status, "moonai_gpu_evolution_crossover")
+    }
+
+    fn mutate_slot(&mut self, population_kind: PopulationKind, slot: u32, config: GpuMutationConfig) -> Result<()> {
+        let status = unsafe { moonai_gpu_evolution_mutate_slot(self.raw.as_ptr(), population_kind, slot, &config) };
+        check_cuda_status(status, "moonai_gpu_evolution_mutate_slot")
+    }
+
+    fn apply_reproduction_energy(&mut self, population_kind: PopulationKind, births_applied: u32) -> Result<()> {
+        let status = unsafe {
+            moonai_gpu_simulation_apply_reproduction_energy(self.raw.as_ptr(), population_kind, births_applied)
+        };
+        check_cuda_status(status, "moonai_gpu_simulation_apply_reproduction_energy")
     }
 }
 
@@ -562,12 +726,30 @@ unsafe extern "C" {
         population_kind: PopulationKind,
         out_pair_count: *mut u32,
     ) -> CudaStatus;
+    fn moonai_gpu_simulation_read_reproduction_pairs(
+        state: *const c_void,
+        population_kind: PopulationKind,
+        max_pairs: u32,
+        out_pairs: *mut ReproductionPairReadback,
+        out_returned_pairs: *mut u32,
+    ) -> CudaStatus;
+    fn moonai_gpu_simulation_read_free_slots(
+        state: *const c_void,
+        population_kind: PopulationKind,
+        max_slots: u32,
+        out_slots: *mut u32,
+        out_returned_slots: *mut u32,
+    ) -> CudaStatus;
+    fn moonai_gpu_simulation_apply_reproduction_energy(
+        state: *mut c_void,
+        population_kind: PopulationKind,
+        births_applied: u32,
+    ) -> CudaStatus;
     fn moonai_gpu_simulation_expand_population(
         state: *mut c_void,
         population_kind: PopulationKind,
         new_capacity: u32,
     ) -> CudaStatus;
-    fn moonai_gpu_simulation_run_reproduction(state: *mut c_void, population_kind: PopulationKind) -> CudaStatus;
     fn moonai_gpu_simulation_advance_tick(state: *mut c_void) -> CudaStatus;
     fn moonai_gpu_simulation_ui_stats(state: *const c_void, out_stats: *mut UiStatsReadback) -> CudaStatus;
     fn moonai_gpu_simulation_free_list_state(state: *const c_void, out_state: *mut FreeListStateReadback)
@@ -599,6 +781,25 @@ unsafe extern "C" {
         inspected_slot: u32,
         out_header: *mut CompiledNetworkReadbackHeader,
     ) -> CudaStatus;
+    fn moonai_gpu_evolution_compile_slot(
+        state: *mut c_void,
+        population_kind: PopulationKind,
+        slot: u32,
+        out_header: *mut CompiledNetworkReadbackHeader,
+    ) -> CudaStatus;
+    fn moonai_gpu_evolution_crossover(
+        state: *mut c_void,
+        population_kind: PopulationKind,
+        parent_a_slot: u32,
+        parent_b_slot: u32,
+        offspring_slot: u32,
+    ) -> CudaStatus;
+    fn moonai_gpu_evolution_mutate_slot(
+        state: *mut c_void,
+        population_kind: PopulationKind,
+        slot: u32,
+        config: *const GpuMutationConfig,
+    ) -> CudaStatus;
     fn moonai_gpu_evolution_selected_agent_network(
         state: *const c_void,
         population_kind: PopulationKind,
@@ -613,15 +814,29 @@ unsafe extern "C" {
         out_summaries: *mut SpeciesSummaryReadback,
         out_representatives: *mut RepresentativeGenomeHeader,
     ) -> CudaStatus;
-    fn moonai_gpu_evolution_representative_genome(
+    fn moonai_gpu_evolution_representative_genome_header(
         state: *const c_void,
         population_kind: PopulationKind,
         slot: u32,
         out_header: *mut RepresentativeGenomeHeader,
+    ) -> CudaStatus;
+    fn moonai_gpu_evolution_representative_genome_node_types(
+        state: *const c_void,
+        population_kind: PopulationKind,
+        slot: u32,
         max_nodes: u32,
-        out_nodes: *mut GenomeNodeReadback,
+        out_node_types: *mut u8,
+    ) -> CudaStatus;
+    fn moonai_gpu_evolution_representative_genome_connections(
+        state: *const c_void,
+        population_kind: PopulationKind,
+        slot: u32,
         max_connections: u32,
-        out_connections: *mut GenomeConnectionReadback,
+        out_from_nodes: *mut i32,
+        out_to_nodes: *mut i32,
+        out_weights: *mut f32,
+        out_innovations: *mut u32,
+        out_enabled_flags: *mut u8,
     ) -> CudaStatus;
     fn moonai_gpu_last_cuda_error_code() -> i32;
 }

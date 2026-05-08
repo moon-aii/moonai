@@ -1,12 +1,8 @@
 #include "evolution_cuda.cuh"
 
-#include <vector>
-
 using moonai_gpu::CompiledNetworkReadbackHeader;
 using moonai_gpu::CudaStatus;
 using moonai_gpu::DevicePopulationBuffers;
-using moonai_gpu::GenomeConnectionReadback;
-using moonai_gpu::GenomeNodeReadback;
 using moonai_gpu::GpuEvolutionState;
 using moonai_gpu::PopulationKind;
 using moonai_gpu::RepresentativeGenomeHeader;
@@ -387,10 +383,10 @@ extern "C" std::int32_t moonai_gpu_evolution_selected_agent_network(const void *
 }
 
 extern "C" std::int32_t moonai_gpu_evolution_species_summaries(void *state_ptr, PopulationKind population_kind,
-                                                                   std::uint32_t max_species,
-                                                                   SpeciesBatchReadbackHeader *out_header,
-                                                                  SpeciesSummaryReadback *out_summaries,
-                                                                  RepresentativeGenomeHeader *out_representatives) {
+                                                                    std::uint32_t max_species,
+                                                                    SpeciesBatchReadbackHeader *out_header,
+                                                                   SpeciesSummaryReadback *out_summaries,
+                                                                   RepresentativeGenomeHeader *out_representatives) {
   auto *state = static_cast<GpuEvolutionState *>(state_ptr);
   if (state == nullptr || out_header == nullptr ||
       (max_species != 0U && (out_summaries == nullptr || out_representatives == nullptr))) {
@@ -398,24 +394,18 @@ extern "C" std::int32_t moonai_gpu_evolution_species_summaries(void *state_ptr, 
   }
 
   auto &population = moonai_gpu::population_for_kind(*state, population_kind);
-  SpeciesSummaryReadback *device_summaries = nullptr;
-  RepresentativeGenomeHeader *device_headers = nullptr;
-  std::uint32_t *device_count = nullptr;
-  auto status = moonai_gpu::alloc_array(&device_summaries, moonai_gpu::kSpeciesBucketCount);
-  if (status == CudaStatus::Success) {
-    status = moonai_gpu::alloc_array(&device_headers, moonai_gpu::kSpeciesBucketCount);
+  if (state->species_summaries_scratch == nullptr || state->representative_headers_scratch == nullptr ||
+      state->species_count_scratch == nullptr) {
+    return static_cast<std::int32_t>(CudaStatus::InvalidArgument);
   }
-  if (status == CudaStatus::Success) {
-    status = moonai_gpu::alloc_array(&device_count, 1U);
-  }
-  if (status == CudaStatus::Success) {
-    classify_species_batch_kernel<<<1U, 1U>>>(population, population_kind, device_summaries, device_headers, device_count);
-    status = moonai_gpu::synchronize_kernels();
-  }
+
+  classify_species_batch_kernel<<<1U, 1U>>>(population, population_kind, state->species_summaries_scratch,
+                                            state->representative_headers_scratch, state->species_count_scratch);
+  auto status = moonai_gpu::synchronize_kernels();
 
   std::uint32_t species_count = 0U;
   if (status == CudaStatus::Success) {
-    status = moonai_gpu::copy_compact_device_readback(device_count, &species_count, sizeof(species_count));
+    status = moonai_gpu::copy_compact_device_readback(state->species_count_scratch, &species_count, sizeof(species_count));
   }
   if (status == CudaStatus::Success) {
     const auto returned_species_count = species_count < max_species ? species_count : max_species;
@@ -423,31 +413,24 @@ extern "C" std::int32_t moonai_gpu_evolution_species_summaries(void *state_ptr, 
     out_header->species_count = species_count;
     out_header->returned_species_count = returned_species_count;
     if (returned_species_count > 0U) {
-      status = moonai_gpu::copy_compact_device_readback(device_summaries, out_summaries,
+      status = moonai_gpu::copy_compact_device_readback(state->species_summaries_scratch, out_summaries,
                                                         sizeof(SpeciesSummaryReadback) * returned_species_count);
     }
     if (status == CudaStatus::Success && returned_species_count > 0U) {
-      status = moonai_gpu::copy_compact_device_readback(device_headers, out_representatives,
+      status = moonai_gpu::copy_compact_device_readback(state->representative_headers_scratch, out_representatives,
                                                         sizeof(RepresentativeGenomeHeader) * returned_species_count);
     }
   }
 
-  moonai_gpu::free_array(device_summaries);
-  moonai_gpu::free_array(device_headers);
-  moonai_gpu::free_array(device_count);
   return static_cast<std::int32_t>(status);
 }
 
-extern "C" std::int32_t moonai_gpu_evolution_representative_genome(const void *state_ptr, PopulationKind population_kind,
-                                                                      std::uint32_t slot,
-                                                                      RepresentativeGenomeHeader *out_header,
-                                                                      std::uint32_t max_nodes,
-                                                                      GenomeNodeReadback *out_nodes,
-                                                                      std::uint32_t max_connections,
-                                                                      GenomeConnectionReadback *out_connections) {
+extern "C" std::int32_t moonai_gpu_evolution_representative_genome_header(const void *state_ptr,
+                                                                            PopulationKind population_kind,
+                                                                            std::uint32_t slot,
+                                                                            RepresentativeGenomeHeader *out_header) {
   auto *state = static_cast<const GpuEvolutionState *>(state_ptr);
-  if (state == nullptr || out_header == nullptr || (max_nodes != 0U && out_nodes == nullptr) ||
-      (max_connections != 0U && out_connections == nullptr)) {
+  if (state == nullptr || out_header == nullptr) {
     return static_cast<std::int32_t>(CudaStatus::InvalidArgument);
   }
 
@@ -455,9 +438,6 @@ extern "C" std::int32_t moonai_gpu_evolution_representative_genome(const void *s
   if (slot >= population.capacity) {
     return static_cast<std::int32_t>(CudaStatus::InvalidArgument);
   }
-
-  const auto node_base = static_cast<std::size_t>(slot) * population.genome.node_stride;
-  const auto connection_base = static_cast<std::size_t>(slot) * population.genome.connection_stride;
 
   std::uint32_t entity_id = 0U;
   std::uint32_t generation = 0U;
@@ -483,60 +463,99 @@ extern "C" std::int32_t moonai_gpu_evolution_representative_genome(const void *s
     return static_cast<std::int32_t>(status);
   }
 
-  if (num_nodes > max_nodes || num_connections > max_connections) {
-    return static_cast<std::int32_t>(CudaStatus::InvalidArgument);
-  }
-
   *out_header = RepresentativeGenomeHeader{population_kind, slot, entity_id, generation, species_id, num_nodes,
                                            num_connections};
 
-  if (num_nodes > 0U) {
-    std::vector<std::uint8_t> node_types(num_nodes);
-    status = moonai_gpu::copy_compact_device_readback(population.genome.node_types + node_base, node_types.data(),
-                                                      sizeof(std::uint8_t) * num_nodes);
-    if (status != CudaStatus::Success) {
-      return static_cast<std::int32_t>(status);
-    }
-
-    for (std::uint32_t idx = 0; idx < num_nodes; ++idx) {
-      out_nodes[idx] = GenomeNodeReadback{idx, node_types[idx], 0U, 0U};
-    }
-  }
-
-  if (num_connections > 0U) {
-    std::vector<std::int32_t> from_nodes(num_connections);
-    std::vector<std::int32_t> to_nodes(num_connections);
-    std::vector<float> weights(num_connections);
-    std::vector<std::uint32_t> innovations(num_connections);
-    std::vector<std::uint8_t> enabled_flags(num_connections);
-
-    status = moonai_gpu::copy_compact_device_readback(population.genome.connection_from + connection_base,
-                                                      from_nodes.data(), sizeof(std::int32_t) * num_connections);
-    if (status == CudaStatus::Success) {
-      status = moonai_gpu::copy_compact_device_readback(population.genome.connection_to + connection_base, to_nodes.data(),
-                                                        sizeof(std::int32_t) * num_connections);
-    }
-    if (status == CudaStatus::Success) {
-      status = moonai_gpu::copy_compact_device_readback(population.genome.connection_weight + connection_base,
-                                                        weights.data(), sizeof(float) * num_connections);
-    }
-    if (status == CudaStatus::Success) {
-      status = moonai_gpu::copy_compact_device_readback(population.genome.connection_innovation + connection_base,
-                                                        innovations.data(), sizeof(std::uint32_t) * num_connections);
-    }
-    if (status == CudaStatus::Success) {
-      status = moonai_gpu::copy_compact_device_readback(population.genome.connection_enabled + connection_base,
-                                                        enabled_flags.data(), sizeof(std::uint8_t) * num_connections);
-    }
-    if (status != CudaStatus::Success) {
-      return static_cast<std::int32_t>(status);
-    }
-
-    for (std::uint32_t idx = 0; idx < num_connections; ++idx) {
-      out_connections[idx] =
-          GenomeConnectionReadback{from_nodes[idx], to_nodes[idx], weights[idx], innovations[idx], enabled_flags[idx], 0U, 0U};
-    }
-  }
-
   return static_cast<std::int32_t>(CudaStatus::Success);
+}
+
+extern "C" std::int32_t moonai_gpu_evolution_representative_genome_node_types(const void *state_ptr,
+                                                                                PopulationKind population_kind,
+                                                                                std::uint32_t slot,
+                                                                                std::uint32_t max_nodes,
+                                                                                std::uint8_t *out_node_types) {
+  auto *state = static_cast<const GpuEvolutionState *>(state_ptr);
+  if (state == nullptr || (max_nodes != 0U && out_node_types == nullptr)) {
+    return static_cast<std::int32_t>(CudaStatus::InvalidArgument);
+  }
+
+  const auto &population = moonai_gpu::population_for_kind(*state, population_kind);
+  if (slot >= population.capacity) {
+    return static_cast<std::int32_t>(CudaStatus::InvalidArgument);
+  }
+
+  std::uint16_t num_nodes = 0U;
+  auto status = moonai_gpu::copy_compact_device_readback(population.genome.num_nodes + slot, &num_nodes, sizeof(num_nodes));
+  if (status != CudaStatus::Success) {
+    return static_cast<std::int32_t>(status);
+  }
+  if (num_nodes > max_nodes) {
+    return static_cast<std::int32_t>(CudaStatus::InvalidArgument);
+  }
+  if (num_nodes == 0U) {
+    return static_cast<std::int32_t>(CudaStatus::Success);
+  }
+
+  const auto node_base = static_cast<std::size_t>(slot) * population.genome.node_stride;
+  status = moonai_gpu::copy_compact_device_readback(population.genome.node_types + node_base, out_node_types,
+                                                    sizeof(std::uint8_t) * num_nodes);
+  return static_cast<std::int32_t>(status);
+}
+
+extern "C" std::int32_t moonai_gpu_evolution_representative_genome_connections(const void *state_ptr,
+                                                                                 PopulationKind population_kind,
+                                                                                 std::uint32_t slot,
+                                                                                 std::uint32_t max_connections,
+                                                                                 std::int32_t *out_from_nodes,
+                                                                                 std::int32_t *out_to_nodes,
+                                                                                 float *out_weights,
+                                                                                 std::uint32_t *out_innovations,
+                                                                                 std::uint8_t *out_enabled_flags) {
+  auto *state = static_cast<const GpuEvolutionState *>(state_ptr);
+  if (state == nullptr ||
+      (max_connections != 0U &&
+       (out_from_nodes == nullptr || out_to_nodes == nullptr || out_weights == nullptr || out_innovations == nullptr ||
+        out_enabled_flags == nullptr))) {
+    return static_cast<std::int32_t>(CudaStatus::InvalidArgument);
+  }
+
+  const auto &population = moonai_gpu::population_for_kind(*state, population_kind);
+  if (slot >= population.capacity) {
+    return static_cast<std::int32_t>(CudaStatus::InvalidArgument);
+  }
+
+  std::uint16_t num_connections = 0U;
+  auto status = moonai_gpu::copy_compact_device_readback(population.genome.num_connections + slot, &num_connections,
+                                                         sizeof(num_connections));
+  if (status != CudaStatus::Success) {
+    return static_cast<std::int32_t>(status);
+  }
+  if (num_connections > max_connections) {
+    return static_cast<std::int32_t>(CudaStatus::InvalidArgument);
+  }
+  if (num_connections == 0U) {
+    return static_cast<std::int32_t>(CudaStatus::Success);
+  }
+
+  const auto connection_base = static_cast<std::size_t>(slot) * population.genome.connection_stride;
+  status = moonai_gpu::copy_compact_device_readback(population.genome.connection_from + connection_base, out_from_nodes,
+                                                    sizeof(std::int32_t) * num_connections);
+  if (status == CudaStatus::Success) {
+    status = moonai_gpu::copy_compact_device_readback(population.genome.connection_to + connection_base, out_to_nodes,
+                                                      sizeof(std::int32_t) * num_connections);
+  }
+  if (status == CudaStatus::Success) {
+    status = moonai_gpu::copy_compact_device_readback(population.genome.connection_weight + connection_base, out_weights,
+                                                      sizeof(float) * num_connections);
+  }
+  if (status == CudaStatus::Success) {
+    status = moonai_gpu::copy_compact_device_readback(population.genome.connection_innovation + connection_base,
+                                                      out_innovations, sizeof(std::uint32_t) * num_connections);
+  }
+  if (status == CudaStatus::Success) {
+    status = moonai_gpu::copy_compact_device_readback(population.genome.connection_enabled + connection_base,
+                                                      out_enabled_flags, sizeof(std::uint8_t) * num_connections);
+  }
+
+  return static_cast<std::int32_t>(status);
 }

@@ -6,8 +6,6 @@ using moonai_gpu::DevicePopulationBuffers;
 using moonai_gpu::GpuEvolutionConfig;
 using moonai_gpu::GpuEvolutionState;
 using moonai_gpu::GpuMutationConfig;
-using moonai_gpu::InnovationRecord;
-using moonai_gpu::MutationSummaryReadback;
 using moonai_gpu::PopulationKind;
 
 namespace {
@@ -81,18 +79,12 @@ __device__ bool choose_connection_endpoints(const DevicePopulationBuffers &popul
 }
 
 __device__ void mutate_single_agent(DevicePopulationBuffers population, std::uint32_t idx, DeviceInnovationState *innovation,
-                                    InnovationRecord *innovation_log, GpuMutationConfig config,
-                                    PopulationKind population_kind, MutationSummaryReadback *out_summary) {
+                                    GpuMutationConfig config) {
   auto rng = population.rng_state[idx];
   auto connection_count = population.genome.num_connections[idx];
   auto node_count = population.genome.num_nodes[idx];
   const auto connection_base = static_cast<std::size_t>(idx) * population.genome.connection_stride;
   const auto node_base = static_cast<std::size_t>(idx) * population.genome.node_stride;
-
-  std::uint32_t weight_perturbations = 0U;
-  std::uint32_t added_connections = 0U;
-  std::uint32_t added_nodes = 0U;
-  std::uint32_t deleted_connections = 0U;
 
   if (moonai_gpu::next_unit_float(rng) < config.mutation_rate) {
     for (std::uint16_t connection = 0; connection < connection_count; ++connection) {
@@ -104,7 +96,6 @@ __device__ void mutate_single_agent(DevicePopulationBuffers population, std::uin
         continue;
       }
       population.genome.connection_weight[entry] += moonai_gpu::next_signed_float(rng) * config.weight_mutation_power;
-      ++weight_perturbations;
     }
   }
 
@@ -112,7 +103,6 @@ __device__ void mutate_single_agent(DevicePopulationBuffers population, std::uin
     const auto candidate = random_enabled_connection(population, idx, connection_count, rng);
     if (candidate >= 0) {
       population.genome.connection_enabled[connection_base + static_cast<std::uint16_t>(candidate)] = 0U;
-      ++deleted_connections;
     }
   }
 
@@ -128,11 +118,7 @@ __device__ void mutate_single_agent(DevicePopulationBuffers population, std::uin
       population.genome.connection_weight[entry] = moonai_gpu::next_signed_float(rng);
       population.genome.connection_innovation[entry] = innovation_id;
       population.genome.connection_enabled[entry] = 1U;
-      moonai_gpu::append_innovation_record(innovation, innovation_log, static_cast<std::uint32_t>(from_node),
-                                           static_cast<std::uint32_t>(to_node), innovation_id,
-                                           moonai_gpu::kInnovationRecordAddConnection);
       ++connection_count;
-      ++added_connections;
     }
   }
 
@@ -168,51 +154,31 @@ __device__ void mutate_single_agent(DevicePopulationBuffers population, std::uin
       population.genome.connection_weight[second_entry] = source_weight;
       population.genome.connection_innovation[second_entry] = innovation_b;
       population.genome.connection_enabled[second_entry] = 1U;
-
-      moonai_gpu::append_innovation_record(innovation, innovation_log, static_cast<std::uint32_t>(source_from),
-                                           new_node_index, innovation_a, moonai_gpu::kInnovationRecordAddNodeIncoming);
-      moonai_gpu::append_innovation_record(innovation, innovation_log, new_node_index,
-                                           static_cast<std::uint32_t>(source_to), innovation_b,
-                                           moonai_gpu::kInnovationRecordAddNodeOutgoing);
       connection_count = static_cast<std::uint16_t>(connection_count + 2U);
-      ++added_nodes;
     }
   }
 
   population.genome.num_connections[idx] = connection_count;
   population.rng_state[idx] = rng;
-  if (weight_perturbations != 0U || added_connections != 0U || added_nodes != 0U || deleted_connections != 0U) {
-    population.compiled.eval_counts[idx] = 0U;
-    population.compiled.connection_counts[idx] = 0U;
-    atomicAdd(&out_summary->agents_mutated, 1U);
-  }
-  atomicAdd(&out_summary->weight_perturbations, weight_perturbations);
-  atomicAdd(&out_summary->added_connections, added_connections);
-  atomicAdd(&out_summary->added_nodes, added_nodes);
-  atomicAdd(&out_summary->deleted_connections, deleted_connections);
-  if (idx == 0U || out_summary->population_kind != population_kind) {
-    out_summary->population_kind = population_kind;
-  }
+  population.compiled.eval_counts[idx] = 0U;
+  population.compiled.connection_counts[idx] = 0U;
 }
 
 __global__ void mutate_single_slot_kernel(DevicePopulationBuffers population, DeviceInnovationState *innovation,
-                                          InnovationRecord *innovation_log, GpuMutationConfig config,
-                                          PopulationKind population_kind, std::uint32_t slot,
-                                          MutationSummaryReadback *out_summary) {
+                                          GpuMutationConfig config, std::uint32_t slot) {
   if (blockIdx.x != 0U || threadIdx.x != 0U || slot >= population.capacity || population.alive[slot] == 0U) {
     return;
   }
 
-  mutate_single_agent(population, slot, innovation, innovation_log, config, population_kind, out_summary);
+  mutate_single_agent(population, slot, innovation, config);
 }
 
 } // namespace
 
 extern "C" std::int32_t moonai_gpu_evolution_mutate_slot(void *state_ptr, PopulationKind population_kind,
-                                                             std::uint32_t slot, const GpuMutationConfig *config,
-                                                             MutationSummaryReadback *out_summary) {
+                                                           std::uint32_t slot, const GpuMutationConfig *config) {
   auto *state = static_cast<GpuEvolutionState *>(state_ptr);
-  if (state == nullptr || config == nullptr || out_summary == nullptr || config->max_connection_attempts == 0U) {
+  if (state == nullptr || config == nullptr || config->max_connection_attempts == 0U) {
     return static_cast<std::int32_t>(CudaStatus::InvalidArgument);
   }
 
@@ -221,14 +187,6 @@ extern "C" std::int32_t moonai_gpu_evolution_mutate_slot(void *state_ptr, Popula
     return static_cast<std::int32_t>(CudaStatus::InvalidArgument);
   }
 
-  const MutationSummaryReadback initial_summary{population_kind, 0U, 0U, 0U, 0U, 0U};
-  const auto status = moonai_gpu::launch_single_value_readback(out_summary, [&](MutationSummaryReadback *device_summary) {
-    auto launch_status = moonai_gpu::copy_host_data_to_device(device_summary, &initial_summary, sizeof(initial_summary));
-    if (launch_status == CudaStatus::Success) {
-      mutate_single_slot_kernel<<<1U, 1U>>>(population, state->innovation, state->innovation_log, *config,
-                                            population_kind, slot, device_summary);
-    }
-    return launch_status;
-  });
-  return static_cast<std::int32_t>(status);
+  mutate_single_slot_kernel<<<1U, 1U>>>(population, state->innovation, *config, slot);
+  return static_cast<std::int32_t>(moonai_gpu::synchronize_kernels());
 }
