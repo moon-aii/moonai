@@ -172,6 +172,7 @@ fn log_population_report(
 }
 
 fn log_report_snapshot(state: &mut SimulationState, logger: &mut Logger) -> Result<u32> {
+    state.refresh_reports()?;
     let summary = state.metrics_summary()?;
     logger.log_stats(&summary)?;
     log_population_report(state, logger, summary.tick, PopulationKind::Predator)?;

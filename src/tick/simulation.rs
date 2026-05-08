@@ -206,6 +206,10 @@ impl SimulationState {
         self.evolution.simulation_metrics_summary()
     }
 
+    pub fn refresh_reports(&mut self) -> Result<()> {
+        self.evolution.simulation_refresh_reports()
+    }
+
     pub fn compact_population(&mut self, population_kind: PopulationKind) -> Result<CompactionSummaryReadback> {
         self.evolution.simulation_compact_population(population_kind)
     }
@@ -260,6 +264,9 @@ fn as_non_negative_u32(value: i32, field_name: &str) -> Result<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use crate::tick::evolution::GpuEvolutionConfig;
+    use crate::types::{OUTPUT_COUNT, SENSOR_COUNT};
 
     fn simulation_config(seed: i32) -> SimulationConfig {
         SimulationConfig {
@@ -328,6 +335,22 @@ mod tests {
         assert_eq!(snapshot.prey.len(), 6);
         assert_eq!(snapshot.food.len(), 10);
 
+        Ok(())
+    }
+
+    #[test]
+    fn simulation_config_ffi_roundtrips() -> Result<()> {
+        if !runtime_ready() {
+            return Ok(());
+        }
+
+        let config = simulation_config(60);
+        let evolution_config = GpuEvolutionConfig::for_seed_stage(&config, SENSOR_COUNT as u32, OUTPUT_COUNT as u32)?;
+        let simulation_config = GpuSimulationConfig::for_simulation(&config)?;
+        let manager = EvolutionManager::create(evolution_config)?;
+        let roundtrip = manager.debug_roundtrip_simulation_config(simulation_config)?;
+
+        assert_eq!(roundtrip, simulation_config);
         Ok(())
     }
 
