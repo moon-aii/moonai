@@ -1,8 +1,8 @@
 # MoonAI
 
-Simulation platform for studying evolutionary algorithms and neural network evolution through predator-prey dynamics using the NEAT algorithm.
-
 **[Web Page and Documentation](https://moon-aii.github.io/moonai/)**
+
+Simulation platform for studying evolutionary algorithms and neural network evolution through predator-prey dynamics using the NEAT algorithm.
 
 **Team**:
 
