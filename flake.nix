@@ -10,11 +10,11 @@
     name = "moonai-flake";
 
     libs = with pkgs; [
-      cudatoolkit
       wayland
       libxkbcommon
       vulkan-loader
       libGL
+      cudatoolkit
     ];
 
     system = "x86_64-linux";

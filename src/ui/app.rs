@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context as _, Result};
-use eframe::egui::{self, FontData, FontDefinitions, FontFamily, Key, Sense, TextureHandle, TextureOptions};
+use eframe::egui::{self, Key, Sense, TextureHandle, TextureOptions};
 
 use crate::config::SimulationConfig;
 use crate::settings::UiConfig;
@@ -34,13 +34,17 @@ pub struct App {
 
 impl App {
     pub fn run(run_label: &str, config: &SimulationConfig, ui_config: &UiConfig) -> Result<()> {
-        let native_options = eframe::NativeOptions {
+        let icon = load_icon();
+        let mut native_options = eframe::NativeOptions {
             renderer: eframe::Renderer::Wgpu,
             viewport: egui::ViewportBuilder::default()
                 .with_title(format!("MoonAI - {run_label}"))
                 .with_inner_size([ui_config.window_width as f32, ui_config.window_height as f32]),
             ..Default::default()
         };
+        if let Some(icon) = icon {
+            native_options.viewport = native_options.viewport.with_icon(icon);
+        }
 
         let run_label = run_label.to_owned();
         let config_for_app = config.clone();
@@ -49,7 +53,6 @@ impl App {
             "MoonAI",
             native_options,
             Box::new(move |creation_context| {
-                configure_fonts(&creation_context.egui_ctx, &ui_for_app);
                 Self::new(&run_label, config_for_app.clone(), ui_for_app.clone())
                     .map(|app| -> Box<dyn eframe::App> { Box::new(app) })
                     .map_err(|error| -> Box<dyn std::error::Error + Send + Sync> {
@@ -465,31 +468,17 @@ fn find_agent_by_entity(
     collection.iter().find(|agent| agent.entity_id == entity_id)
 }
 
-fn configure_fonts(ctx: &egui::Context, ui_config: &UiConfig) {
-    let Some(font_path) = resolve_font_path(&ui_config.font_path) else {
-        return;
-    };
-    let Ok(bytes) = std::fs::read(&font_path) else {
-        return;
-    };
-
-    let mut definitions = FontDefinitions::default();
-    definitions.font_data.insert("moonai_custom".to_owned(), FontData::from_owned(bytes).into());
-    definitions.families.entry(FontFamily::Monospace).or_default().insert(0, "moonai_custom".to_owned());
-    definitions.families.entry(FontFamily::Proportional).or_default().insert(0, "moonai_custom".to_owned());
-    ctx.set_fonts(definitions);
-}
-
-fn resolve_font_path(font_path: &str) -> Option<PathBuf> {
-    let path = PathBuf::from(font_path);
-    if path.is_absolute() {
-        return path.is_file().then_some(path);
-    }
-
+fn resolve_logo_path() -> Option<PathBuf> {
     let binary = std::env::current_exe().ok()?;
     let binary_dir = binary.parent()?;
-    let candidate = binary_dir.join(path);
+    let candidate = binary_dir.join("logo.png");
     candidate.is_file().then_some(candidate)
+}
+
+fn load_icon() -> Option<egui::IconData> {
+    let path = resolve_logo_path()?;
+    let bytes = std::fs::read(&path).ok()?;
+    eframe::icon_data::from_png_bytes(&bytes).ok()
 }
 
 fn screenshot_path(run_label: &str, tick: u32) -> Result<PathBuf> {

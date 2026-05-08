@@ -130,8 +130,6 @@ pub struct UiConfig {
     pub speed_min: u32,
     #[serde(default = "default_speed_max")]
     pub speed_max: u32,
-    #[serde(default = "default_font_path")]
-    pub font_path: String,
 }
 
 impl Default for UiConfig {
@@ -200,7 +198,6 @@ impl Default for UiConfig {
             zoom_max: default_zoom_max(),
             speed_min: default_speed_min(),
             speed_max: default_speed_max(),
-            font_path: default_font_path(),
         }
     }
 }
@@ -428,7 +425,4 @@ const fn default_speed_min() -> u32 {
 }
 const fn default_speed_max() -> u32 {
     1024
-}
-fn default_font_path() -> String {
-    String::from("assets/fonts/JetBrainsMono-Regular.ttf")
 }
