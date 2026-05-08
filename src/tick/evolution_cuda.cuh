@@ -259,6 +259,23 @@ struct RepresentativeGenomeHeader {
   std::uint16_t num_connections;
 };
 
+struct GenomeNodeReadback {
+  std::uint32_t id;
+  std::uint8_t node_type;
+  std::uint8_t reserved0;
+  std::uint16_t reserved1;
+};
+
+struct GenomeConnectionReadback {
+  std::int32_t from_node;
+  std::int32_t to_node;
+  float weight;
+  std::uint32_t innovation;
+  std::uint8_t enabled;
+  std::uint8_t reserved0;
+  std::uint16_t reserved1;
+};
+
 struct SpeciesBatchReadbackHeader {
   PopulationKind population_kind;
   std::uint32_t species_count;

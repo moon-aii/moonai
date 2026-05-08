@@ -35,6 +35,7 @@
 
       packages = with pkgs; [
         clang-tools
+        cudatoolkit
         mermaid-cli
         texliveFull
         prettier

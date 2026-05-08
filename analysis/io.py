@@ -46,6 +46,20 @@ def load_csv(path: Path, *, required_columns: list[str] | None = None) -> pd.Dat
     return frame
 
 
+def normalize_stats_frame(frame: pd.DataFrame) -> pd.DataFrame:
+    if "avg_complexity" in frame.columns:
+        return frame
+
+    required = {"avg_predator_complexity", "avg_prey_complexity"}
+    if not required.issubset(frame.columns):
+        missing = sorted(required.difference(frame.columns))
+        raise ValueError(f"missing complexity columns {missing} in stats.csv")
+
+    normalized = frame.copy()
+    normalized["avg_complexity"] = (normalized["avg_predator_complexity"] + normalized["avg_prey_complexity"]) / 2.0
+    return normalized
+
+
 def _normalize_value(value):
     if isinstance(value, dict):
         return {key: _normalize_value(value[key]) for key in sorted(value)}
@@ -90,11 +104,11 @@ def discover_runs(output_dir: Path) -> tuple[list[RunData], list[SkippedRun]]:
                     "tick",
                     "predator_species",
                     "prey_species",
-                    "avg_complexity",
                     "predator_count",
                     "prey_count",
                 ],
             )
+            stats = normalize_stats_frame(stats)
         except Exception as exc:
             skipped.append(SkippedRun(path, str(exc)))
             continue

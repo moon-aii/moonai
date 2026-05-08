@@ -10,6 +10,9 @@ use crate::tick::inference::SensorSnapshotReadback;
 use crate::tick::metrics_reduce::MetricsSummaryReadback;
 use crate::tick::mutation::PHASE3_MAX_CONNECTION_ATTEMPTS;
 use crate::tick::reproduction::ReproductionSummaryReadback;
+use crate::tick::species::{
+    RepresentativeGenomeHeader, RepresentativeGenomeReadback, SpeciesBatchReadbackHeader, SpeciesSummaryReadback,
+};
 use crate::types::{OUTPUT_COUNT, SENSOR_COUNT};
 
 #[repr(C)]
@@ -205,6 +208,22 @@ impl SimulationState {
 
     pub fn compact_population(&mut self, population_kind: PopulationKind) -> Result<CompactionSummaryReadback> {
         self.evolution.simulation_compact_population(population_kind)
+    }
+
+    pub fn species_summaries(
+        &mut self,
+        population_kind: PopulationKind,
+        max_species: u32,
+    ) -> Result<(SpeciesBatchReadbackHeader, Vec<SpeciesSummaryReadback>, Vec<RepresentativeGenomeHeader>)> {
+        self.evolution.species_summaries(population_kind, max_species)
+    }
+
+    pub fn representative_genome(
+        &self,
+        population_kind: PopulationKind,
+        slot: u32,
+    ) -> Result<RepresentativeGenomeReadback> {
+        self.evolution.representative_genome(population_kind, slot)
     }
 
     pub fn sensor_snapshot(&self, population_kind: PopulationKind, slot: u32) -> Result<SensorSnapshotReadback> {

@@ -21,7 +21,10 @@ use crate::tick::mutation::{GpuMutationConfig, MutationSummaryReadback};
 use crate::tick::network::SelectedAgentNetworkReadback;
 use crate::tick::reproduction::ReproductionSummaryReadback;
 use crate::tick::simulation::GpuSimulationConfig;
-use crate::tick::species::{RepresentativeGenomeHeader, SpeciesBatchReadbackHeader, SpeciesSummaryReadback};
+use crate::tick::species::{
+    GenomeConnectionReadback, GenomeNodeReadback, RepresentativeGenomeHeader, RepresentativeGenomeReadback,
+    SpeciesBatchReadbackHeader, SpeciesSummaryReadback,
+};
 
 const PHASE3_HIDDEN_NODE_BUDGET_CAP: u32 = 32;
 const PHASE3_CONNECTION_GROWTH_BUDGET_CAP: u32 = 16;
@@ -455,6 +458,62 @@ impl EvolutionManager {
         Ok((header, summaries, representatives))
     }
 
+    pub fn representative_genome(
+        &self,
+        population_kind: PopulationKind,
+        slot: u32,
+    ) -> Result<RepresentativeGenomeReadback> {
+        let node_capacity =
+            usize::try_from(self.config.node_stride).context("representative genome node capacity overflowed")?;
+        let connection_capacity = usize::try_from(self.config.connection_stride)
+            .context("representative genome connection capacity overflowed")?;
+        let mut header = MaybeUninit::<RepresentativeGenomeHeader>::uninit();
+        let empty_node = GenomeNodeReadback { id: 0, node_type: 0, reserved0: 0, reserved1: 0 };
+        let empty_connection = GenomeConnectionReadback {
+            from_node: 0,
+            to_node: 0,
+            weight: 0.0,
+            innovation: 0,
+            enabled: 0,
+            reserved0: 0,
+            reserved1: 0,
+        };
+        let mut nodes = vec![empty_node; node_capacity];
+        let mut connections = vec![empty_connection; connection_capacity];
+        let nodes_ptr = if nodes.is_empty() { ptr::null_mut() } else { nodes.as_mut_ptr() };
+        let connections_ptr = if connections.is_empty() { ptr::null_mut() } else { connections.as_mut_ptr() };
+
+        let status = unsafe {
+            moonai_gpu_evolution_representative_genome(
+                self.raw.as_ptr(),
+                population_kind,
+                slot,
+                header.as_mut_ptr(),
+                self.config.node_stride,
+                nodes_ptr,
+                self.config.connection_stride,
+                connections_ptr,
+            )
+        };
+        check_cuda_status(status, "moonai_gpu_evolution_representative_genome")?;
+        let header = unsafe { header.assume_init() };
+
+        let returned_nodes = usize::from(header.num_nodes);
+        let returned_connections = usize::from(header.num_connections);
+        if returned_nodes > nodes.len() || returned_connections > connections.len() {
+            bail!(
+                "representative genome returned {} nodes and {} connections but the host buffers only allocated {} nodes and {} connections",
+                returned_nodes,
+                returned_connections,
+                nodes.len(),
+                connections.len()
+            );
+        }
+        nodes.truncate(returned_nodes);
+        connections.truncate(returned_connections);
+        Ok(RepresentativeGenomeReadback { header, nodes, connections })
+    }
+
     pub fn check_invariants(&self) -> Result<InvariantCheckReadback> {
         readback("moonai_gpu_evolution_check_invariants", |out| {
             // SAFETY: `self.raw` is valid and `out` points to writable storage for the invariant summary.
@@ -601,6 +660,16 @@ unsafe extern "C" {
         out_header: *mut SpeciesBatchReadbackHeader,
         out_summaries: *mut SpeciesSummaryReadback,
         out_representatives: *mut RepresentativeGenomeHeader,
+    ) -> CudaStatus;
+    fn moonai_gpu_evolution_representative_genome(
+        state: *const c_void,
+        population_kind: PopulationKind,
+        slot: u32,
+        out_header: *mut RepresentativeGenomeHeader,
+        max_nodes: u32,
+        out_nodes: *mut GenomeNodeReadback,
+        max_connections: u32,
+        out_connections: *mut GenomeConnectionReadback,
     ) -> CudaStatus;
     fn moonai_gpu_evolution_check_invariants(
         state: *const c_void,
