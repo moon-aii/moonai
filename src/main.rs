@@ -1,12 +1,10 @@
 mod cli;
 mod config;
-mod config_error;
 mod lua;
 mod metrics;
 mod settings;
 mod signal;
 mod tick;
-mod types;
 mod ui;
 
 use std::collections::HashMap;
@@ -18,8 +16,7 @@ use anyhow::{Context as _, Result, bail};
 use clap::Parser as _;
 
 use crate::cli::CliArgs;
-use crate::config::SimulationConfig;
-use crate::config_error::{ConfigError, validate_config};
+use crate::config::{ConfigError, SimulationConfig, validate_config};
 use crate::metrics::Logger;
 use crate::tick::checks::CudaStatus;
 use crate::tick::genome::PopulationKind;

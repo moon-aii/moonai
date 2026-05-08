@@ -1,8 +1,7 @@
 use mlua::Lua;
 use std::collections::HashMap;
 
-use crate::config::SimulationConfig;
-use crate::config_error::ConfigError;
+use crate::config::{ConfigError, SimulationConfig};
 
 pub fn load_config(path: &str) -> Result<HashMap<String, SimulationConfig>, ConfigError> {
     let lua = Lua::new();

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::config_error::ConfigError;
+use crate::config::ConfigError;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UiConfig {

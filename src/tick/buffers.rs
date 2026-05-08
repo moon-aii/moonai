@@ -93,6 +93,7 @@ pub struct RenderAgentReadback {
     pub entity_id: u32,
     pub species_id: u32,
     pub generation: u32,
+    pub age: f32,
     pub pos_x: f32,
     pub pos_y: f32,
     pub dir_x: f32,

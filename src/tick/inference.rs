@@ -1,5 +1,7 @@
 use crate::tick::genome::PopulationKind;
-use crate::types::SENSOR_COUNT;
+
+pub const SENSOR_COUNT: usize = 35;
+pub const OUTPUT_COUNT: usize = 2;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]

@@ -6,7 +6,7 @@ use crate::tick::checks::InvariantCheckReadback;
 use crate::tick::compaction::{CompactionSummaryReadback, FreeListStateReadback};
 use crate::tick::evolution::{EvolutionManager, GpuEvolutionConfig};
 use crate::tick::genome::{PopulationKind, SeededAgentSnapshot};
-use crate::tick::inference::SensorSnapshotReadback;
+use crate::tick::inference::{OUTPUT_COUNT, SENSOR_COUNT, SensorSnapshotReadback};
 use crate::tick::metrics_reduce::MetricsSummaryReadback;
 use crate::tick::mutation::PHASE3_MAX_CONNECTION_ATTEMPTS;
 use crate::tick::network::SelectedAgentNetworkReadback;
@@ -14,7 +14,6 @@ use crate::tick::reproduction::ReproductionSummaryReadback;
 use crate::tick::species::{
     RepresentativeGenomeHeader, RepresentativeGenomeReadback, SpeciesBatchReadbackHeader, SpeciesSummaryReadback,
 };
-use crate::types::{OUTPUT_COUNT, SENSOR_COUNT};
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -275,7 +274,6 @@ mod tests {
     use super::*;
 
     use crate::tick::evolution::GpuEvolutionConfig;
-    use crate::types::{OUTPUT_COUNT, SENSOR_COUNT};
 
     fn simulation_config(seed: i32) -> SimulationConfig {
         SimulationConfig {

@@ -326,6 +326,7 @@ struct RenderAgentReadback {
   std::uint32_t entity_id;
   std::uint32_t species_id;
   std::uint32_t generation;
+  float age;
   float pos_x;
   float pos_y;
   float dir_x;

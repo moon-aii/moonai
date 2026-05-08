@@ -1,6 +1,9 @@
+use std::collections::VecDeque;
+
 use crate::tick::buffers::{RenderAgentReadback, RenderSnapshotReadback, UiStatsReadback};
 use crate::tick::genome::PopulationKind;
 use crate::tick::inference::SensorSnapshotReadback;
+use crate::tick::metrics_reduce::MetricsSummaryReadback;
 use crate::tick::network::SelectedAgentNetworkReadback;
 use crate::tick::species::RepresentativeGenomeReadback;
 
@@ -55,30 +58,66 @@ pub struct SelectedAgentData {
 #[derive(Debug, Clone)]
 pub struct OverlayStats {
     pub ui_stats: UiStatsReadback,
+    pub metrics_summary: MetricsSummaryReadback,
     pub speed_multiplier: u32,
     pub paused: bool,
     pub fps: f32,
-    pub predators_returned: usize,
-    pub prey_returned: usize,
-    pub food_returned: usize,
+    pub active_food_count: u32,
 }
 
 impl OverlayStats {
     pub const fn from_snapshot(
         snapshot: &RenderSnapshotReadback,
         ui_stats: UiStatsReadback,
+        metrics_summary: MetricsSummaryReadback,
         speed_multiplier: u32,
         paused: bool,
         fps: f32,
     ) -> Self {
-        Self {
-            ui_stats,
-            speed_multiplier,
-            paused,
-            fps,
-            predators_returned: snapshot.predators.len(),
-            prey_returned: snapshot.prey.len(),
-            food_returned: snapshot.food.len(),
+        Self { ui_stats, metrics_summary, speed_multiplier, paused, fps, active_food_count: snapshot.header.total_food }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct PopulationHistoryPoint {
+    pub predators: u32,
+    pub prey: u32,
+    pub food: u32,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct PairHistoryPoint {
+    pub predator: f32,
+    pub prey: f32,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct OverlayHistory {
+    pub last_tick: Option<u32>,
+    pub population: VecDeque<PopulationHistoryPoint>,
+    pub complexity: VecDeque<PairHistoryPoint>,
+    pub energy: VecDeque<PairHistoryPoint>,
+}
+
+impl OverlayHistory {
+    pub fn push(&mut self, overlay: &OverlayStats) {
+        if self.last_tick == Some(overlay.ui_stats.tick) {
+            return;
         }
+
+        self.last_tick = Some(overlay.ui_stats.tick);
+        self.population.push_back(PopulationHistoryPoint {
+            predators: overlay.ui_stats.predator_count,
+            prey: overlay.ui_stats.prey_count,
+            food: overlay.active_food_count,
+        });
+        self.complexity.push_back(PairHistoryPoint {
+            predator: overlay.metrics_summary.avg_predator_complexity,
+            prey: overlay.metrics_summary.avg_prey_complexity,
+        });
+        self.energy.push_back(PairHistoryPoint {
+            predator: overlay.ui_stats.avg_predator_energy,
+            prey: overlay.ui_stats.avg_prey_energy,
+        });
     }
 }

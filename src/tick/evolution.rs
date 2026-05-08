@@ -239,6 +239,7 @@ impl EvolutionManager {
             entity_id: 0,
             species_id: 0,
             generation: 0,
+            age: 0.0,
             pos_x: 0.0,
             pos_y: 0.0,
             dir_x: 0.0,
@@ -679,7 +680,7 @@ unsafe extern "C" {
 mod tests {
     use super::*;
     use crate::tick::genome::PopulationKind;
-    use crate::types::{OUTPUT_COUNT, SENSOR_COUNT};
+    use crate::tick::inference::{OUTPUT_COUNT, SENSOR_COUNT};
 
     fn smoke_simulation_config(seed: i32) -> SimulationConfig {
         SimulationConfig {
