@@ -25,6 +25,7 @@ use crate::tick::checks::CudaStatus;
 use crate::tick::genome::PopulationKind;
 use crate::tick::simulation::SimulationState;
 use crate::tick::species::MAX_SPECIES_SUMMARIES;
+use crate::ui::app::App;
 
 fn stdout_line(message: &str) {
     let mut stdout = io::stdout().lock();
@@ -172,6 +173,7 @@ fn log_population_report(
 }
 
 fn log_report_snapshot(state: &mut SimulationState, logger: &mut Logger) -> Result<u32> {
+    state.refresh_reports()?;
     let summary = state.metrics_summary()?;
     logger.log_stats(&summary)?;
     log_population_report(state, logger, summary.tick, PopulationKind::Predator)?;
@@ -292,10 +294,11 @@ fn main() -> Result<()> {
     }
 
     validate_config(&config)?;
+    cuda_runtime_ready()?;
 
-    stdout_line("MoonAI - GPU-first predator-prey evolution simulation");
-    stdout_line(&format!("Loaded experiment: {selected_name}"));
-    stdout_line(&format!("Config: {config:?}"));
+    let ui_config = settings::load_settings(args.settings.as_deref())?;
 
-    Ok(())
+    signal::setup_signal_handlers();
+
+    App::run(&selected_name, &config, &ui_config)
 }

@@ -174,6 +174,13 @@ impl EvolutionManager {
         check_cuda_status(status, "moonai_gpu_simulation_initialize")
     }
 
+    pub fn debug_roundtrip_simulation_config(&self, config: GpuSimulationConfig) -> Result<GpuSimulationConfig> {
+        readback("moonai_gpu_debug_roundtrip_simulation_config", |out| {
+            // SAFETY: `config` is POD input and `out` points to writable storage for the same POD layout.
+            unsafe { moonai_gpu_debug_roundtrip_simulation_config(&config, out) }
+        })
+    }
+
     pub fn simulation_step(&mut self) -> Result<UiStatsReadback> {
         readback("moonai_gpu_simulation_step", |out| {
             // SAFETY: `self.raw` is valid and `out` points to writable storage for the mapped UI stats snapshot.
@@ -217,6 +224,11 @@ impl EvolutionManager {
             // SAFETY: `self.raw` is valid and `out` points to writable storage for the compact metrics readback.
             unsafe { moonai_gpu_simulation_metrics_summary(self.raw.as_ptr(), out) }
         })
+    }
+
+    pub fn simulation_refresh_reports(&mut self) -> Result<()> {
+        let status = unsafe { moonai_gpu_simulation_refresh_reports(self.raw.as_ptr()) };
+        check_cuda_status(status, "moonai_gpu_simulation_refresh_reports")
     }
 
     pub fn simulation_compact_population(
@@ -582,6 +594,10 @@ unsafe extern "C" {
         out_records: *mut InnovationRecord,
     ) -> CudaStatus;
     fn moonai_gpu_simulation_initialize(state: *mut c_void, config: *const GpuSimulationConfig) -> CudaStatus;
+    fn moonai_gpu_debug_roundtrip_simulation_config(
+        config: *const GpuSimulationConfig,
+        out_config: *mut GpuSimulationConfig,
+    ) -> CudaStatus;
     fn moonai_gpu_simulation_step(state: *mut c_void, out_stats: *mut UiStatsReadback) -> CudaStatus;
     fn moonai_gpu_simulation_ui_stats(state: *const c_void, out_stats: *mut UiStatsReadback) -> CudaStatus;
     fn moonai_gpu_simulation_free_list_state(state: *const c_void, out_state: *mut FreeListStateReadback)
@@ -599,6 +615,7 @@ unsafe extern "C" {
         state: *const c_void,
         out_summary: *mut MetricsSummaryReadback,
     ) -> CudaStatus;
+    fn moonai_gpu_simulation_refresh_reports(state: *mut c_void) -> CudaStatus;
     fn moonai_gpu_simulation_compact_population(
         state: *mut c_void,
         population_kind: PopulationKind,

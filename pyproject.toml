@@ -22,7 +22,11 @@ namespace = false
 analysis = "analysis.__main__:main"
 
 [dependency-groups]
-dev = ["ruff>=0.15.12", "pytest"]
+dev = [
+    "ruff>=0.15.12",
+    "ty>=0.0.34",
+    "pytest",
+]
 docs = ["zensical>=0.0.37"]
 
 [tool.ruff]

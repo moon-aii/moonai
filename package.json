@@ -1,5 +1,8 @@
 {
   "name": "moonai",
+  "devDependencies": {
+    "prettier": "3.8.3"
+  },
   "prettier": {
     "printWidth": 120,
     "tabWidth": 2,

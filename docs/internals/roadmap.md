@@ -4,43 +4,28 @@ description: Tasks, priorities, known bugs, and the project roadmap.
 
 # MoonAI Rewrite Plan
 
-> **Legacy C++ Implementation**: The original C++ simulation code is preserved in `legacy/`. This legacy codebase can be inspected for reference but is no longer actively developed. It includes the CMake build system, full SFML visualization, and all original NEAT implementation details. All C++ build configuration (CMakeLists.txt, CMakePresets.json, .clang-format, .clang-tidy, vcpkg.json), source code (main.cpp, app/, core/, evolution/, metrics/, simulation/, visualization/), and architecture documentation (architecture.md) are located in `legacy/`.
-
-> **Rust Refactor Status**: The Rust rewrite no longer uses a Cargo workspace. The names `moonai-config`, `moonai-types`, `moonai-evolution`, `moonai-simulation`, `moonai-metrics`, and `moonai-ui` below are preserved as logical workstreams from the original plan, but they now live inside a single root package under `src/`.
-
 ## 1. System Architecture
 
-### 1.1 Module Dependency Graph
-
-These nodes represent the logical module groupings inside the single root package.
+### 1.1 CLI routing
 
 ```mermaid
-graph TD
-    moonai
-    config
-    types
-    tick_evolution
-    tick_simulation
-    metrics
-    ui
+flowchart TB
+    Parse[parse CLI]
+    Load[load config.lua]
+    Route{Mode}
+    List[--list]
+    Validate[--validate]
+    RunOne[--experiment name]
+    RunAll[--all]
+    RunDefault[default]
+    Exit[exit]
 
-    config --> types
-    tick_evolution --> types
-    tick_simulation --> types
-    tick_simulation --> config
-    tick_simulation --> tick_evolution
-    metrics --> types
-    metrics --> config
-    ui --> types
-    ui --> config
-    ui --> tick_evolution
-    ui --> tick_simulation
-    moonai --> tick_evolution
-    moonai --> tick_simulation
-    moonai --> metrics
-    moonai --> ui
-    moonai --> config
-    moonai --> types
+    Parse --> Load --> Route
+    Route -->|list| List --> Exit
+    Route -->|validate| Validate --> Exit
+    Route -->|experiment| RunOne --> Exit
+    Route -->|all| RunAll --> Exit
+    Route -->|default| RunDefault --> Exit
 ```
 
 ### 1.2 Tick Execution Flow
@@ -186,28 +171,6 @@ classDiagram
 | `--validate`          | Load + validate config, print result, exit          |
 | `-h, --help`          | Show CLI help                                       |
 
-**CLI routing:**
-
-```mermaid
-flowchart TB
-    Parse[parse CLI]
-    Load[load config.lua]
-    Route{Mode}
-    List[--list]
-    Validate[--validate]
-    RunOne[--experiment name]
-    RunAll[--all]
-    RunDefault[default]
-    Exit[exit]
-
-    Parse --> Load --> Route
-    Route -->|list| List --> Exit
-    Route -->|validate| Validate --> Exit
-    Route -->|experiment| RunOne --> Exit
-    Route -->|all| RunAll --> Exit
-    Route -->|default| RunDefault --> Exit
-```
-
 ## 2. Design Principles
 
 1. **GPU owns all simulation state** — positions, velocities, energy, age, alive flags, genomes, compiled networks, innovation counters, and species metadata live in GPU memory.
@@ -301,18 +264,6 @@ src/
     network_compilation.cu
 ```
 
-### Logical Module Responsibilities
-
-| Historical name     | Current location                                                                      | Owns                                                                   |
-| ------------------- | ------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `moonai-config`     | `src/cli.rs`, `src/config.rs`, `src/config_error.rs`, `src/lua.rs`, `src/settings.rs` | SimulationConfig, CliArgs, UiConfig, ConfigError, Lua/settings loading |
-| `moonai-types`      | `src/types.rs`                                                                        | Vec2, NodeType, NodeGene, ConnectionGene, shared constants             |
-| `moonai-evolution`  | `src/tick/` evolution files                                                           | NEAT evolution logic, CUDA kernels, InnovationTracker, Species         |
-| `moonai-simulation` | `src/tick/` simulation files                                                          | Simulation state, GPU buffers, inference, reproduction, compaction     |
-| `moonai-metrics`    | `src/metrics.rs`                                                                      | CSV/JSON logging facade                                                |
-| `moonai-ui`         | `src/ui/`                                                                             | UI runtime state, app loop, renderer integration                       |
-| `moonai`            | `src/main.rs`, `src/signal.rs`                                                        | Binary entrypoint and signal handling                                  |
-
 ## 6. Phase Specifications
 
 **Note:** Phase names below are preserved from the original multi-crate rewrite plan for continuity. After the single-package refactor, these names refer to logical source areas inside the root package rather than separate Cargo crates.
@@ -370,7 +321,7 @@ src/
 | 3   | Preserve config defaults, Lua loading, settings parsing, and CLI routing exactly                                       | `cargo run -- --list`; `cargo run -- --validate`                  | [x]    |
 | 4   | Remove the old workspace tree and update refactor-related documentation                                                | `just gate`                                                       | [x]    |
 
-### Phase 3 — Evolution (GPU CUDA Kernels)
+### Phase 3 — Evolution (GPU CUDA Kernels) [x]
 
 **Goal:** the evolution portion of `src/tick/` owns all NEAT logic as CUDA kernels with a single GPU execution path and no CPU mirror
 
@@ -401,7 +352,7 @@ src/
 | 11  | Add fixed-seed determinism tests for GPU initialization and evolution | Repeat run produces byte-identical compact readbacks on same machine | [x]    |
 | 12  | Add end-to-end GPU smoke test for seed → mutate → compile → inspect   | `cargo test --all-targets --all-features --locked`                   | [x]    |
 
-### Phase 4 — GPU Simulation Kernel
+### Phase 4 — GPU Simulation Kernel [x]
 
 **Goal:** the simulation portion of `src/tick/` drives the persistent kernel and reuses the single GPU evolution path without duplicating that logic on host
 
@@ -449,7 +400,7 @@ src/
 | 12  | Buffer expansion               | `live_count > capacity * 0.9`       | [x]    |
 | 13  | Compaction (mark-scatter-swap) | `free_list empty && births pending` | [x]    |
 
-### Phase 5 — Metrics
+### Phase 5 — Metrics [x]
 
 **Goal:** Output files match C++ schema exactly using GPU-side reductions and compact readbacks only
 
@@ -460,19 +411,19 @@ src/
 | 3   | `species.csv`   | GPU classifies species, reduces `(population, species_id, size, avg_complexity)`, CPU only writes rows                                                                                                                                                                                                                   | [x]    |
 | 4   | `genomes.json`  | GPU selects representative genome slots and copies compact genome snapshots for JSON serialization                                                                                                                                                                                                                       | [x]    |
 
-### Phase 6 — Headless Runtime (Milestone)
+### Phase 6 — Headless Runtime (Milestone) [x]
 
 **Verification Gates:**
 
-| Gate             | Command                                                      | Success Criteria                                                    |
-| ---------------- | ------------------------------------------------------------ | ------------------------------------------------------------------- |
-| Evolution tests  | `cargo test --all-targets --all-features --locked`           | All tests pass                                                      |
-| Build parity     | `cargo build`                                                | Root package compiles, no workspace required                        |
-| Config parity    | `cargo run -- --validate`                                    | Config loads                                                        |
-| GPU determinism  | repeated fixed-seed headless run                             | Compact export readbacks are byte-identical on the same machine     |
-| Headless runtime | `cargo run -- --experiment baseline --headless --ticks 1000` | Produces stats.csv, species.csv, genomes.json from GPU-only runtime |
+| Gate             | Command                                                                                                                | Success Criteria                                                    |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| Evolution tests  | `cargo test --all-targets --all-features --locked`                                                                     | All tests pass                                                      |
+| Build parity     | `cargo build`                                                                                                          | Root package compiles, no workspace required                        |
+| Config parity    | `cargo run -- --validate`                                                                                              | Config loads                                                        |
+| GPU determinism  | repeat `cargo run -- --experiment pop_small_seed42 --headless --ticks 1 --name verify_small_*`, then compare artifacts | Compact export readbacks are byte-identical on the same machine     |
+| Headless runtime | `cargo run -- --experiment pop_small_seed42 --headless --ticks 1 --name verify_small`                                  | Produces stats.csv, species.csv, genomes.json from GPU-only runtime |
 
-### Phase 7 — UI
+### Phase 7 — UI [x]
 
 **File structure:**
 
@@ -511,14 +462,6 @@ GPU buffers → wgpu buffer → instanced draw predator/prey/food
 | Middle-click drag | Pan camera                                                                |
 | Right-click drag  | Pan camera                                                                |
 | Scroll wheel      | Zoom                                                                      |
-
-### Phase 8 — Cleanup
-
-Delete `legacy/` directory after Rust rewrite is complete and verified.
-
-```bash
-rm -rf legacy/
-```
 
 ## 7. GPU Kernel Reference
 
@@ -719,18 +662,3 @@ Same as current C++:
 - 5 nearest food x 2 values
 - Self energy, vel x, vel y (3 values)
 - Wall proximity x, y (2 values)
-
-## 14. Summary: Implementation Order
-
-```
-Phase 1: Workspace skeleton (1-2 days) [COMPLETED]
-Phase 2: moonai-config (1-2 days) [COMPLETED]
-Phase 2b: moonai-types (1-2 days) [COMPLETED]
-Phase 2c: single-crate refactor (1-2 days) [COMPLETED]
-Phase 3: evolution workstream in src/tick/ + CUDA kernels (1-2 weeks)
-Phase 4: simulation workstream in src/tick/ + persistent kernel (2-3 weeks)
-Phase 5: metrics module (2-3 days)
-Phase 6: Headless milestone (1 week)
-Phase 7: ui module (2-3 weeks)
-Phase 8: Cleanup (1 day)
-```

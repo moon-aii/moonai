@@ -61,6 +61,5 @@
   "zoom_min": 0.1,
   "zoom_max": 10.0,
   "speed_min": 1,
-  "speed_max": 1024,
-  "font_path": "assets/fonts/JetBrainsMono-Regular.ttf"
+  "speed_max": 1024
 }

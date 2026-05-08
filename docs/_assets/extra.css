@@ -1,6 +1,6 @@
 :root > * {
-  --md-primary-fg-color: #00ad9f !important;
-  --md-accent-fg-color: #00ad9f !important;
+  --md-primary-fg-color: #009689 !important;
+  --md-accent-fg-color: #009689 !important;
 }
 
 [data-md-color-scheme="slate"] {

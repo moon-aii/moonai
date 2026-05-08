@@ -7,7 +7,7 @@ site_url = "https://moon-aii.github.io/moonai/"
 repo_name = "moon-aii/moonai"
 repo_url = "https://github.com/moon-aii/moonai"
 
-copyright = "CMPE 491/492 - Senior Design Project | TED University"
+copyright = "CMPE 491/492 Senior Design Project - TED University"
 
 extra_css = ["_assets/extra.css"]
 extra_javascript = ["_assets/extra.js"]

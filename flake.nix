@@ -7,15 +7,14 @@
 
   outputs = { self, nixpkgs }: 
   let
-    name = "moonai-shell";
+    name = "moonai-flake";
 
     libs = with pkgs; [
+      wayland
+      libxkbcommon
+      vulkan-loader
+      libGL
       cudatoolkit
-      libx11 libxi libxrandr libxcursor libGL libGLU
-      udev
-      zlib
-      openssl
-      stdenv.cc.cc.lib
     ];
 
     system = "x86_64-linux";
@@ -31,14 +30,13 @@
       inherit name;
       strictDeps = true;
       buildInputs = libs;
-      NIX_LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath libs;
+      LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath libs;
 
       packages = with pkgs; [
         clang-tools
         cudatoolkit
         mermaid-cli
         texliveFull
-        prettier
         bun
         uv
         rustup

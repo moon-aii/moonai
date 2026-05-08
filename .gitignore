@@ -23,6 +23,7 @@ __pycache__/
 .venv/
 *.egg-info/
 .ruff_cache/
+node_modules/
 
 # Build directories
 site/
@@ -30,3 +31,5 @@ target/
 
 # Simulation output data
 output/
+
+legacy/

@@ -5,21 +5,26 @@ hide:
   - toc
 ---
 
-<h1 style="text-align: center;">MoonAI</h1>
+<p align="center"> <img src="_assets/logo.svg" alt="MoonAI Logo" width="120em" /> </p>
+<h1 align="center" style="font-size: 3em;">MoonAI</h1>
 
 <div class="grid cards" markdown>
 
 -   ### Project
 
-    **MoonAI** is a modular simulation platform for studying evolutionary algorithms and neural network evolution through predator-prey dynamics using the NEAT algorithm.
+    Simulation platform for studying evolutionary algorithms and neural network evolution through predator-prey dynamics using the NEAT algorithm.
 
-    This project is developed as part of the **CMPE 491/492 Senior Design Project** courses at the **TED University**.
+    **Team**:
 
-    **Team**: Caner Aras, Emir Irkılata, Oğuzhan Özkaya
+    Caner Aras
+
+    Emir Irkılata
+
+    Oğuzhan Özkaya
 
     **Supervisor**: Ayşenur Birtürk
 
-    **Jury Members**: Deniz Cantürk, Mehmet Evren Coşkun
+    _CMPE 491/492 Senior Design Project - TED University_
 
 -   ### Reports
 

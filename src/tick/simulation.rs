@@ -9,6 +9,7 @@ use crate::tick::genome::{PopulationKind, SeededAgentSnapshot};
 use crate::tick::inference::SensorSnapshotReadback;
 use crate::tick::metrics_reduce::MetricsSummaryReadback;
 use crate::tick::mutation::PHASE3_MAX_CONNECTION_ATTEMPTS;
+use crate::tick::network::SelectedAgentNetworkReadback;
 use crate::tick::reproduction::ReproductionSummaryReadback;
 use crate::tick::species::{
     RepresentativeGenomeHeader, RepresentativeGenomeReadback, SpeciesBatchReadbackHeader, SpeciesSummaryReadback,
@@ -206,6 +207,10 @@ impl SimulationState {
         self.evolution.simulation_metrics_summary()
     }
 
+    pub fn refresh_reports(&mut self) -> Result<()> {
+        self.evolution.simulation_refresh_reports()
+    }
+
     pub fn compact_population(&mut self, population_kind: PopulationKind) -> Result<CompactionSummaryReadback> {
         self.evolution.simulation_compact_population(population_kind)
     }
@@ -228,6 +233,14 @@ impl SimulationState {
 
     pub fn sensor_snapshot(&self, population_kind: PopulationKind, slot: u32) -> Result<SensorSnapshotReadback> {
         self.evolution.sensor_snapshot(population_kind, slot)
+    }
+
+    pub fn selected_agent_network(
+        &self,
+        population_kind: PopulationKind,
+        slot: u32,
+    ) -> Result<SelectedAgentNetworkReadback> {
+        self.evolution.selected_agent_network(population_kind, slot)
     }
 
     pub fn render_snapshot(&self, max_predators: u32, max_prey: u32, max_food: u32) -> Result<RenderSnapshotReadback> {
@@ -260,6 +273,9 @@ fn as_non_negative_u32(value: i32, field_name: &str) -> Result<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use crate::tick::evolution::GpuEvolutionConfig;
+    use crate::types::{OUTPUT_COUNT, SENSOR_COUNT};
 
     fn simulation_config(seed: i32) -> SimulationConfig {
         SimulationConfig {
@@ -328,6 +344,22 @@ mod tests {
         assert_eq!(snapshot.prey.len(), 6);
         assert_eq!(snapshot.food.len(), 10);
 
+        Ok(())
+    }
+
+    #[test]
+    fn simulation_config_ffi_roundtrips() -> Result<()> {
+        if !runtime_ready() {
+            return Ok(());
+        }
+
+        let config = simulation_config(60);
+        let evolution_config = GpuEvolutionConfig::for_seed_stage(&config, SENSOR_COUNT as u32, OUTPUT_COUNT as u32)?;
+        let simulation_config = GpuSimulationConfig::for_simulation(&config)?;
+        let manager = EvolutionManager::create(evolution_config)?;
+        let roundtrip = manager.debug_roundtrip_simulation_config(simulation_config)?;
+
+        assert_eq!(roundtrip, simulation_config);
         Ok(())
     }
 
