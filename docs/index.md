@@ -24,7 +24,7 @@ hide:
 
     **Supervisor**: Ayşenur Birtürk
 
-    *CMPE 491/492 Senior Design Project - TED University*
+    _CMPE 491/492 Senior Design Project - TED University_
 
 -   ### Reports
 
