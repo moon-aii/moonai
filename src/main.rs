@@ -1,9 +1,7 @@
-mod cli;
 mod config;
 mod lua;
 mod metrics;
 mod settings;
-mod signal;
 mod tick;
 mod ui;
 
@@ -13,9 +11,7 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context as _, Result, bail};
-use clap::Parser as _;
 
-use crate::cli::CliArgs;
 use crate::config::{ConfigError, SimulationConfig, validate_config};
 use crate::metrics::Logger;
 use crate::tick::checks::CudaStatus;
@@ -23,6 +19,53 @@ use crate::tick::genome::PopulationKind;
 use crate::tick::simulation::SimulationState;
 use crate::tick::species::MAX_SPECIES_SUMMARIES;
 use crate::ui::app::App;
+
+use std::sync::Once;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+use clap::Parser;
+
+#[derive(Debug, Parser)]
+#[command(author, version, about)]
+pub struct CliArgs {
+    #[arg(short, long)]
+    pub config: Option<String>,
+    #[arg(long)]
+    pub settings: Option<String>,
+    #[arg(short = 'n', long)]
+    pub ticks: Option<i32>,
+    #[arg(long)]
+    pub headless: bool,
+    #[arg(short, long)]
+    pub verbose: bool,
+    #[arg(long)]
+    pub experiment: Option<String>,
+    #[arg(long)]
+    pub all: bool,
+    #[arg(long)]
+    pub list: bool,
+    #[arg(long)]
+    pub name: Option<String>,
+    #[arg(long)]
+    pub validate: bool,
+}
+
+pub static SHOULD_STOP: AtomicBool = AtomicBool::new(false);
+
+static HANDLER_INIT: Once = Once::new();
+
+pub fn setup_signal_handlers() {
+    SHOULD_STOP.store(false, Ordering::SeqCst);
+    HANDLER_INIT.call_once(|| {
+        let _ = ctrlc::set_handler(|| {
+            SHOULD_STOP.store(true, Ordering::SeqCst);
+        });
+    });
+}
+
+pub fn is_signal_pending() -> bool {
+    SHOULD_STOP.load(Ordering::SeqCst)
+}
 
 fn stdout_line(message: &str) {
     let mut stdout = io::stdout().lock();
@@ -182,7 +225,7 @@ fn log_report_snapshot(state: &mut SimulationState, logger: &mut Logger) -> Resu
 fn run_headless_experiment(run_label: &str, config: &SimulationConfig, run_dir: &Path) -> Result<()> {
     validate_config(config)?;
     cuda_runtime_ready()?;
-    signal::setup_signal_handlers();
+    setup_signal_handlers();
 
     let report_interval = u32::try_from(config.report_interval_ticks).with_context(|| {
         format!("report_interval_ticks could not be converted to u32: {}", config.report_interval_ticks)
@@ -201,7 +244,7 @@ fn run_headless_experiment(run_label: &str, config: &SimulationConfig, run_dir: 
     let mut last_logged_tick = 0_u32;
 
     loop {
-        if signal::is_signal_pending() {
+        if is_signal_pending() {
             break;
         }
 
@@ -270,7 +313,7 @@ fn main() -> Result<()> {
             );
             let run_dir = resolve_run_dir(&config.output_dir, Some(name.as_str()), config.seed);
             run_headless_experiment(name, &config, &run_dir)?;
-            if signal::is_signal_pending() {
+            if is_signal_pending() {
                 break;
             }
         }
@@ -295,7 +338,7 @@ fn main() -> Result<()> {
 
     let ui_config = settings::load_settings(args.settings.as_deref())?;
 
-    signal::setup_signal_handlers();
+    setup_signal_handlers();
 
     App::run(&selected_name, &config, &ui_config)
 }
