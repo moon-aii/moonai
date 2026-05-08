@@ -9,6 +9,7 @@ use crate::tick::genome::{PopulationKind, SeededAgentSnapshot};
 use crate::tick::inference::SensorSnapshotReadback;
 use crate::tick::metrics_reduce::MetricsSummaryReadback;
 use crate::tick::mutation::PHASE3_MAX_CONNECTION_ATTEMPTS;
+use crate::tick::network::SelectedAgentNetworkReadback;
 use crate::tick::reproduction::ReproductionSummaryReadback;
 use crate::tick::species::{
     RepresentativeGenomeHeader, RepresentativeGenomeReadback, SpeciesBatchReadbackHeader, SpeciesSummaryReadback,
@@ -232,6 +233,14 @@ impl SimulationState {
 
     pub fn sensor_snapshot(&self, population_kind: PopulationKind, slot: u32) -> Result<SensorSnapshotReadback> {
         self.evolution.sensor_snapshot(population_kind, slot)
+    }
+
+    pub fn selected_agent_network(
+        &self,
+        population_kind: PopulationKind,
+        slot: u32,
+    ) -> Result<SelectedAgentNetworkReadback> {
+        self.evolution.selected_agent_network(population_kind, slot)
     }
 
     pub fn render_snapshot(&self, max_predators: u32, max_prey: u32, max_food: u32) -> Result<RenderSnapshotReadback> {

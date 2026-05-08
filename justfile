@@ -41,7 +41,7 @@ analyse:
 # Fix: format and lint
 [group('quality')]
 fix:
-  prettier --log-level=warn --write .
+  bunx prettier --log-level=warn --write .
   uv run ruff format .
   uv run ruff check . --fix
   cargo fmt --all
@@ -50,7 +50,7 @@ fix:
 # Check code: format, lint checks and manual supression command grep
 [group('quality')]
 check:
-  prettier --log-level warn --check .
+  bunx prettier --log-level warn --check .
   uv run ruff format . --check
   uv run ruff check .
   ! rg -n -F -e '#[allow' -e '#![allow' -g '*.rs' -g '!tests/**'
@@ -81,6 +81,8 @@ update:
 clean:
   cargo clean
   uv run ruff clean
+  rm -rf node_modules/
+  rm -rf site/
 
 # Remove all output and generated report artifacts
 [group('clean')]

@@ -30,6 +30,8 @@ moonai/
 └── zensical.toml               # Website configuration
 ```
 
+> **Legacy C++ Implementation**: The original C++ simulation code is preserved in `legacy/` (git ignored). This legacy codebase can be inspected for reference but is no longer actively developed. It includes the CMake build system, full SFML visualization, and all original NEAT implementation details. All C++ build configuration (CMakeLists.txt, CMakePresets.json, .clang-format, .clang-tidy, vcpkg.json), source code (main.cpp, app/, core/, evolution/, metrics/, simulation/, visualization/), and architecture documentation (architecture.md) are located in `legacy/`.
+
 ## Rust Source Layout (`src/`)
 
 MoonAI now uses a single crate with a flattened source tree. Only `ui/` and `tick/` are subdirectories.

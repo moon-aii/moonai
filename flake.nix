@@ -11,10 +11,10 @@
 
     libs = with pkgs; [
       cudatoolkit
-      libx11 libxi libxrandr libxcursor libGL libGLU
-      udev
-      zlib
-      openssl
+      wayland
+      libxkbcommon
+      vulkan-loader
+      libGL
       stdenv.cc.cc.lib
     ];
 
@@ -31,14 +31,13 @@
       inherit name;
       strictDeps = true;
       buildInputs = libs;
-      NIX_LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath libs;
+      LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath libs;
 
       packages = with pkgs; [
         clang-tools
         cudatoolkit
         mermaid-cli
         texliveFull
-        prettier
         bun
         uv
         rustup

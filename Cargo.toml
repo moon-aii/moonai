@@ -16,6 +16,9 @@ mlua = { version = "0.9", features = ["luau"] }
 anyhow = "1.0"
 thiserror = "1.0"
 ctrlc = "3.0"
+eframe = { version = "0.33", default-features = false, features = ["default_fonts", "wayland", "x11", "wgpu"] }
+image = { version = "0.25", default-features = false, features = ["png"] }
+wgpu = { version = "27.0.1", default-features = false, features = ["vulkan"] }
 
 [build-dependencies]
 cc = "1.0"

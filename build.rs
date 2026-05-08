@@ -12,6 +12,7 @@ fn main() {
     cc::Build::new()
         .cuda(true)
         .flag("-arch=native")
+        .flag("-O2")
         .files(&[
             "src/tick/kernel.cu",
             "src/tick/crossover.cu",
