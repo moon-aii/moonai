@@ -31,7 +31,7 @@
       inherit name;
       # strictDeps = true;
       buildInputs = libs;
-      NIX_LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath libs;
+      LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath libs;
 
       packages = with pkgs; [
         clang-tools
