@@ -5,13 +5,6 @@ mod settings;
 mod tick;
 mod ui;
 
-use std::collections::HashMap;
-use std::io::{self, Write as _};
-use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
-
-use anyhow::{Context as _, Result, bail};
-
 use crate::config::{ConfigError, SimulationConfig, validate_config};
 use crate::metrics::Logger;
 use crate::tick::evolution::CudaStatus;
@@ -19,11 +12,14 @@ use crate::tick::simulation::PopulationKind;
 use crate::tick::simulation::SimulationState;
 use crate::tick::species::MAX_SPECIES_SUMMARIES;
 use crate::ui::app::App;
-
+use anyhow::{Context as _, Result, bail};
+use clap::Parser;
+use std::collections::HashMap;
+use std::io::{self, Write as _};
+use std::path::{Path, PathBuf};
 use std::sync::Once;
 use std::sync::atomic::{AtomicBool, Ordering};
-
-use clap::Parser;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Parser)]
 #[command(author, version, about)]
@@ -84,10 +80,6 @@ fn resolve_config_path(args: &CliArgs) -> Option<String> {
         || settings::config_path_from_binary().map(|path| path.to_string_lossy().into_owned()),
         |path| Some(path.clone()),
     )
-}
-
-fn load_experiments(config_path: &str) -> Result<HashMap<String, SimulationConfig>, ConfigError> {
-    lua::load_config(config_path)
 }
 
 fn default_or_only_experiment(experiments: &HashMap<String, SimulationConfig>) -> Option<SimulationConfig> {
@@ -271,6 +263,10 @@ fn run_headless_experiment(run_label: &str, config: &SimulationConfig, run_dir: 
     Ok(())
 }
 
+fn run() -> Result<()> {
+
+}
+
 fn main() -> Result<()> {
     let args = CliArgs::parse();
 
@@ -278,6 +274,8 @@ fn main() -> Result<()> {
         stderr_line("Error: config.lua not found. Provide with --config or place next to binary.");
         std::process::exit(1);
     };
+
+    let experiments = lua::load_config(&config_path)?;
 
     if args.list {
         do_list(&config_path)?;
@@ -288,8 +286,6 @@ fn main() -> Result<()> {
         do_validate(&config_path, args.experiment.as_deref())?;
         return Ok(());
     }
-
-    let experiments = load_experiments(&config_path)?;
 
     if args.all {
         if !args.headless {
