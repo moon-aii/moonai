@@ -285,22 +285,20 @@ impl SimulationState {
             return Ok(());
         }
 
-        let summary = self.evolution.population_summary(population_kind)?;
+        let live_count = self.evolution.population_live_count(population_kind)?;
         let free_list_state = self.evolution.simulation_free_list_state()?;
         let free_slots = match population_kind {
             PopulationKind::Predator => free_list_state.predator_free_slots,
             PopulationKind::Prey => free_list_state.prey_free_slots,
         };
-        let capacity = summary.capacity;
-        let required_live = summary.live_count.saturating_add(births_pending);
+        let capacity = self.evolution.population_capacity(population_kind);
+        let required_live = live_count.saturating_add(births_pending);
         if free_slots >= births_pending && required_live <= ((capacity * 9) / 10) {
             return Ok(());
         }
 
         let mut new_capacity = if capacity == 0 { 1 } else { capacity };
-        while new_capacity.saturating_sub(summary.live_count) < births_pending
-            || required_live > ((new_capacity * 9) / 10)
-        {
+        while new_capacity.saturating_sub(live_count) < births_pending || required_live > ((new_capacity * 9) / 10) {
             new_capacity = if new_capacity == 0 { 1 } else { new_capacity.saturating_mul(2) };
         }
         self.evolution.expand_population(population_kind, new_capacity)?;

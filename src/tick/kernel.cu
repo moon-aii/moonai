@@ -11,7 +11,6 @@ using moonai_gpu::GpuEvolutionConfig;
 using moonai_gpu::GpuEvolutionState;
 using moonai_gpu::GpuSimulationConfig;
 using moonai_gpu::PopulationKind;
-using moonai_gpu::PopulationSummaryReadback;
 using moonai_gpu::RenderAgentReadback;
 using moonai_gpu::RenderFoodReadback;
 using moonai_gpu::RenderSnapshotHeader;
@@ -32,8 +31,8 @@ std::int32_t g_last_cuda_error_code = 0;
 extern "C" std::int32_t moonai_gpu_evolution_crossover(void *state_ptr, PopulationKind population_kind,
                                                          std::uint32_t parent_a_slot, std::uint32_t parent_b_slot,
                                                          std::uint32_t offspring_slot);
-extern "C" std::int32_t moonai_gpu_evolution_population_summary(const void *state_ptr, PopulationKind population_kind,
-                                                                  moonai_gpu::PopulationSummaryReadback *out_summary);
+extern "C" std::int32_t moonai_gpu_evolution_population_live_count(const void *state_ptr, PopulationKind population_kind,
+                                                                      std::uint32_t *out_live_count);
 extern "C" std::int32_t moonai_gpu_evolution_mutate_slot(void *state_ptr, PopulationKind population_kind,
                                                            std::uint32_t slot,
                                                            const moonai_gpu::GpuMutationConfig *config);
@@ -274,6 +273,12 @@ void destroy_state(GpuEvolutionState *state) {
   moonai_gpu::free_array(state->predator_free_len);
   moonai_gpu::free_array(state->prey_free_len);
   free_reproduction_buffers(*state);
+  moonai_gpu::free_array(state->population_live_count_scratch);
+  moonai_gpu::free_array(state->ui_stats_scratch);
+  moonai_gpu::free_array(state->free_list_state_scratch);
+  moonai_gpu::free_array(state->sensor_snapshot_scratch);
+  moonai_gpu::free_array(state->compiled_header_scratch);
+  moonai_gpu::free_array(state->selected_network_scratch);
   moonai_gpu::free_array(state->metrics_summary);
   moonai_gpu::free_array(state->species_summaries_scratch);
   moonai_gpu::free_array(state->representative_headers_scratch);
@@ -1437,8 +1442,7 @@ __global__ void render_snapshot_kernel(DevicePopulationBuffers predator, DeviceP
   }
 }
 
-__global__ void summarize_population_kernel(DevicePopulationBuffers population, PopulationKind population_kind,
-                                            PopulationSummaryReadback *out_summary) {
+__global__ void summarize_population_kernel(DevicePopulationBuffers population, std::uint32_t *out_live_count) {
   if (blockIdx.x != 0U || threadIdx.x != 0U) {
     return;
   }
@@ -1451,9 +1455,7 @@ __global__ void summarize_population_kernel(DevicePopulationBuffers population, 
     ++live_count;
   }
 
-  out_summary->population_kind = population_kind;
-  out_summary->live_count = live_count;
-  out_summary->capacity = population.capacity;
+  *out_live_count = live_count;
 }
 
 CudaStatus build_spatial_grid(GpuEvolutionState &state) {
@@ -1552,6 +1554,12 @@ extern "C" std::int32_t moonai_gpu_evolution_create(const GpuEvolutionConfig *co
                                        config->connection_stride, config->num_outputs),
            moonai_gpu::alloc_array(&state->innovation, 1U),
            moonai_gpu::alloc_array(&state->next_entity_id, 1U),
+           moonai_gpu::alloc_array(&state->population_live_count_scratch, 1U),
+           moonai_gpu::alloc_array(&state->ui_stats_scratch, 1U),
+           moonai_gpu::alloc_array(&state->free_list_state_scratch, 1U),
+           moonai_gpu::alloc_array(&state->sensor_snapshot_scratch, 1U),
+           moonai_gpu::alloc_array(&state->compiled_header_scratch, 1U),
+           moonai_gpu::alloc_array(&state->selected_network_scratch, 1U),
            moonai_gpu::alloc_array(&state->species_summaries_scratch, moonai_gpu::kSpeciesBucketCount),
            moonai_gpu::alloc_array(&state->representative_headers_scratch, moonai_gpu::kSpeciesBucketCount),
            moonai_gpu::alloc_array(&state->species_count_scratch, 1U),
@@ -1610,18 +1618,20 @@ extern "C" std::int32_t moonai_gpu_evolution_seed_initial_population(void *state
   return static_cast<std::int32_t>(CudaStatus::Success);
 }
 
-extern "C" std::int32_t moonai_gpu_evolution_population_summary(const void *state_ptr, PopulationKind population_kind,
-                                                                  PopulationSummaryReadback *out_summary) {
+extern "C" std::int32_t moonai_gpu_evolution_population_live_count(const void *state_ptr, PopulationKind population_kind,
+                                                                     std::uint32_t *out_live_count) {
   auto *state = static_cast<const GpuEvolutionState *>(state_ptr);
-  if (state == nullptr || out_summary == nullptr) {
+  if (state == nullptr || out_live_count == nullptr || state->population_live_count_scratch == nullptr) {
     return static_cast<std::int32_t>(CudaStatus::InvalidArgument);
   }
 
-  const auto status = moonai_gpu::launch_single_value_readback(out_summary, [&](PopulationSummaryReadback *device_summary) {
-    summarize_population_kernel<<<1U, 1U>>>(moonai_gpu::population_for_kind(*state, population_kind), population_kind,
-                                            device_summary);
-    return CudaStatus::Success;
-  });
+  summarize_population_kernel<<<1U, 1U>>>(moonai_gpu::population_for_kind(*state, population_kind),
+                                          state->population_live_count_scratch);
+  auto status = moonai_gpu::synchronize_kernels();
+  if (status == CudaStatus::Success) {
+    status = moonai_gpu::copy_compact_device_readback(state->population_live_count_scratch, out_live_count,
+                                                      sizeof(*out_live_count));
+  }
   return static_cast<std::int32_t>(status);
 }
 
@@ -2000,13 +2010,14 @@ extern "C" std::int32_t moonai_gpu_simulation_advance_tick(void *state_ptr) {
 
 extern "C" std::int32_t moonai_gpu_simulation_ui_stats(const void *state_ptr, UiStatsReadback *out_stats) {
   auto *state = static_cast<const GpuEvolutionState *>(state_ptr);
-  if (state == nullptr || out_stats == nullptr || state->counters == nullptr) {
+  if (state == nullptr || out_stats == nullptr || state->counters == nullptr || state->ui_stats_scratch == nullptr) {
     return static_cast<std::int32_t>(CudaStatus::InvalidArgument);
   }
-  const auto status = moonai_gpu::launch_single_value_readback(out_stats, [&](UiStatsReadback *device_stats) {
-    write_ui_stats_kernel<<<1U, 1U>>>(state->predator, state->prey, state->counters, device_stats);
-    return CudaStatus::Success;
-  });
+  write_ui_stats_kernel<<<1U, 1U>>>(state->predator, state->prey, state->counters, state->ui_stats_scratch);
+  auto status = moonai_gpu::synchronize_kernels();
+  if (status == CudaStatus::Success) {
+    status = moonai_gpu::copy_compact_device_readback(state->ui_stats_scratch, out_stats, sizeof(*out_stats));
+  }
   return static_cast<std::int32_t>(status);
 }
 
@@ -2014,15 +2025,16 @@ extern "C" std::int32_t moonai_gpu_simulation_free_list_state(const void *state_
                                                                  moonai_gpu::FreeListStateReadback *out_state) {
   auto *state = static_cast<const GpuEvolutionState *>(state_ptr);
   if (state == nullptr || out_state == nullptr || state->counters == nullptr || state->predator_free_len == nullptr ||
-      state->prey_free_len == nullptr) {
+      state->prey_free_len == nullptr || state->free_list_state_scratch == nullptr) {
     return static_cast<std::int32_t>(CudaStatus::InvalidArgument);
   }
 
-  const auto status = moonai_gpu::launch_single_value_readback(out_state, [&](moonai_gpu::FreeListStateReadback *device_state) {
-    free_list_state_kernel<<<1U, 1U>>>(state->food, state->counters, state->predator_free_len, state->prey_free_len,
-                                       device_state);
-    return CudaStatus::Success;
-  });
+  free_list_state_kernel<<<1U, 1U>>>(state->food, state->counters, state->predator_free_len, state->prey_free_len,
+                                     state->free_list_state_scratch);
+  auto status = moonai_gpu::synchronize_kernels();
+  if (status == CudaStatus::Success) {
+    status = moonai_gpu::copy_compact_device_readback(state->free_list_state_scratch, out_state, sizeof(*out_state));
+  }
   return static_cast<std::int32_t>(status);
 }
 
@@ -2050,7 +2062,7 @@ extern "C" std::int32_t moonai_gpu_simulation_sensor_snapshot(const void *state_
                                                                    std::uint32_t slot,
                                                                    SensorSnapshotReadback *out_snapshot) {
   auto *state = static_cast<const GpuEvolutionState *>(state_ptr);
-  if (state == nullptr || out_snapshot == nullptr) {
+  if (state == nullptr || out_snapshot == nullptr || state->sensor_snapshot_scratch == nullptr) {
     return static_cast<std::int32_t>(CudaStatus::InvalidArgument);
   }
 
@@ -2059,10 +2071,12 @@ extern "C" std::int32_t moonai_gpu_simulation_sensor_snapshot(const void *state_
     return static_cast<std::int32_t>(CudaStatus::InvalidArgument);
   }
 
-  const auto status = moonai_gpu::launch_single_value_readback(out_snapshot, [&](SensorSnapshotReadback *device_snapshot) {
-    sensor_snapshot_kernel<<<1U, 1U>>>(population, population_kind, slot, state->config.num_inputs, device_snapshot);
-    return CudaStatus::Success;
-  });
+  sensor_snapshot_kernel<<<1U, 1U>>>(population, population_kind, slot, state->config.num_inputs,
+                                     state->sensor_snapshot_scratch);
+  auto status = moonai_gpu::synchronize_kernels();
+  if (status == CudaStatus::Success) {
+    status = moonai_gpu::copy_compact_device_readback(state->sensor_snapshot_scratch, out_snapshot, sizeof(*out_snapshot));
+  }
   return static_cast<std::int32_t>(status);
 }
 

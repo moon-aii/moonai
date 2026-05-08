@@ -15,6 +15,7 @@ MoonAI follows a **GPU-first execution model**.
 - **Cadence separation** — `report_interval_ticks` controls CSV/JSON/species/genome export cadence, while UI `speed_multiplier` controls visualization refresh cadence. They are independent.
 - **Readback/interop is minimal** — only the current UI-frame render snapshot, selected-agent inspection buffers, and report/export structs are transferred out of the simulation buffers.
 - **No duplication** — there is no separate CPU algorithmic path for evolution, inference, speciation, or verification. Host Rust may define FFI layouts and export structs only.
+- **Typed host-state FFI** — Host Rust mirrors the host-side CUDA state layout for metadata access (capacities, strides, cached configs, scratch buffers), while CUDA still owns all device allocations and kernel execution.
 - **Buffer expansion** — buffers grow by 2x when capacity threshold is reached. No artificial ceiling.
 
 ## Desicions

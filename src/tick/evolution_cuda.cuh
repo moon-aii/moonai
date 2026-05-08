@@ -118,12 +118,6 @@ struct GpuEvolutionConfig {
   std::uint32_t connection_stride;
 };
 
-struct PopulationSummaryReadback {
-  PopulationKind population_kind;
-  std::uint32_t live_count;
-  std::uint32_t capacity;
-};
-
 struct UiStatsReadback {
   std::uint32_t tick;
   std::uint32_t predator_count;
@@ -350,6 +344,12 @@ struct GpuEvolutionState {
   ReproductionPair *prey_reproduction_pairs;
   std::uint32_t *predator_pair_count;
   std::uint32_t *prey_pair_count;
+  std::uint32_t *population_live_count_scratch;
+  UiStatsReadback *ui_stats_scratch;
+  FreeListStateReadback *free_list_state_scratch;
+  SensorSnapshotReadback *sensor_snapshot_scratch;
+  CompiledNetworkReadbackHeader *compiled_header_scratch;
+  SelectedAgentNetworkReadback *selected_network_scratch;
   MetricsSummaryReadback *metrics_summary;
   SpeciesSummaryReadback *species_summaries_scratch;
   RepresentativeGenomeHeader *representative_headers_scratch;
@@ -423,26 +423,7 @@ inline CudaStatus copy_host_data_to_device(void *device_ptr, const void *host_pt
   return map_cuda_runtime_error(cudaMemcpy(device_ptr, host_ptr, size, cudaMemcpyHostToDevice), CudaStatus::DeviceCopyFailed);
 }
 
-inline CudaStatus synchronize_kernels() {
-  return map_cuda_runtime_error(cudaDeviceSynchronize(), CudaStatus::KernelLaunchFailed);
-}
-
-template <typename T, typename LaunchFn>
-inline CudaStatus launch_single_value_readback(T *host_ptr, LaunchFn &&launch) {
-  T *device_ptr = nullptr;
-  auto status = alloc_array(&device_ptr, 1U);
-  if (status == CudaStatus::Success) {
-    status = launch(device_ptr);
-  }
-  if (status == CudaStatus::Success) {
-    status = synchronize_kernels();
-  }
-  if (status == CudaStatus::Success) {
-    status = copy_compact_device_readback(device_ptr, host_ptr, sizeof(*host_ptr));
-  }
-  free_array(device_ptr);
-  return status;
-}
+inline CudaStatus synchronize_kernels() { return map_cuda_runtime_error(cudaDeviceSynchronize(), CudaStatus::KernelLaunchFailed); }
 
 inline const DevicePopulationBuffers &population_for_kind(const GpuEvolutionState &state, PopulationKind population_kind) {
   return population_kind == PopulationKind::Predator ? state.predator : state.prey;
