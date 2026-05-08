@@ -64,11 +64,11 @@ test *args:
 
 # Full check + test gate (github ci runs this command)
 [group('quality')]
-gate: check test
+ci: check test
 
 # Fix + Gate, prefer this recipe to save time instead of doing gate -> fix -> gate.
 [group('quality')]
-qual: fix gate
+qual: fix ci
 
 # Update dependencies
 [group('dev')]

@@ -218,8 +218,10 @@ extern "C" std::int32_t moonai_gpu_evolution_crossover(void *state_ptr, Populati
                                                  0U,             0U,            0U,            0U,             0U};
   status = moonai_gpu::copy_host_data_to_device(device_summary, &initial_summary, sizeof(initial_summary));
   if (status == CudaStatus::Success) {
+    const auto offspring_energy =
+        state->simulation.offspring_initial_energy > 0.0F ? state->simulation.offspring_initial_energy : state->config.initial_energy;
     crossover_kernel<<<1U, 1U>>>(population, state->next_entity_id, population_kind, parent_a_slot, parent_b_slot,
-                                  offspring_slot, state->config.num_inputs, state->config.initial_energy, device_summary);
+                                  offspring_slot, state->config.num_inputs, offspring_energy, device_summary);
     status = moonai_gpu::synchronize_kernels();
   }
   if (status == CudaStatus::Success) {

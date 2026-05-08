@@ -17,3 +17,12 @@ pub struct InnovationRecord {
     pub innovation: u32,
     pub record_kind: u32,
 }
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InnovationLogReadbackHeader {
+    pub total_len: u32,
+    pub stored_len: u32,
+    pub returned_len: u32,
+    pub dropped_len: u32,
+}
