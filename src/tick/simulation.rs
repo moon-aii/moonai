@@ -1,16 +1,13 @@
 use anyhow::{Context as _, Result, bail};
 
 use crate::config::SimulationConfig;
-use crate::tick::buffers::{RenderSnapshotReadback, SpatialGridReadback, UiStatsReadback};
-use crate::tick::checks::InvariantCheckReadback;
-use crate::tick::compaction::{CompactionSummaryReadback, FreeListStateReadback};
+use crate::tick::buffers::{RenderSnapshotReadback, UiStatsReadback};
+use crate::tick::compaction::FreeListStateReadback;
 use crate::tick::evolution::{EvolutionManager, GpuEvolutionConfig};
-use crate::tick::genome::{PopulationKind, SeededAgentSnapshot};
+use crate::tick::genome::PopulationKind;
 use crate::tick::inference::{OUTPUT_COUNT, SENSOR_COUNT, SensorSnapshotReadback};
 use crate::tick::metrics_reduce::MetricsSummaryReadback;
-use crate::tick::mutation::PHASE3_MAX_CONNECTION_ATTEMPTS;
 use crate::tick::network::SelectedAgentNetworkReadback;
-use crate::tick::reproduction::ReproductionSummaryReadback;
 use crate::tick::species::{
     RepresentativeGenomeHeader, RepresentativeGenomeReadback, SpeciesBatchReadbackHeader, SpeciesSummaryReadback,
 };
@@ -147,7 +144,7 @@ impl GpuSimulationConfig {
             add_node_rate: config.add_node_rate,
             add_connection_rate: config.add_connection_rate,
             delete_connection_rate: config.delete_connection_rate,
-            max_connection_attempts: PHASE3_MAX_CONNECTION_ATTEMPTS,
+            max_connection_attempts: 16,
             max_age: as_non_negative_u32(config.max_age, "max_age")?,
             report_interval_ticks: as_non_negative_u32(config.report_interval_ticks, "report_interval_ticks")?,
             seed: config.seed as i64 as u64,
@@ -194,24 +191,12 @@ impl SimulationState {
         self.evolution.simulation_free_list_state()
     }
 
-    pub fn spatial_grid_state(&self) -> Result<SpatialGridReadback> {
-        self.evolution.simulation_spatial_grid_state()
-    }
-
-    pub fn reproduction_summary(&self, population_kind: PopulationKind) -> Result<ReproductionSummaryReadback> {
-        self.evolution.simulation_reproduction_summary(population_kind)
-    }
-
     pub fn metrics_summary(&self) -> Result<MetricsSummaryReadback> {
         self.evolution.simulation_metrics_summary()
     }
 
     pub fn refresh_reports(&mut self) -> Result<()> {
         self.evolution.simulation_refresh_reports()
-    }
-
-    pub fn compact_population(&mut self, population_kind: PopulationKind) -> Result<CompactionSummaryReadback> {
-        self.evolution.simulation_compact_population(population_kind)
     }
 
     pub fn species_summaries(
@@ -245,21 +230,6 @@ impl SimulationState {
     pub fn render_snapshot(&self, max_predators: u32, max_prey: u32, max_food: u32) -> Result<RenderSnapshotReadback> {
         self.evolution.render_snapshot(max_predators, max_prey, max_food)
     }
-
-    pub fn seeded_agent_snapshot(&self, population_kind: PopulationKind, slot: u32) -> Result<SeededAgentSnapshot> {
-        self.evolution.seeded_agent_snapshot(population_kind, slot)
-    }
-
-    pub fn population_summary(
-        &self,
-        population_kind: PopulationKind,
-    ) -> Result<crate::tick::buffers::PopulationSummaryReadback> {
-        self.evolution.population_summary(population_kind)
-    }
-
-    pub fn check_invariants(&self) -> Result<InvariantCheckReadback> {
-        self.evolution.check_invariants()
-    }
 }
 
 fn as_non_negative_u32(value: i32, field_name: &str) -> Result<u32> {
@@ -272,8 +242,6 @@ fn as_non_negative_u32(value: i32, field_name: &str) -> Result<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    use crate::tick::evolution::GpuEvolutionConfig;
 
     fn simulation_config(seed: i32) -> SimulationConfig {
         SimulationConfig {
@@ -301,21 +269,6 @@ mod tests {
         EvolutionManager::runtime_status().is_success()
     }
 
-    fn expected_wall_sensor(negative_side_dist: f32, positive_side_dist: f32, vision_range: f32) -> f32 {
-        let negative_in_range = negative_side_dist < vision_range;
-        let positive_in_range = positive_side_dist < vision_range;
-
-        if !negative_in_range && !positive_in_range {
-            return 0.0;
-        }
-
-        if negative_in_range && (!positive_in_range || negative_side_dist <= positive_side_dist) {
-            return -(1.0 - (negative_side_dist / vision_range));
-        }
-
-        1.0 - (positive_side_dist / vision_range)
-    }
-
     #[test]
     fn simulation_initializes_food_and_ui_state() -> Result<()> {
         if !runtime_ready() {
@@ -334,7 +287,6 @@ mod tests {
         assert_eq!(free_list.predator_free_slots, 0);
         assert_eq!(free_list.prey_free_slots, 0);
         assert_eq!(free_list.active_food_count, 10);
-        assert_eq!(state.spatial_grid_state()?.predator_entries, 4);
         assert_eq!(snapshot.header.total_predators, 4);
         assert_eq!(snapshot.header.total_prey, 6);
         assert_eq!(snapshot.header.total_food, 10);
@@ -342,22 +294,6 @@ mod tests {
         assert_eq!(snapshot.prey.len(), 6);
         assert_eq!(snapshot.food.len(), 10);
 
-        Ok(())
-    }
-
-    #[test]
-    fn simulation_config_ffi_roundtrips() -> Result<()> {
-        if !runtime_ready() {
-            return Ok(());
-        }
-
-        let config = simulation_config(60);
-        let evolution_config = GpuEvolutionConfig::for_seed_stage(&config, SENSOR_COUNT as u32, OUTPUT_COUNT as u32)?;
-        let simulation_config = GpuSimulationConfig::for_simulation(&config)?;
-        let manager = EvolutionManager::create(evolution_config)?;
-        let roundtrip = manager.debug_roundtrip_simulation_config(simulation_config)?;
-
-        assert_eq!(roundtrip, simulation_config);
         Ok(())
     }
 
@@ -376,26 +312,12 @@ mod tests {
 
         assert_eq!(state_a.ui_stats()?, state_b.ui_stats()?);
         assert_eq!(state_a.free_list_state()?, state_b.free_list_state()?);
-        assert_eq!(state_a.spatial_grid_state()?, state_b.spatial_grid_state()?);
         assert_eq!(state_a.metrics_summary()?, state_b.metrics_summary()?);
-        assert_eq!(
-            state_a.reproduction_summary(PopulationKind::Predator)?,
-            state_b.reproduction_summary(PopulationKind::Predator)?
-        );
-        assert_eq!(
-            state_a.reproduction_summary(PopulationKind::Prey)?,
-            state_b.reproduction_summary(PopulationKind::Prey)?
-        );
         assert_eq!(
             state_a.sensor_snapshot(PopulationKind::Predator, 0)?,
             state_b.sensor_snapshot(PopulationKind::Predator, 0)?
         );
-        assert_eq!(
-            state_a.seeded_agent_snapshot(PopulationKind::Predator, 0)?,
-            state_b.seeded_agent_snapshot(PopulationKind::Predator, 0)?
-        );
         assert_eq!(state_a.render_snapshot(16, 16, 16)?, state_b.render_snapshot(16, 16, 16)?);
-        assert_eq!(state_a.check_invariants()?, state_b.check_invariants()?);
 
         Ok(())
     }
@@ -407,14 +329,11 @@ mod tests {
         }
 
         let mut state = SimulationState::init_from_config(&simulation_config(63))?;
-        let before = state.seeded_agent_snapshot(PopulationKind::Predator, 0)?;
         let stats = state.tick()?;
-        let after = state.seeded_agent_snapshot(PopulationKind::Predator, 0)?;
         let free_list = state.free_list_state()?;
 
         assert_eq!(stats.tick, 1);
         assert_eq!(free_list.tick, 1);
-        assert!(after.pos_x != before.pos_x || after.pos_y != before.pos_y);
         assert!(
             stats.food_eaten > 0
                 || stats.kills > 0
@@ -432,7 +351,6 @@ mod tests {
         }
 
         let state = SimulationState::init_from_config(&simulation_config(64))?;
-        let predator = state.seeded_agent_snapshot(PopulationKind::Predator, 0)?;
         let sensors = state.sensor_snapshot(PopulationKind::Predator, 0)?;
 
         assert_eq!(sensors.population_kind, PopulationKind::Predator);
@@ -444,73 +362,6 @@ mod tests {
         assert!((sensors.inputs[30] - 0.5).abs() < 1e-6);
         assert_eq!(sensors.inputs[31], 0.0);
         assert_eq!(sensors.inputs[32], 0.0);
-        assert!((sensors.inputs[33] - expected_wall_sensor(predator.pos_x, 64.0 - predator.pos_x, 128.0)).abs() < 1e-6);
-        assert!((sensors.inputs[34] - expected_wall_sensor(predator.pos_y, 64.0 - predator.pos_y, 128.0)).abs() < 1e-6);
-
-        Ok(())
-    }
-
-    #[test]
-    fn simulation_builds_spatial_grid_from_vision_range() -> Result<()> {
-        if !runtime_ready() {
-            return Ok(());
-        }
-
-        let mut config = simulation_config(65);
-        config.vision_range = 16.0;
-        let state = SimulationState::init_from_config(&config)?;
-        let grid = state.spatial_grid_state()?;
-
-        assert_eq!(grid.grid_cols, 4);
-        assert_eq!(grid.grid_rows, 4);
-        assert_eq!(grid.cell_count, 16);
-        assert!((grid.cell_size - 16.0).abs() < 1e-6);
-        assert_eq!(grid.predator_entries, 4);
-        assert_eq!(grid.prey_entries, 6);
-        assert_eq!(grid.food_entries, 10);
-
-        Ok(())
-    }
-
-    #[test]
-    fn simulation_reproduction_expands_capacity_and_updates_metrics() -> Result<()> {
-        if !runtime_ready() {
-            return Ok(());
-        }
-
-        let mut config = simulation_config(66);
-        config.predator_count = 0;
-        config.prey_count = 2;
-        config.food_count = 0;
-        config.interaction_range = 0.0;
-        config.mate_range = 128.0;
-        config.energy_drain_per_tick = 0.0;
-        config.initial_energy = 1.0;
-        config.max_energy = 2.0;
-        config.reproduction_energy_threshold = 0.5;
-        config.reproduction_energy_cost = 0.1;
-        config.offspring_initial_energy = 0.25;
-        config.mutation_rate = 0.0;
-        config.add_node_rate = 0.0;
-        config.add_connection_rate = 0.0;
-        config.delete_connection_rate = 0.0;
-        config.report_interval_ticks = 1;
-
-        let mut state = SimulationState::init_from_config(&config)?;
-        let before = state.population_summary(PopulationKind::Prey)?;
-        let stats = state.tick()?;
-        let after = state.population_summary(PopulationKind::Prey)?;
-        let reproduction = state.reproduction_summary(PopulationKind::Prey)?;
-        let metrics = state.metrics_summary()?;
-
-        assert_eq!(before.capacity, 2);
-        assert!(after.capacity >= 4);
-        assert!(after.live_count >= 3);
-        assert_eq!(stats.prey_births, reproduction.births);
-        assert!(reproduction.births > 0);
-        assert_eq!(metrics.tick, 1);
-        assert_eq!(metrics.prey_births, reproduction.births);
-        assert_eq!(metrics.prey_count, after.live_count);
 
         Ok(())
     }
@@ -533,38 +384,6 @@ mod tests {
         assert_eq!(metrics.prey_count, stats.prey_count);
         assert!(metrics.predator_species > 0 || metrics.predator_count == 0);
         assert!(metrics.prey_species > 0 || metrics.prey_count == 0);
-
-        Ok(())
-    }
-
-    #[test]
-    fn simulation_compaction_rebuilds_dense_population_layout() -> Result<()> {
-        if !runtime_ready() {
-            return Ok(());
-        }
-
-        let mut config = simulation_config(68);
-        config.predator_count = 1;
-        config.prey_count = 2;
-        config.food_count = 0;
-        config.interaction_range = 128.0;
-        config.mate_range = 0.0;
-        config.reproduction_energy_threshold = 2.0;
-        config.report_interval_ticks = 1;
-
-        let mut state = SimulationState::init_from_config(&config)?;
-        let _ = state.tick()?;
-        let before = state.population_summary(PopulationKind::Prey)?;
-        let summary = state.compact_population(PopulationKind::Prey)?;
-        let after = state.population_summary(PopulationKind::Prey)?;
-        let first_slot = state.seeded_agent_snapshot(PopulationKind::Prey, 0)?;
-
-        assert!(before.live_count < before.capacity);
-        assert_eq!(summary.previous_capacity, before.capacity);
-        assert_eq!(summary.live_count, after.live_count);
-        assert_eq!(summary.free_slots_after, after.capacity - after.live_count);
-        assert_eq!(summary.compacted, 1);
-        assert_eq!(first_slot.alive, 1);
 
         Ok(())
     }

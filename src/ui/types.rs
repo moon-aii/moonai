@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use crate::tick::buffers::{RenderAgentReadback, RenderSnapshotReadback, UiStatsReadback};
+use crate::tick::buffers::{RenderAgentReadback, UiStatsReadback};
 use crate::tick::genome::PopulationKind;
 use crate::tick::inference::SensorSnapshotReadback;
 use crate::tick::metrics_reduce::MetricsSummaryReadback;
@@ -67,14 +67,14 @@ pub struct OverlayStats {
 
 impl OverlayStats {
     pub const fn from_snapshot(
-        snapshot: &RenderSnapshotReadback,
         ui_stats: UiStatsReadback,
         metrics_summary: MetricsSummaryReadback,
+        active_food_count: u32,
         speed_multiplier: u32,
         paused: bool,
         fps: f32,
     ) -> Self {
-        Self { ui_stats, metrics_summary, speed_multiplier, paused, fps, active_food_count: snapshot.header.total_food }
+        Self { ui_stats, metrics_summary, speed_multiplier, paused, fps, active_food_count }
     }
 }
 

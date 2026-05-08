@@ -7,6 +7,7 @@ use eframe::egui::{self, Color32, Key, Pos2, Sense, Shape, Stroke, TextureHandle
 use crate::config::SimulationConfig;
 use crate::settings::UiConfig;
 use crate::tick::buffers::{RenderAgentReadback, RenderSnapshotReadback, UiStatsReadback};
+use crate::tick::compaction::FreeListStateReadback;
 use crate::tick::genome::PopulationKind;
 use crate::tick::metrics_reduce::MetricsSummaryReadback;
 use crate::tick::simulation::SimulationState;
@@ -25,6 +26,7 @@ pub struct App {
     camera: CameraState,
     ui_stats: UiStatsReadback,
     metrics_summary: MetricsSummaryReadback,
+    free_list_state: FreeListStateReadback,
     snapshot: RenderSnapshotReadback,
     overlay_history: OverlayHistory,
     selected: Option<SelectedAgent>,
@@ -72,8 +74,9 @@ impl App {
     fn new(run_label: &str, config: SimulationConfig, ui_config: UiConfig) -> Result<Self> {
         let mut state = SimulationState::init_from_config(&config)?;
         let camera = render::default_camera(config.grid_size as f32);
-        let (ui_stats, metrics_summary, snapshot) = refresh_snapshot(&mut state)?;
-        let initial_overlay = OverlayStats::from_snapshot(&snapshot, ui_stats, metrics_summary, 1, false, 0.0);
+        let (ui_stats, metrics_summary, free_list_state, snapshot) = refresh_snapshot(&mut state)?;
+        let initial_overlay =
+            OverlayStats::from_snapshot(ui_stats, metrics_summary, free_list_state.active_food_count, 1, false, 0.0);
         let mut overlay_history = OverlayHistory::default();
         overlay_history.push(&initial_overlay);
 
@@ -86,6 +89,7 @@ impl App {
             camera,
             ui_stats,
             metrics_summary,
+            free_list_state,
             snapshot,
             overlay_history,
             selected: None,
@@ -192,9 +196,10 @@ impl App {
         }
         self.ui_state.tick_requested = false;
 
-        let (ui_stats, metrics_summary, snapshot) = refresh_snapshot(&mut self.state)?;
+        let (ui_stats, metrics_summary, free_list_state, snapshot) = refresh_snapshot(&mut self.state)?;
         self.ui_stats = ui_stats;
         self.metrics_summary = metrics_summary;
+        self.free_list_state = free_list_state;
         self.snapshot = snapshot;
         let overlay = self.overlay_stats();
         self.overlay_history.push(&overlay);
@@ -204,9 +209,9 @@ impl App {
 
     const fn overlay_stats(&self) -> OverlayStats {
         OverlayStats::from_snapshot(
-            &self.snapshot,
             self.ui_stats,
             self.metrics_summary,
+            self.free_list_state.active_food_count,
             self.ui_state.speed_multiplier,
             self.ui_state.paused,
             self.fps,
@@ -570,11 +575,12 @@ impl eframe::App for App {
 
 fn refresh_snapshot(
     state: &mut SimulationState,
-) -> Result<(UiStatsReadback, MetricsSummaryReadback, RenderSnapshotReadback)> {
+) -> Result<(UiStatsReadback, MetricsSummaryReadback, FreeListStateReadback, RenderSnapshotReadback)> {
     let ui_stats = state.ui_stats()?;
     let metrics_summary = state.metrics_summary()?;
+    let free_list_state = state.free_list_state()?;
     let snapshot = state.render_snapshot(ui_stats.predator_count, ui_stats.prey_count, state.config().food_capacity)?;
-    Ok((ui_stats, metrics_summary, snapshot))
+    Ok((ui_stats, metrics_summary, free_list_state, snapshot))
 }
 
 fn find_agent_by_entity(
