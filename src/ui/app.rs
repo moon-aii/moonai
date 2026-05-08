@@ -52,7 +52,7 @@ impl App {
         eframe::run_native(
             "MoonAI",
             native_options,
-            Box::new(move |creation_context| {
+            Box::new(move |_creation_context| {
                 Self::new(&run_label, config_for_app.clone(), ui_for_app.clone())
                     .map(|app| -> Box<dyn eframe::App> { Box::new(app) })
                     .map_err(|error| -> Box<dyn std::error::Error + Send + Sync> {

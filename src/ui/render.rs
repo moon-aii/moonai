@@ -2,12 +2,11 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use anyhow::{Context as _, Result};
-use eframe::egui::{self, Color32, ColorImage, Painter, Pos2, Rect, Stroke, StrokeKind, Vec2};
+use eframe::egui::{self, Color32, ColorImage, Pos2, Rect, Stroke, StrokeKind, Vec2};
 use image::ImageEncoder as _;
 
 use crate::settings::UiConfig;
 use crate::tick::buffers::{RenderAgentReadback, RenderFoodReadback, RenderSnapshotReadback};
-use crate::tick::genome::PopulationKind;
 use crate::ui::types::{CameraState, SelectedAgentData};
 
 const GRID_DIVISIONS: u32 = 12;

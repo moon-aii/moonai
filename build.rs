@@ -1,5 +1,3 @@
-use std::path::{Path, PathBuf};
-
 fn main() {
     println!("cargo:rustc-link-lib=dylib=cudart");
 
