@@ -4,16 +4,84 @@ description: System Architecture.
 
 # Architecture
 
-## Execution Model
+## Design Principles
 
 MoonAI follows a **GPU-first execution model**.
 
-- The GPU owns simulation state, evolution state, compiled networks, and report-window aggregation state.
-- The CPU is an orchestrator only: it loads config, allocates buffers, sequences narrow CUDA entrypoints, polls compact status, and writes exported artifacts.
-- There is **no duplicate host-side implementation** of simulation, evolution, inference, speciation, or verification logic.
-- Host-side Rust types may exist for FFI layouts, launch parameters, and compact readback structs only.
+- **GPU owns all simulation state** — positions, velocities, energy, age, alive flags, genomes, compiled networks, innovation counters, and species metadata live in GPU memory.
+- **CPU is orchestrator only** — it loads config, allocates buffers, launches kernels, and writes files from compact readbacks. It does not maintain or execute a population-wide simulation, evolution, or verification path.
+- **Tick-based cadence** — GPU runs initialization, simulation, evolution, report-window reduction, and on-demand inspection kernels. CPU only sequences those launches.
+- **GPU-native evolution** — seeding, crossover, mutation, network compilation, and species classification happen entirely on GPU via the evolution portion of `src/tick/`.
+- **Cadence separation** — `report_interval_ticks` controls CSV/JSON/species/genome export cadence, while UI `speed_multiplier` controls visualization refresh cadence. They are independent.
+- **Readback/interop is minimal** — only the current UI-frame render snapshot, selected-agent inspection buffers, and report/export structs are transferred out of the simulation buffers.
+- **No duplication** — there is no separate CPU algorithmic path for evolution, inference, speciation, or verification. Host Rust may define FFI layouts and export structs only.
+- **Buffer expansion** — buffers grow by 2x when capacity threshold is reached. No artificial ceiling.
 
-### CLI routing
+## Desicions
+
+- `config.lua` contains **simulation config only** (no UI overrides).
+- `settings.json` contains **UI config** — loaded from binary directory or explicit path.
+- File locations: `config.lua` and `settings.json` live next to the binary executable.
+  Lookup order: explicit path via CLI flag → binary directory → fallback to defaults.
+- `UiConfig` defaults are hardcoded in Rust; `settings.json` overrides them.
+- `UiState` (paused, speed_multiplier, tick_requested, selected_agent_id) is **runtime state**,
+  lives in `src/ui/types.rs`. NOT in the config-loading modules.
+- Predator and prey use separate GPU buffers; no `AgentType` enum needed.
+- `config.lua` is loaded via `mlua`. `moonai_defaults` is injected as a global table.
+- CLI `--experiment` flag is a string passthrough; experiment selection logic lives in the root binary entrypoint.
+- Initial population seeding happens on GPU.
+- `report_interval_ticks` is the artifact-export cadence only. It controls when the runtime writes `stats.csv`, `species.csv`, `genomes.json`, and related report data.
+- UI `speed_multiplier` is the visualization cadence only. `1x` means refresh UI every tick, `8x` means refresh UI every 8 ticks, and so on.
+- A UI refresh must include all active predators, prey, and food needed for rendering, plus aggregate population statistics.
+- Reproduction is **sexual** — two parent genomes crossover on GPU, mutation applied on GPU, network compiled on GPU.
+- Species classification happens on GPU at report intervals so `species.csv`, species counts, and representative-genome export do not require a host-side genome walk.
+- FPS target: 120fps. Speed multiplier: 1x-1024x ticks per frame. Every frame renders everything live.
+- Selected-agent inspection is additive: the main view always renders the full population, and selection only requests extra vision/sensor/network data for that one agent.
+- UI needs fresh data every UI refresh: population counts, positions, and movement directions for all visible agents.
+- Verification must rely on GPU-side invariants, fixed-seed determinism, readback schema checks, and end-to-end runtime tests. There is no CPU reference implementation for algorithm validation.
+
+## Technology Choices
+
+| Technology         | Choice                                  |
+| ------------------ | --------------------------------------- |
+| Language           | Rust 2024                               |
+| CUDA binding       | Rust FFI + `nvcc` via `build.rs` / `cc` |
+| Logging            | `tracing` + `tracing-subscriber`        |
+| JSON               | `serde` + `serde_json`                  |
+| Lua binding        | `mlua` crate                            |
+| GUI framework      | winit + egui + wgpu                     |
+| GPU rendering      | wgpu instanced rendering                |
+| Atomic counters    | CUDA atomics for GPU-to-CPU events      |
+| Genome compilation | GPU (persistent kernel)                 |
+
+## Cadence Rules
+
+- `report_interval_ticks` controls artifact export cadence only. It governs when `stats.csv`, `species.csv`, `genomes.json`, and related report data are produced.
+- UI `speed_multiplier` controls visualization cadence only. `1x` refreshes the UI every tick, `8x` refreshes the UI every 8 ticks, and in general the UI refreshes when `tick % speed_multiplier == 0`.
+- These cadences are independent. A report export may occur on a tick that does not trigger a UI refresh, and a UI refresh may occur on a tick that does not trigger artifact export.
+- A UI refresh must carry the full population render state: all active predator, prey, and food positions, predator/prey movement directions, and aggregate overlay statistics.
+- Selected-agent inspection is additive. The selected agent adds vision, sensor, and neural-network inspection data on top of the normal full-population render path.
+
+## Verification Strategy
+
+Verification stays GPU-only as well.
+
+- Kernel smoke tests validate launch, memory layout, and readback contracts.
+- Device-side invariant checks validate genome bounds, node counts, connection counts, and compiled-network ranges.
+- Fixed-seed determinism tests compare compact GPU readbacks across repeated runs on the same machine.
+- End-to-end runtime tests validate output schema and artifact generation.
+
+There is no separate CPU reference implementation used to confirm algorithm correctness.
+
+## Readback Rules
+
+- Per-frame UI render data should stay on GPU whenever possible through direct device-side interop or device-to-device copies.
+- If UI interop requires host-visible staging, those transfers must happen on the UI refresh cadence, not on every simulation tick.
+- A UI frame must include full-population render state, not only the selected agent.
+- CPU-visible inspection data should stay limited to compact snapshots such as overlay counters and selected-agent inspection results.
+- Metrics export must use GPU-side reduction first, then copy only compact report structs needed for `stats.csv`, `species.csv`, and `genomes.json`.
+
+## CLI routing
 
 ```mermaid
 flowchart TB
@@ -35,7 +103,7 @@ flowchart TB
     Route -->|default| RunDefault --> Exit
 ```
 
-### Tick Execution Flow
+## Tick Execution Flow
 
 ```mermaid
 flowchart TD
@@ -89,141 +157,6 @@ flowchart TD
     TICK_LOOP -->|signal| EXIT
 ```
 
-### GPU Memory Layout
-
-```mermaid
-classDiagram
-    class PredatorBuffer {
-        +float pos_x[N]
-        +float pos_y[N]
-        +float vel_x[N]
-        +float vel_y[N]
-        +float energy[N]
-        +float age[N]
-        +uint8 alive[N]
-        +uint32 species_id[N]
-        +uint32 entity_id[N]
-        +uint32 generation[N]
-        +int32 connection_from[N * max_connections]
-        +int32 connection_to[N * max_connections]
-        +float connection_weight[N * max_connections]
-        +uint32 connection_innovation[N * max_connections]
-        +uint8 connection_enabled[N * max_connections]
-        +uint8 node_types[N * (max_hidden + FIXED)]
-        +uint16 num_connections[N]
-        +uint16 num_nodes[N]
-        +uint8 birth_state[N]
-        +uint64 rng_state[N]
-    }
-
-    class PreyBuffer {
-        +float pos_x[N]
-        +float pos_y[N]
-        +float vel_x[N]
-        +float vel_y[N]
-        +float energy[N]
-        +float age[N]
-        +uint8 alive[N]
-        +uint32 species_id[N]
-        +uint32 entity_id[N]
-        +uint32 generation[N]
-        +int32 connection_from[N * max_connections]
-        +int32 connection_to[N * max_connections]
-        +float connection_weight[N * max_connections]
-        +uint32 connection_innovation[N * max_connections]
-        +uint8 connection_enabled[N * max_connections]
-        +uint8 node_types[N * (max_hidden + FIXED)]
-        +uint16 num_connections[N]
-        +uint16 num_nodes[N]
-        +uint8 birth_state[N]
-        +uint64 rng_state[N]
-    }
-
-    class FoodBuffer {
-        +float pos_x[N]
-        +float pos_y[N]
-        +uint8 active[N]
-    }
-
-    class UiStats {
-        +uint32 tick
-        +uint32 predator_count
-        +uint32 prey_count
-        +uint32 predator_births
-        +uint32 prey_births
-        +uint32 predator_deaths
-        +uint32 prey_deaths
-        +uint32 kills
-        +uint32 food_eaten
-        +float avg_predator_energy
-        +float avg_prey_energy
-    }
-```
-
-### CLI Interface
-
-| Flag                  | Description                                         |
-| --------------------- | --------------------------------------------------- |
-| `-c, --config <path>` | Path to Lua config file (default: binary directory) |
-| `--settings <path>`   | Path to settings.json (default: binary directory)   |
-| `-n, --ticks <n>`     | Override max ticks (`0` = infinite)                 |
-| `--headless`          | Run without visualization                           |
-| `-v, --verbose`       | Enable debug logging                                |
-| `--experiment <name>` | Select one experiment by name                       |
-| `--all`               | Run all experiments sequentially (headless only)    |
-| `--list`              | List experiment names and exit                      |
-| `--name <name>`       | Override output directory name                      |
-| `--validate`          | Load + validate config, print result, exit          |
-| `-h, --help`          | Show CLI help                                       |
-
-## Design Principles
-
-1. **GPU owns all simulation state** — positions, velocities, energy, age, alive flags, genomes, compiled networks, innovation counters, and species metadata live in GPU memory.
-2. **CPU is orchestrator only** — it loads config, allocates buffers, launches kernels, and writes files from compact readbacks. It does not maintain or execute a population-wide simulation, evolution, or verification path.
-3. **Tick-based cadence** — GPU runs initialization, simulation, evolution, report-window reduction, and on-demand inspection kernels. CPU only sequences those launches.
-4. **GPU-native evolution** — seeding, crossover, mutation, network compilation, and species classification happen entirely on GPU via the evolution portion of `src/tick/`.
-5. **Cadence separation** — `report_interval_ticks` controls CSV/JSON/species/genome export cadence, while UI `speed_multiplier` controls visualization refresh cadence. They are independent.
-6. **Readback/interop is minimal** — only the current UI-frame render snapshot, selected-agent inspection buffers, and report/export structs are transferred out of the simulation buffers.
-7. **No duplication** — there is no separate CPU algorithmic path for evolution, inference, speciation, or verification. Host Rust may define FFI layouts and export structs only.
-8. **Buffer expansion** — buffers grow by 2x when capacity threshold is reached. No artificial ceiling.
-
-## Desicions
-
-- `config.lua` contains **simulation config only** (no UI overrides).
-- `settings.json` contains **UI config** — loaded from binary directory or explicit path.
-- File locations: `config.lua` and `settings.json` live next to the binary executable.
-  Lookup order: explicit path via CLI flag → binary directory → fallback to defaults.
-- `UiConfig` defaults are hardcoded in Rust; `settings.json` overrides them.
-- `UiState` (paused, speed_multiplier, tick_requested, selected_agent_id) is **runtime state**,
-  lives in `src/ui/types.rs`. NOT in the config-loading modules.
-- Predator and prey use separate GPU buffers; no `AgentType` enum needed.
-- `config.lua` is loaded via `mlua`. `moonai_defaults` is injected as a global table.
-- CLI `--experiment` flag is a string passthrough; experiment selection logic lives in the root binary entrypoint.
-- Initial population seeding happens on GPU.
-- `report_interval_ticks` is the artifact-export cadence only. It controls when the runtime writes `stats.csv`, `species.csv`, `genomes.json`, and related report data.
-- UI `speed_multiplier` is the visualization cadence only. `1x` means refresh UI every tick, `8x` means refresh UI every 8 ticks, and so on.
-- A UI refresh must include all active predators, prey, and food needed for rendering, plus aggregate population statistics.
-- Reproduction is **sexual** — two parent genomes crossover on GPU, mutation applied on GPU, network compiled on GPU.
-- Species classification happens on GPU at report intervals so `species.csv`, species counts, and representative-genome export do not require a host-side genome walk.
-- FPS target: 120fps. Speed multiplier: 1x-1024x ticks per frame. Every frame renders everything live.
-- Selected-agent inspection is additive: the main view always renders the full population, and selection only requests extra vision/sensor/network data for that one agent.
-- UI needs fresh data every UI refresh: population counts, positions, and movement directions for all visible agents.
-- Verification must rely on GPU-side invariants, fixed-seed determinism, readback schema checks, and end-to-end runtime tests. There is no CPU reference implementation for algorithm validation.
-
-## Technology Choices
-
-| Concern            | C++           | Rust/GPU-First                          |
-| ------------------ | ------------- | --------------------------------------- |
-| Language           | C++17         | Rust 2024                               |
-| CUDA binding       | raw CUDA      | Rust FFI + `nvcc` via `build.rs` / `cc` |
-| Logging            | spdlog        | `tracing` + `tracing-subscriber`        |
-| JSON               | nlohmann/json | `serde` + `serde_json`                  |
-| Lua binding        | Lua C API     | `mlua` crate                            |
-| GUI framework      | SFML          | winit + egui + wgpu                     |
-| GPU rendering      | SFML shapes   | wgpu instanced rendering                |
-| Atomic counters    | —             | CUDA atomics for GPU-to-CPU events      |
-| Genome compilation | CPU (rayon)   | GPU (persistent kernel)                 |
-
 ## Ownership Boundaries
 
 ```mermaid
@@ -272,33 +205,6 @@ flowchart TD
     UIREQ -->|no| DRAW --> LOOP
     LOOP -->|stop| END
 ```
-
-## Cadence Rules
-
-- `report_interval_ticks` controls artifact export cadence only. It governs when `stats.csv`, `species.csv`, `genomes.json`, and related report data are produced.
-- UI `speed_multiplier` controls visualization cadence only. `1x` refreshes the UI every tick, `8x` refreshes the UI every 8 ticks, and in general the UI refreshes when `tick % speed_multiplier == 0`.
-- These cadences are independent. A report export may occur on a tick that does not trigger a UI refresh, and a UI refresh may occur on a tick that does not trigger artifact export.
-- A UI refresh must carry the full population render state: all active predator, prey, and food positions, predator/prey movement directions, and aggregate overlay statistics.
-- Selected-agent inspection is additive. The selected agent adds vision, sensor, and neural-network inspection data on top of the normal full-population render path.
-
-## Verification Strategy
-
-Verification stays GPU-only as well.
-
-- Kernel smoke tests validate launch, memory layout, and readback contracts.
-- Device-side invariant checks validate genome bounds, node counts, connection counts, and compiled-network ranges.
-- Fixed-seed determinism tests compare compact GPU readbacks across repeated runs on the same machine.
-- End-to-end runtime tests validate output schema and artifact generation.
-
-There is no separate CPU reference implementation used to confirm algorithm correctness.
-
-## Readback Rules
-
-- Per-frame UI render data should stay on GPU whenever possible through direct device-side interop or device-to-device copies.
-- If UI interop requires host-visible staging, those transfers must happen on the UI refresh cadence, not on every simulation tick.
-- A UI frame must include full-population render state, not only the selected agent.
-- CPU-visible inspection data should stay limited to compact snapshots such as overlay counters and selected-agent inspection results.
-- Metrics export must use GPU-side reduction first, then copy only compact report structs needed for `stats.csv`, `species.csv`, and `genomes.json`.
 
 ## GPU Kernel Reference
 
