@@ -1567,6 +1567,7 @@ name = "moonai"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bytemuck",
  "cbindgen",
  "cc",
  "clap",

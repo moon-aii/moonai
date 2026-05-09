@@ -1,13 +1,13 @@
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context as _, Result};
-use eframe::egui::{self, Color32, Key, Pos2, Sense, Shape, Stroke, TextureHandle, TextureOptions, Vec2};
+use eframe::egui::{self, Color32, Key, Pos2, Sense, Shape, Stroke, Vec2};
 
 use crate::config::SimulationConfig;
 use crate::settings::UiConfig;
-use crate::tick::buffers::{FreeListStateReadback, MetricsSummaryReadback};
-use crate::tick::buffers::{RenderAgentReadback, RenderSnapshotReadback, UiStatsReadback};
+use crate::tick::buffers::{MetricsSummaryReadback, RenderAgentReadback, RenderSnapshotReadback, UiStatsReadback};
 use crate::tick::simulation::PopulationKind;
 use crate::tick::simulation::SimulationState;
 use crate::ui::render;
@@ -15,6 +15,7 @@ use crate::ui::types::{
     CameraState, OverlayHistory, OverlayStats, PairHistoryPoint, PopulationHistoryPoint, SelectedAgent,
     SelectedAgentData, UiState,
 };
+use crate::ui::world::{self, WorldFrame};
 
 pub struct App {
     run_label: String,
@@ -25,15 +26,13 @@ pub struct App {
     camera: CameraState,
     ui_stats: UiStatsReadback,
     metrics_summary: MetricsSummaryReadback,
-    free_list_state: FreeListStateReadback,
-    snapshot: RenderSnapshotReadback,
+    world_frame: Arc<WorldFrame>,
     overlay_history: OverlayHistory,
     selected: Option<SelectedAgent>,
     selected_data: Option<SelectedAgentData>,
-    texture: Option<TextureHandle>,
     last_frame_started: Instant,
     fps: f32,
-    latest_scene: Option<egui::ColorImage>,
+    last_world_image_size: [usize; 2],
     status_message: Option<String>,
     error_message: Option<String>,
     reached_tick_limit: bool,
@@ -56,7 +55,7 @@ impl App {
             "MoonAI",
             native_options,
             Box::new(move |_creation_context| {
-                Self::new(&run_label, config_for_app, ui_for_app.clone())
+                Self::new(_creation_context, &run_label, config_for_app, ui_for_app.clone())
                     .map(|app| -> Box<dyn eframe::App> { Box::new(app) })
                     .map_err(|error| -> Box<dyn std::error::Error + Send + Sync> {
                         Box::new(std::io::Error::other(error.to_string()))
@@ -66,12 +65,24 @@ impl App {
         .map_err(|error| anyhow::anyhow!(error.to_string()))
     }
 
-    fn new(run_label: &str, config: SimulationConfig, ui_config: UiConfig) -> Result<Self> {
+    fn new(
+        creation_context: &eframe::CreationContext<'_>,
+        run_label: &str,
+        config: SimulationConfig,
+        ui_config: UiConfig,
+    ) -> Result<Self> {
+        let render_state = creation_context
+            .wgpu_render_state
+            .as_ref()
+            .context("eframe did not provide a wgpu render state for the GPU world renderer")?;
+        world::install_renderer_resources(render_state, &ui_config)?;
+
         let mut state = SimulationState::init_from_config(&config)?;
         let camera = render::default_camera(config.grid_size);
-        let (ui_stats, metrics_summary, free_list_state, snapshot) = refresh_snapshot(&mut state)?;
+        let initial_ui_stats = state.ui_stats()?;
+        let (ui_stats, metrics_summary, world_frame) = load_world_frame(&mut state, initial_ui_stats, &ui_config)?;
         let initial_overlay =
-            OverlayStats::from_snapshot(ui_stats, metrics_summary, free_list_state.active_food_count, 1, false, 0.0);
+            OverlayStats::from_snapshot(ui_stats, metrics_summary, world_frame.active_food_count(), 1, false, 0.0);
         let mut overlay_history = OverlayHistory::default();
         overlay_history.push(&initial_overlay);
 
@@ -84,15 +95,13 @@ impl App {
             camera,
             ui_stats,
             metrics_summary,
-            free_list_state,
-            snapshot,
+            world_frame,
             overlay_history,
             selected: None,
             selected_data: None,
-            texture: None,
             last_frame_started: Instant::now(),
             fps: 0.0,
-            latest_scene: None,
+            last_world_image_size: [1, 1],
             status_message: None,
             error_message: None,
             reached_tick_limit: false,
@@ -175,8 +184,13 @@ impl App {
         } else {
             self.ui_state.speed_multiplier
         };
+        if steps == 0 {
+            self.ui_state.tick_requested = false;
+            return Ok(());
+        }
 
         let limit = self.tick_limit();
+        let mut advanced = false;
         for _ in 0..steps {
             if let Some(limit) = limit
                 && self.ui_stats.tick >= limit
@@ -188,25 +202,29 @@ impl App {
             }
 
             self.ui_stats = self.state.tick()?;
+            advanced = true;
         }
         self.ui_state.tick_requested = false;
+        if !advanced {
+            return Ok(());
+        }
 
-        let (ui_stats, metrics_summary, free_list_state, snapshot) = refresh_snapshot(&mut self.state)?;
+        let (ui_stats, metrics_summary, world_frame) =
+            load_world_frame(&mut self.state, self.ui_stats, &self.ui_config)?;
         self.ui_stats = ui_stats;
         self.metrics_summary = metrics_summary;
-        self.free_list_state = free_list_state;
-        self.snapshot = snapshot;
+        self.world_frame = world_frame;
         let overlay = self.overlay_stats();
         self.overlay_history.push(&overlay);
         self.sync_selected_agent()?;
         Ok(())
     }
 
-    const fn overlay_stats(&self) -> OverlayStats {
+    fn overlay_stats(&self) -> OverlayStats {
         OverlayStats::from_snapshot(
             self.ui_stats,
             self.metrics_summary,
-            self.free_list_state.active_food_count,
+            self.world_frame.active_food_count(),
             self.ui_state.speed_multiplier,
             self.ui_state.paused,
             self.fps,
@@ -220,7 +238,9 @@ impl App {
             return Ok(());
         };
 
-        let Some(agent) = find_agent_by_entity(&self.snapshot, selected.population_kind, selected.entity_id) else {
+        let Some(agent) =
+            find_agent_by_entity(self.world_frame.snapshot.as_ref(), selected.population_kind, selected.entity_id)
+        else {
             self.selected = None;
             self.selected_data = None;
             self.ui_state.selected_agent_id = None;
@@ -230,26 +250,42 @@ impl App {
         let resolved = SelectedAgent::from_render_agent(agent);
         self.selected = Some(resolved);
         self.ui_state.selected_agent_id = Some(resolved.entity_id);
-        self.selected_data = Some(SelectedAgentData {
-            agent: *agent,
-            sensors: self.state.sensor_snapshot(agent.population_kind, agent.slot)?,
-            network: self.state.selected_agent_network(agent.population_kind, agent.slot)?,
-            genome: self.state.representative_genome(agent.population_kind, agent.slot)?,
-        });
+        let sensors = self.state.sensor_snapshot(agent.population_kind, agent.slot)?;
+        let network = self.state.selected_agent_network(agent.population_kind, agent.slot)?;
+        match &mut self.selected_data {
+            Some(data) if data.agent.entity_id == agent.entity_id => {
+                data.agent = *agent;
+                data.sensors = sensors;
+                data.network = network;
+            }
+            _ => {
+                self.selected_data = Some(SelectedAgentData {
+                    agent: *agent,
+                    sensors,
+                    network,
+                    genome: self.state.representative_genome(agent.population_kind, agent.slot)?,
+                });
+            }
+        }
         Ok(())
     }
 
     fn save_screenshot(&mut self) -> Result<()> {
-        let Some(image) = &self.latest_scene else {
-            return Ok(());
-        };
-
         let path = screenshot_path(&self.run_label, self.ui_stats.tick)?;
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)
                 .with_context(|| format!("failed to create screenshot directory {}", parent.display()))?;
         }
-        render::save_png(&path, image)?;
+        let image = render::render_scene(&render::SceneRenderInput {
+            snapshot: self.world_frame.snapshot.as_ref(),
+            ui_config: &self.ui_config,
+            camera: self.camera,
+            world_size: self.config.grid_size,
+            selected: self.selected_data.as_ref(),
+            image_size: self.last_world_image_size,
+            vision_range: self.config.vision_range,
+        });
+        render::save_png(&path, &image)?;
         self.status_message = Some(format!("Saved screenshot to {}", path.display()));
         Ok(())
     }
@@ -456,32 +492,17 @@ impl App {
 
     fn draw_world(&mut self, ui: &mut egui::Ui) {
         egui::CentralPanel::default().show_inside(ui, |ui| {
-            let available = ui.available_size();
-            let width = available.x.max(1.0) as usize;
-            let height = available.y.max(1.0) as usize;
-            let image = render::render_scene(&render::SceneRenderInput {
-                snapshot: &self.snapshot,
-                ui_config: &self.ui_config,
-                camera: self.camera,
-                world_size: self.config.grid_size,
-                selected: self.selected_data.as_ref(),
-                image_size: [width, height],
-                vision_range: self.config.vision_range,
-            });
-            self.latest_scene = Some(image.clone());
-
-            match &mut self.texture {
-                Some(texture) => texture.set(image, TextureOptions::LINEAR),
-                None => {
-                    self.texture = Some(ui.ctx().load_texture("moonai_scene", image, TextureOptions::LINEAR));
-                }
-            }
-
-            let Some(texture) = &self.texture else {
-                return;
-            };
-            let response = ui.add(
-                egui::Image::new((texture.id(), available.max(egui::vec2(1.0, 1.0)))).sense(Sense::click_and_drag()),
+            let (rect, response) = world::allocate_world_rect(ui);
+            self.last_world_image_size = [rect.width().max(1.0) as usize, rect.height().max(1.0) as usize];
+            world::paint_world(
+                ui,
+                rect,
+                Arc::clone(&self.world_frame),
+                &self.ui_config,
+                self.camera,
+                self.config.grid_size,
+                self.selected_data.as_ref(),
+                self.config.vision_range,
             );
 
             self.handle_view_input(ui.ctx(), response.rect, &response);
@@ -526,7 +547,7 @@ impl App {
         let mut closest: Option<(&RenderAgentReadback, f32)> = None;
         let select_radius = self.ui_config.selection_click_radius;
 
-        for agent in self.snapshot.predators.iter().chain(self.snapshot.prey.iter()) {
+        for agent in self.world_frame.snapshot.predators.iter().chain(self.world_frame.snapshot.prey.iter()) {
             let screen = render::world_to_screen(rect, self.camera, self.config.grid_size, agent.pos_x, agent.pos_y);
             let distance = screen.distance(pointer);
             if distance > select_radius {
@@ -563,18 +584,21 @@ impl eframe::App for App {
 
         self.draw_side_panel(ui);
         self.draw_world(ui);
-        ui.ctx().request_repaint();
+        if !self.ui_state.paused {
+            ui.ctx().request_repaint();
+        }
     }
 }
 
-fn refresh_snapshot(
+fn load_world_frame(
     state: &mut SimulationState,
-) -> Result<(UiStatsReadback, MetricsSummaryReadback, FreeListStateReadback, RenderSnapshotReadback)> {
-    let ui_stats = state.ui_stats()?;
+    ui_stats: UiStatsReadback,
+    ui_config: &UiConfig,
+) -> Result<(UiStatsReadback, MetricsSummaryReadback, Arc<WorldFrame>)> {
     let metrics_summary = state.metrics_summary()?;
-    let free_list_state = state.free_list_state()?;
     let snapshot = state.render_snapshot(ui_stats.predator_count, ui_stats.prey_count, state.config().food_count)?;
-    Ok((ui_stats, metrics_summary, free_list_state, snapshot))
+    let world_frame = Arc::new(WorldFrame::from_snapshot(snapshot, ui_config));
+    Ok((ui_stats, metrics_summary, world_frame))
 }
 
 fn find_agent_by_entity(

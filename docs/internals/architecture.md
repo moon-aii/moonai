@@ -76,8 +76,8 @@ There is no separate CPU reference implementation used to confirm algorithm corr
 
 ## Readback Rules
 
-- Per-frame UI render data should stay on GPU whenever possible through direct device-side interop or device-to-device copies.
-- If UI interop requires host-visible staging, those transfers must happen on the UI refresh cadence, not on every simulation tick.
+- Per-frame UI render data should stay compact. The current runtime compacts live predators, prey, and food into contiguous render snapshots on the GPU, then copies only those compact arrays to host memory on the UI refresh cadence.
+- The hot path must not rasterize the full world on the CPU. Host-side UI work should stop at compact readback and instance-buffer uploads for the custom `wgpu` world pass.
 - A UI frame must include full-population render state, not only the selected agent.
 - CPU-visible inspection data should stay limited to compact snapshots such as overlay counters and selected-agent inspection results.
 - Metrics export must use GPU-side reduction first, then copy only compact report structs needed for `stats.csv`, `species.csv`, and `genomes.json`.
@@ -317,26 +317,34 @@ Per-tick innovation log (append-only):
 - `8x` means the UI refreshes every 8 ticks, so the runtime publishes the latest render snapshot only when `tick % 8 == 0`.
 - These cadences are independent; a report tick may or may not coincide with a UI refresh tick.
 
-GPU writes a compact `UiStats` struct to a **pinned host-mapped buffer** on each UI refresh boundary. CPU reads it with a single `memcpy`.
+Runtime UI refresh now uses a hybrid readback + GPU draw path.
 
 ```
-UiStats (pinned, written on each UI refresh):
+GPU on UI refresh:
+  write compact UiStats readback
+  compact live predators -> contiguous RenderAgentReadback array
+  compact live prey      -> contiguous RenderAgentReadback array
+  compact live food      -> contiguous RenderFoodReadback array
+
+CPU on UI refresh:
+  copy UiStats + compact render snapshot to host
+  rebuild food/prey/predator instance arrays once for that snapshot
+
+wgpu world render pass:
+  upload instance arrays into persistent vertex buffers
+  draw food as instanced billboards
+  draw prey/predators as instanced oriented triangles
+  draw egui panels and selected-agent overlays around the world pass
+
+UiStats readback contains:
   tick, predator_count, prey_count
   predator_births, prey_births
   predator_deaths, prey_deaths
   kills, food_eaten
   avg_predator_energy, avg_prey_energy
-
-UI frame snapshot (written on each UI refresh):
-  predator positions + movement directions -> render buffer
-  prey positions + movement directions -> render buffer
-  food positions -> render buffer
-  aggregate overlay stats -> UiStats
-
-render pass:
-  main scene renders all active predators, prey, and food from the latest UI-frame snapshot
-  selected-agent overlays are optional extras layered on top of the full scene
 ```
+
+This keeps the heavy world draw path on the GPU while limiting host work to compact readback and instance-buffer uploads. The UI no longer builds a full `egui::ColorImage` or uploads a full-scene texture every frame.
 
 **Selected Agent Readback (On Demand)**:
 
