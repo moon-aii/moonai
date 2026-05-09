@@ -115,6 +115,8 @@ just experiment-run
 
 The main scene always renders the full active population: all predators, prey, and food with current positions, plus predator/prey movement directions and population overlay statistics.
 
+The left overlay also includes a runtime profiler tree. It shows cumulative host-side scope timings as `frame -> child scopes`, with two-space indentation per nesting level, percent of total frame time, and average microseconds per simulation tick.
+
 Visualization speed is separate from report export cadence:
 
 - `speed_multiplier` controls UI refresh cadence only.

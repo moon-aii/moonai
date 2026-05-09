@@ -43,6 +43,7 @@ src/
 ├── config.rs                   # SimulationConfig loading, defaults, and validation
 ├── settings.rs                 # settings.json loading + UiConfig
 ├── metrics.rs                  # Metrics logger facade
+├── profiler.rs                 # Runtime scope profiler tree and formatting helpers
 ├── ui/                         # UI runtime/rendering modules, egui panels, and custom wgpu world renderer
 └── tick/                       # Merged simulation + evolution runtime
 ```

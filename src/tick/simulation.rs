@@ -1,6 +1,7 @@
 use anyhow::Result;
 
 use crate::config::SimulationConfig;
+use crate::profile_scope;
 use crate::tick::buffers::{FreeListStateReadback, MetricsSummaryReadback, RenderSnapshotReadback, UiStatsReadback};
 use crate::tick::evolution::{EvolutionManager, GpuEvolutionConfig};
 use crate::tick::species::{
@@ -96,6 +97,8 @@ impl SimulationState {
     }
 
     pub fn tick(&mut self) -> Result<UiStatsReadback> {
+        profile_scope!("tick");
+
         self.evolution.build_spatial_grid()?;
         self.evolution.compute_sensor_inputs()?;
         self.evolution.infer_population(PopulationKind::Predator)?;
@@ -106,16 +109,13 @@ impl SimulationState {
         self.evolution.apply_movement(PopulationKind::Prey)?;
         self.evolution.resolve_food()?;
         self.evolution.resolve_combat()?;
-
         self.evolution.build_spatial_grid()?;
-
         let predator_births = self.evolution.reproduction_candidate_count(PopulationKind::Predator)?;
         self.ensure_birth_capacity(PopulationKind::Predator, predator_births)?;
         self.evolution.run_reproduction(PopulationKind::Predator)?;
         let prey_births = self.evolution.reproduction_candidate_count(PopulationKind::Prey)?;
         self.ensure_birth_capacity(PopulationKind::Prey, prey_births)?;
         self.evolution.run_reproduction(PopulationKind::Prey)?;
-
         self.evolution.advance_tick()?;
 
         let ui_stats = self.evolution.simulation_ui_stats()?;

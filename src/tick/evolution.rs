@@ -1,3 +1,4 @@
+use crate::profile_scope;
 use std::mem::MaybeUninit;
 use std::ptr::{self, NonNull};
 
@@ -209,41 +210,49 @@ impl EvolutionManager {
     }
 
     pub fn build_spatial_grid(&mut self) -> Result<()> {
+        profile_scope!("spatial_grid");
         let status = unsafe { moonai_gpu_simulation_build_spatial_grid(self.raw.as_ptr()) };
         check_cuda_status(status, "moonai_gpu_simulation_build_spatial_grid")
     }
 
     pub fn compute_sensor_inputs(&mut self) -> Result<()> {
+        profile_scope!("sensor_inputs");
         let status = unsafe { moonai_gpu_simulation_compute_sensor_inputs(self.raw.as_ptr()) };
         check_cuda_status(status, "moonai_gpu_simulation_compute_sensor_inputs")
     }
 
     pub fn infer_population(&mut self, population_kind: PopulationKind) -> Result<()> {
+        profile_scope!("inference");
         let status = unsafe { moonai_gpu_simulation_infer_population(self.raw.as_ptr(), population_kind) };
         check_cuda_status(status, "moonai_gpu_simulation_infer_population")
     }
 
     pub fn update_vitals(&mut self, population_kind: PopulationKind) -> Result<()> {
+        profile_scope!("update_vitals");
         let status = unsafe { moonai_gpu_simulation_update_vitals(self.raw.as_ptr(), population_kind) };
         check_cuda_status(status, "moonai_gpu_simulation_update_vitals")
     }
 
     pub fn resolve_food(&mut self) -> Result<()> {
+        profile_scope!("resolve_food");
         let status = unsafe { moonai_gpu_simulation_resolve_food(self.raw.as_ptr()) };
         check_cuda_status(status, "moonai_gpu_simulation_resolve_food")
     }
 
     pub fn resolve_combat(&mut self) -> Result<()> {
+        profile_scope!("resolve_combat");
         let status = unsafe { moonai_gpu_simulation_resolve_combat(self.raw.as_ptr()) };
         check_cuda_status(status, "moonai_gpu_simulation_resolve_combat")
     }
 
     pub fn apply_movement(&mut self, population_kind: PopulationKind) -> Result<()> {
+        profile_scope!("apply_movement");
         let status = unsafe { moonai_gpu_simulation_apply_movement(self.raw.as_ptr(), population_kind) };
         check_cuda_status(status, "moonai_gpu_simulation_apply_movement")
     }
 
     pub fn reproduction_candidate_count(&mut self, population_kind: PopulationKind) -> Result<u32> {
+        profile_scope!("reproduction");
         readback("moonai_gpu_simulation_reproduction_candidate_count", |out| unsafe {
             moonai_gpu_simulation_reproduction_candidate_count(self.raw.as_ptr(), population_kind, out)
         })
@@ -286,11 +295,13 @@ impl EvolutionManager {
     }
 
     pub fn advance_tick(&mut self) -> Result<()> {
+        profile_scope!("advance_tick");
         let status = unsafe { moonai_gpu_simulation_advance_tick(self.raw.as_ptr()) };
         check_cuda_status(status, "moonai_gpu_simulation_advance_tick")
     }
 
     pub fn simulation_ui_stats(&self) -> Result<UiStatsReadback> {
+        profile_scope!("ui_stats");
         readback("moonai_gpu_simulation_ui_stats", |out| {
             // SAFETY: `self.raw` is valid and `out` points to writable storage for the compact UI stats readback.
             unsafe { moonai_gpu_simulation_ui_stats(self.raw.as_ptr(), out) }
@@ -312,6 +323,7 @@ impl EvolutionManager {
     }
 
     pub fn simulation_refresh_reports(&mut self) -> Result<()> {
+        profile_scope!("reports");
         let status = unsafe { moonai_gpu_simulation_refresh_reports(self.raw.as_ptr()) };
         check_cuda_status(status, "moonai_gpu_simulation_refresh_reports")
     }

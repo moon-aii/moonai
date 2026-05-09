@@ -5,6 +5,8 @@ use anyhow::{Context as _, Result};
 use eframe::egui::{self, Color32, Key, Pos2, Sense, Shape, Stroke, Vec2};
 
 use crate::config::SimulationConfig;
+use crate::profile_scope;
+use crate::profiler::Profiler;
 use crate::settings::UiConfig;
 use crate::tick::buffers::{MetricsSummaryReadback, RenderAgentReadback, RenderSnapshotReadback, UiStatsReadback};
 use crate::tick::simulation::PopulationKind;
@@ -27,6 +29,7 @@ pub struct App {
     metrics_summary: MetricsSummaryReadback,
     world_frame: Arc<WorldFrame>,
     overlay_history: OverlayHistory,
+    profiler: Profiler,
     selected: Option<SelectedAgent>,
     selected_data: Option<SelectedAgentData>,
     last_frame_started: Instant,
@@ -95,6 +98,7 @@ impl App {
             metrics_summary,
             world_frame,
             overlay_history,
+            profiler: Profiler::default(),
             selected: None,
             selected_data: None,
             last_frame_started: Instant::now(),
@@ -110,6 +114,8 @@ impl App {
     }
 
     fn handle_shortcuts(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        profile_scope!("handle_events");
+
         if ctx.input(|input| input.key_pressed(Key::Space)) {
             self.ui_state.paused = !self.ui_state.paused;
             self.status_message =
@@ -206,8 +212,11 @@ impl App {
         self.ui_stats = ui_stats;
         self.metrics_summary = metrics_summary;
         self.world_frame = world_frame;
-        let overlay = self.overlay_stats();
-        self.overlay_history.push(&overlay);
+        {
+            profile_scope!("history");
+            let overlay = self.overlay_stats();
+            self.overlay_history.push(&overlay);
+        }
         self.sync_selected_agent()?;
         Ok(())
     }
@@ -224,6 +233,8 @@ impl App {
     }
 
     fn sync_selected_agent(&mut self) -> Result<()> {
+        profile_scope!("selected_agent");
+
         let Some(selected) = self.selected else {
             self.selected_data = None;
             self.ui_state.selected_agent_id = None;
@@ -263,6 +274,8 @@ impl App {
     }
 
     fn update_fps(&mut self) {
+        profile_scope!("metrics");
+
         let now = Instant::now();
         let delta = now.saturating_duration_since(self.last_frame_started);
         self.last_frame_started = now;
@@ -278,6 +291,8 @@ impl App {
     }
 
     fn draw_side_panel(&mut self, ui: &mut egui::Ui) {
+        profile_scope!("side_panel");
+
         egui::Panel::left("moonai_left_panel")
             .resizable(false)
             .default_size(self.ui_config.ui_side_margin)
@@ -313,6 +328,17 @@ impl App {
                     if let Some(error) = &self.error_message {
                         ui.separator();
                         ui.colored_label(egui::Color32::LIGHT_RED, error);
+                    }
+
+                    ui.separator();
+                    ui.heading("Profiler");
+                    let profiler_rows = self.profiler.formatted_rows("frame", overlay.ui_stats.tick);
+                    if profiler_rows.is_empty() {
+                        ui.label("Warming up...");
+                    } else {
+                        for row in profiler_rows {
+                            ui.monospace(row);
+                        }
                     }
 
                     if let Some(selected) = &self.selected_data {
@@ -359,6 +385,17 @@ impl App {
                     }
                 });
             });
+    }
+
+    fn draw_render(&mut self, ui: &mut egui::Ui) {
+        profile_scope!("render");
+
+        self.draw_side_panel(ui);
+        self.draw_world(ui);
+    }
+
+    fn draw_world(&mut self, ui: &mut egui::Ui) {
+        profile_scope!("world");
 
         egui::Panel::right("moonai_right_panel")
             .resizable(false)
@@ -459,9 +496,7 @@ impl App {
                     );
                 });
             });
-    }
 
-    fn draw_world(&mut self, ui: &mut egui::Ui) {
         egui::CentralPanel::default().show_inside(ui, |ui| {
             let (rect, response) = world::allocate_world_rect(ui);
             self.handle_view_input(ui.ctx(), response.rect, &response);
@@ -479,6 +514,8 @@ impl App {
     }
 
     fn handle_view_input(&mut self, ctx: &egui::Context, rect: egui::Rect, response: &egui::Response) {
+        profile_scope!("input");
+
         if response.hovered() {
             let scroll = ctx.input(|input| input.smooth_scroll_delta.y);
             if scroll.abs() > f32::EPSILON {
@@ -513,6 +550,8 @@ impl App {
     }
 
     fn select_agent(&mut self, rect: egui::Rect, pointer: egui::Pos2) {
+        profile_scope!("selection");
+
         let mut closest: Option<(&RenderAgentReadback, f32)> = None;
         let select_radius = self.ui_config.selection_click_radius;
 
@@ -543,6 +582,9 @@ impl App {
 
 impl eframe::App for App {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let _profiler_session = self.profiler.bind();
+        profile_scope!("frame");
+
         self.update_fps();
         self.error_message = None;
         self.handle_shortcuts(ui.ctx(), _frame);
@@ -551,8 +593,7 @@ impl eframe::App for App {
             self.ui_state.paused = true;
         }
 
-        self.draw_side_panel(ui);
-        self.draw_world(ui);
+        self.draw_render(ui);
         if !self.ui_state.paused {
             ui.ctx().request_repaint();
         }
@@ -564,6 +605,8 @@ fn load_world_frame(
     ui_stats: UiStatsReadback,
     ui_config: &UiConfig,
 ) -> Result<(UiStatsReadback, MetricsSummaryReadback, Arc<WorldFrame>)> {
+    profile_scope!("world_frame");
+
     let metrics_summary = state.metrics_summary()?;
     let snapshot = state.render_snapshot(ui_stats.predator_count, ui_stats.prey_count, state.config().food_count)?;
     let world_frame = Arc::new(WorldFrame::from_snapshot(snapshot, ui_config));
