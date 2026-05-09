@@ -113,6 +113,21 @@ struct FoodGridEntry {
   float pos_y;
 };
 
+struct MetricsReduceScratch {
+  float predator_energy_sum;
+  float prey_energy_sum;
+  float predator_complexity_sum;
+  float prey_complexity_sum;
+  float predator_generation_sum;
+  float prey_generation_sum;
+  std::uint32_t predator_count;
+  std::uint32_t prey_count;
+  std::uint32_t max_predator_generation;
+  std::uint32_t max_prey_generation;
+  unsigned long long predator_species_mask;
+  unsigned long long prey_species_mask;
+};
+
 struct GpuEvolutionState {
   GpuEvolutionConfig config;
   SimulationConfig simulation;
@@ -139,6 +154,7 @@ struct GpuEvolutionState {
   CompiledNetworkReadbackHeader *compiled_header_scratch;
   SelectedAgentNetworkReadback *selected_network_scratch;
   MetricsSummaryReadback *metrics_summary;
+  MetricsReduceScratch *metrics_reduce_scratch;
   SpeciesSummaryReadback *species_summaries_scratch;
   RepresentativeGenomeHeader *representative_headers_scratch;
   std::uint32_t *species_count_scratch;
