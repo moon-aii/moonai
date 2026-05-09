@@ -158,6 +158,8 @@ struct GpuEvolutionState {
   std::uint32_t *food_cell_offsets;
   std::uint32_t *food_cell_write_offsets;
   FoodGridEntry *food_grid_entries;
+  std::uint32_t *food_claimed_by;
+  std::uint32_t *prey_claimed_by;
   std::uint32_t grid_cols;
   std::uint32_t grid_rows;
   std::uint32_t grid_cell_capacity;

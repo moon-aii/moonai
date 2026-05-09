@@ -146,10 +146,10 @@ end
 -- the only entry with this name. All values come from moonai_defaults (120K agents).
 --
 experiments["default"] = extend(moonai_defaults, {
-  grid_size = 720.0,
-  predator_count = 240,
-  prey_count = 960,
-  food_count = 2400,
+  grid_size = 1800.0,
+  predator_count = 600,
+  prey_count = 2400,
+  food_count = 6000,
 })
 
 return experiments

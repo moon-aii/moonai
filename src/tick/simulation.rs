@@ -107,6 +107,7 @@ impl SimulationState {
         self.evolution.update_vitals(PopulationKind::Prey)?;
         self.evolution.apply_movement(PopulationKind::Predator)?;
         self.evolution.apply_movement(PopulationKind::Prey)?;
+        self.evolution.build_spatial_grid()?;
         self.evolution.resolve_food()?;
         self.evolution.resolve_combat()?;
         self.evolution.build_spatial_grid()?;
