@@ -1,82 +1,51 @@
+use mlua::Lua;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::path::Path;
 use thiserror::Error;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct SimulationConfig {
-    #[serde(default = "grid_size_default")]
-    pub grid_size: i32,
-    #[serde(default = "predator_count_default")]
-    pub predator_count: i32,
-    #[serde(default = "prey_count_default")]
-    pub prey_count: i32,
-    #[serde(default = "food_count_default")]
-    pub food_count: i32,
-    #[serde(default = "predator_speed_default")]
+    pub grid_size: f32,
+    pub predator_count: u32,
+    pub prey_count: u32,
+    pub food_count: u32,
     pub predator_speed: f32,
-    #[serde(default = "prey_speed_default")]
     pub prey_speed: f32,
-    #[serde(default = "vision_range_default")]
     pub vision_range: f32,
-    #[serde(default = "interaction_range_default")]
     pub interaction_range: f32,
-    #[serde(default = "mate_range_default")]
     pub mate_range: f32,
-    #[serde(default = "food_respawn_rate_default")]
     pub food_respawn_rate: f32,
-    #[serde(default = "energy_drain_per_tick_default")]
     pub energy_drain_per_tick: f32,
-    #[serde(default = "energy_gain_from_kill_default")]
     pub energy_gain_from_kill: f32,
-    #[serde(default = "energy_gain_from_food_default")]
     pub energy_gain_from_food: f32,
-    #[serde(default = "initial_energy_default")]
     pub initial_energy: f32,
-    #[serde(default = "max_energy_default")]
     pub max_energy: f32,
-    #[serde(default = "reproduction_energy_threshold_default")]
     pub reproduction_energy_threshold: f32,
-    #[serde(default = "reproduction_energy_cost_default")]
     pub reproduction_energy_cost: f32,
-    #[serde(default = "offspring_initial_energy_default")]
     pub offspring_initial_energy: f32,
-    #[serde(default = "max_age_default")]
-    pub max_age: i32,
-    #[serde(default = "mutation_rate_default")]
+    pub max_age: u32,
     pub mutation_rate: f32,
-    #[serde(default = "weight_mutation_power_default")]
     pub weight_mutation_power: f32,
-    #[serde(default = "add_node_rate_default")]
     pub add_node_rate: f32,
-    #[serde(default = "add_connection_rate_default")]
     pub add_connection_rate: f32,
-    #[serde(default = "delete_connection_rate_default")]
     pub delete_connection_rate: f32,
-    #[serde(default = "max_hidden_nodes_default")]
-    pub max_hidden_nodes: i32,
-    #[serde(default = "max_ticks_default")]
-    pub max_ticks: i32,
-    #[serde(default = "compatibility_threshold_default")]
+    pub max_hidden_nodes: u32,
+    pub max_ticks: u32,
     pub compatibility_threshold: f32,
-    #[serde(default = "compatibility_min_normalization_default")]
     pub compatibility_min_normalization: f32,
-    #[serde(default = "c1_excess_default")]
     pub c1_excess: f32,
-    #[serde(default = "c2_disjoint_default")]
     pub c2_disjoint: f32,
-    #[serde(default = "c3_weight_default")]
     pub c3_weight: f32,
-    #[serde(default = "seed_default")]
-    pub seed: i32,
-    #[serde(default = "output_dir_default")]
-    pub output_dir: String,
-    #[serde(default = "report_interval_ticks_default")]
-    pub report_interval_ticks: i32,
+    pub seed: u64,
+    pub report_interval_ticks: u32,
 }
 
 impl Default for SimulationConfig {
     fn default() -> Self {
         Self {
-            grid_size: 3600,
+            grid_size: 3600.0,
             predator_count: 24000,
             prey_count: 96000,
             food_count: 240000,
@@ -108,113 +77,9 @@ impl Default for SimulationConfig {
             c2_disjoint: 1.0,
             c3_weight: 0.4,
             seed: 67,
-            output_dir: "output/experiments".to_owned(),
             report_interval_ticks: 1000,
         }
     }
-}
-
-const fn grid_size_default() -> i32 {
-    3600
-}
-const fn predator_count_default() -> i32 {
-    24000
-}
-const fn prey_count_default() -> i32 {
-    96000
-}
-const fn food_count_default() -> i32 {
-    240000
-}
-const fn predator_speed_default() -> f32 {
-    1.0
-}
-const fn prey_speed_default() -> f32 {
-    1.006
-}
-const fn vision_range_default() -> f32 {
-    12.0
-}
-const fn interaction_range_default() -> f32 {
-    1.0
-}
-const fn mate_range_default() -> f32 {
-    6.0
-}
-const fn food_respawn_rate_default() -> f32 {
-    0.006
-}
-const fn energy_drain_per_tick_default() -> f32 {
-    0.001
-}
-const fn energy_gain_from_kill_default() -> f32 {
-    0.24
-}
-const fn energy_gain_from_food_default() -> f32 {
-    0.24
-}
-const fn initial_energy_default() -> f32 {
-    0.36
-}
-const fn max_energy_default() -> f32 {
-    2.0
-}
-const fn reproduction_energy_threshold_default() -> f32 {
-    1.0
-}
-const fn reproduction_energy_cost_default() -> f32 {
-    0.18
-}
-const fn offspring_initial_energy_default() -> f32 {
-    0.36
-}
-const fn max_age_default() -> i32 {
-    10000
-}
-const fn mutation_rate_default() -> f32 {
-    0.30
-}
-const fn weight_mutation_power_default() -> f32 {
-    0.30
-}
-const fn add_node_rate_default() -> f32 {
-    0.12
-}
-const fn add_connection_rate_default() -> f32 {
-    0.60
-}
-const fn delete_connection_rate_default() -> f32 {
-    0.00000006
-}
-const fn max_hidden_nodes_default() -> i32 {
-    1200
-}
-const fn max_ticks_default() -> i32 {
-    0
-}
-const fn compatibility_threshold_default() -> f32 {
-    60.0
-}
-const fn compatibility_min_normalization_default() -> f32 {
-    240.0
-}
-const fn c1_excess_default() -> f32 {
-    1.0
-}
-const fn c2_disjoint_default() -> f32 {
-    1.0
-}
-const fn c3_weight_default() -> f32 {
-    0.4
-}
-const fn seed_default() -> i32 {
-    67
-}
-fn output_dir_default() -> String {
-    "output/experiments".to_owned()
-}
-const fn report_interval_ticks_default() -> i32 {
-    1000
 }
 
 #[derive(Debug, Error)]
@@ -231,11 +96,8 @@ pub enum ConfigError {
 
 pub fn validate_config(config: &SimulationConfig) -> Result<(), ConfigError> {
     let mut errors = Vec::new();
-    if config.grid_size < 100 {
-        errors.push(format!("grid_size must be >= 100, got {}", config.grid_size));
-    }
-    if config.grid_size > 20000 {
-        errors.push(format!("grid_size must be <= 20000, got {}", config.grid_size));
+    if config.grid_size < 1.0 {
+        errors.push(format!("grid_size must be >= 1, got {}", config.grid_size));
     }
     if config.predator_count < 1 {
         errors.push(format!("predator_count must be >= 1, got {}", config.predator_count));
@@ -279,9 +141,6 @@ pub fn validate_config(config: &SimulationConfig) -> Result<(), ConfigError> {
     if config.energy_drain_per_tick < 0.0 {
         errors.push(format!("energy_drain_per_tick must be >= 0, got {}", config.energy_drain_per_tick));
     }
-    if config.food_count < 0 {
-        errors.push(format!("food_count must be >= 0, got {}", config.food_count));
-    }
     if !(0.0..=1.0).contains(&config.food_respawn_rate) {
         errors.push(format!("food_respawn_rate must be in [0, 1], got {}", config.food_respawn_rate));
     }
@@ -299,12 +158,6 @@ pub fn validate_config(config: &SimulationConfig) -> Result<(), ConfigError> {
     }
     if config.weight_mutation_power <= 0.0 {
         errors.push(format!("weight_mutation_power must be > 0, got {}", config.weight_mutation_power));
-    }
-    if config.max_age < 0 {
-        errors.push(format!("max_age must be >= 0 (0 = infinite), got {}", config.max_age));
-    }
-    if config.max_ticks < 0 {
-        errors.push(format!("max_ticks must be >= 0 (0 = infinite), got {}", config.max_ticks));
     }
     if config.compatibility_threshold <= 0.0 {
         errors.push(format!("compatibility_threshold must be > 0, got {}", config.compatibility_threshold));
@@ -344,4 +197,169 @@ pub fn validate_config(config: &SimulationConfig) -> Result<(), ConfigError> {
     }
 
     if errors.is_empty() { Ok(()) } else { Err(ConfigError::InvalidConfig(errors.join("; "))) }
+}
+
+pub fn load_config(root_dir: &Path) -> Result<HashMap<String, SimulationConfig>, ConfigError> {
+    let config_path = root_dir.join("config").join("config.lua");
+
+    let lua = Lua::new();
+    let defaults = SimulationConfig::default();
+    let globals = lua.globals();
+    let moonai_defaults = lua.create_table().map_err(|e| ConfigError::LuaParse(e.to_string()))?;
+
+    moonai_defaults.set("grid_size", defaults.grid_size as f64).map_err(|e| ConfigError::LuaParse(e.to_string()))?;
+    moonai_defaults
+        .set("predator_count", defaults.predator_count as f64)
+        .map_err(|e| ConfigError::LuaParse(e.to_string()))?;
+    moonai_defaults.set("prey_count", defaults.prey_count as f64).map_err(|e| ConfigError::LuaParse(e.to_string()))?;
+    moonai_defaults.set("food_count", defaults.food_count as f64).map_err(|e| ConfigError::LuaParse(e.to_string()))?;
+    moonai_defaults
+        .set("predator_speed", defaults.predator_speed as f64)
+        .map_err(|e| ConfigError::LuaParse(e.to_string()))?;
+    moonai_defaults.set("prey_speed", defaults.prey_speed as f64).map_err(|e| ConfigError::LuaParse(e.to_string()))?;
+    moonai_defaults
+        .set("vision_range", defaults.vision_range as f64)
+        .map_err(|e| ConfigError::LuaParse(e.to_string()))?;
+    moonai_defaults
+        .set("interaction_range", defaults.interaction_range as f64)
+        .map_err(|e| ConfigError::LuaParse(e.to_string()))?;
+    moonai_defaults.set("mate_range", defaults.mate_range as f64).map_err(|e| ConfigError::LuaParse(e.to_string()))?;
+    moonai_defaults
+        .set("food_respawn_rate", defaults.food_respawn_rate as f64)
+        .map_err(|e| ConfigError::LuaParse(e.to_string()))?;
+    moonai_defaults
+        .set("energy_drain_per_tick", defaults.energy_drain_per_tick as f64)
+        .map_err(|e| ConfigError::LuaParse(e.to_string()))?;
+    moonai_defaults
+        .set("energy_gain_from_kill", defaults.energy_gain_from_kill as f64)
+        .map_err(|e| ConfigError::LuaParse(e.to_string()))?;
+    moonai_defaults
+        .set("energy_gain_from_food", defaults.energy_gain_from_food as f64)
+        .map_err(|e| ConfigError::LuaParse(e.to_string()))?;
+    moonai_defaults
+        .set("initial_energy", defaults.initial_energy as f64)
+        .map_err(|e| ConfigError::LuaParse(e.to_string()))?;
+    moonai_defaults.set("max_energy", defaults.max_energy as f64).map_err(|e| ConfigError::LuaParse(e.to_string()))?;
+    moonai_defaults
+        .set("reproduction_energy_threshold", defaults.reproduction_energy_threshold as f64)
+        .map_err(|e| ConfigError::LuaParse(e.to_string()))?;
+    moonai_defaults
+        .set("reproduction_energy_cost", defaults.reproduction_energy_cost as f64)
+        .map_err(|e| ConfigError::LuaParse(e.to_string()))?;
+    moonai_defaults
+        .set("offspring_initial_energy", defaults.offspring_initial_energy as f64)
+        .map_err(|e| ConfigError::LuaParse(e.to_string()))?;
+    moonai_defaults.set("max_age", defaults.max_age as f64).map_err(|e| ConfigError::LuaParse(e.to_string()))?;
+    moonai_defaults
+        .set("mutation_rate", defaults.mutation_rate as f64)
+        .map_err(|e| ConfigError::LuaParse(e.to_string()))?;
+    moonai_defaults
+        .set("weight_mutation_power", defaults.weight_mutation_power as f64)
+        .map_err(|e| ConfigError::LuaParse(e.to_string()))?;
+    moonai_defaults
+        .set("add_node_rate", defaults.add_node_rate as f64)
+        .map_err(|e| ConfigError::LuaParse(e.to_string()))?;
+    moonai_defaults
+        .set("add_connection_rate", defaults.add_connection_rate as f64)
+        .map_err(|e| ConfigError::LuaParse(e.to_string()))?;
+    moonai_defaults
+        .set("delete_connection_rate", defaults.delete_connection_rate as f64)
+        .map_err(|e| ConfigError::LuaParse(e.to_string()))?;
+    moonai_defaults
+        .set("max_hidden_nodes", defaults.max_hidden_nodes as f64)
+        .map_err(|e| ConfigError::LuaParse(e.to_string()))?;
+    moonai_defaults.set("max_ticks", defaults.max_ticks as f64).map_err(|e| ConfigError::LuaParse(e.to_string()))?;
+    moonai_defaults
+        .set("compatibility_threshold", defaults.compatibility_threshold as f64)
+        .map_err(|e| ConfigError::LuaParse(e.to_string()))?;
+    moonai_defaults
+        .set("compatibility_min_normalization", defaults.compatibility_min_normalization as f64)
+        .map_err(|e| ConfigError::LuaParse(e.to_string()))?;
+    moonai_defaults.set("c1_excess", defaults.c1_excess as f64).map_err(|e| ConfigError::LuaParse(e.to_string()))?;
+    moonai_defaults
+        .set("c2_disjoint", defaults.c2_disjoint as f64)
+        .map_err(|e| ConfigError::LuaParse(e.to_string()))?;
+    moonai_defaults.set("c3_weight", defaults.c3_weight as f64).map_err(|e| ConfigError::LuaParse(e.to_string()))?;
+    moonai_defaults.set("seed", defaults.seed as f64).map_err(|e| ConfigError::LuaParse(e.to_string()))?;
+    moonai_defaults
+        .set("report_interval_ticks", defaults.report_interval_ticks as f64)
+        .map_err(|e| ConfigError::LuaParse(e.to_string()))?;
+
+    globals.set("moonai_defaults", moonai_defaults).map_err(|e| ConfigError::LuaParse(e.to_string()))?;
+
+    let content = std::fs::read_to_string(config_path).map_err(ConfigError::Io)?;
+    let experiments_table: mlua::Table = lua.load(&content).eval().map_err(|e| ConfigError::LuaParse(e.to_string()))?;
+
+    let mut experiments = HashMap::new();
+    for pair in experiments_table.pairs::<String, mlua::Table>() {
+        let (name, cfg_table) = pair.map_err(|e| ConfigError::LuaParse(e.to_string()))?;
+        let config = table_to_config(&cfg_table)?;
+        experiments.insert(name, config);
+    }
+    Ok(experiments)
+}
+
+fn table_to_config(table: &mlua::Table) -> Result<SimulationConfig, ConfigError> {
+    let mut config = SimulationConfig::default();
+    macro_rules! set_f32 {
+        ($k:literal, $f:ident) => {
+            if let Ok(v) = table.get::<f64>($k) {
+                config.$f = v as f32;
+            }
+        };
+    }
+    macro_rules! set_u64 {
+        ($k:literal, $f:ident) => {
+            if let Ok(v) = table.get::<f64>($k) {
+                if v < 0.0 {
+                    return Err(ConfigError::InvalidConfig(format!("$f must be >= 0, got $k")));
+                }
+                config.$f = v as u64;
+            }
+        };
+    }
+    macro_rules! set_u32 {
+        ($k:literal, $f:ident) => {
+            if let Ok(v) = table.get::<f64>($k) {
+                if v < 0.0 {
+                    return Err(ConfigError::InvalidConfig(format!("$f must be >= 0, got $k")));
+                }
+                config.$f = v as u32;
+            }
+        };
+    }
+    set_f32!("grid_size", grid_size);
+    set_u32!("predator_count", predator_count);
+    set_u32!("prey_count", prey_count);
+    set_u32!("food_count", food_count);
+    set_f32!("predator_speed", predator_speed);
+    set_f32!("prey_speed", prey_speed);
+    set_f32!("vision_range", vision_range);
+    set_f32!("interaction_range", interaction_range);
+    set_f32!("mate_range", mate_range);
+    set_f32!("food_respawn_rate", food_respawn_rate);
+    set_f32!("energy_drain_per_tick", energy_drain_per_tick);
+    set_f32!("energy_gain_from_kill", energy_gain_from_kill);
+    set_f32!("energy_gain_from_food", energy_gain_from_food);
+    set_f32!("initial_energy", initial_energy);
+    set_f32!("max_energy", max_energy);
+    set_f32!("reproduction_energy_threshold", reproduction_energy_threshold);
+    set_f32!("reproduction_energy_cost", reproduction_energy_cost);
+    set_f32!("offspring_initial_energy", offspring_initial_energy);
+    set_u32!("max_age", max_age);
+    set_f32!("mutation_rate", mutation_rate);
+    set_f32!("weight_mutation_power", weight_mutation_power);
+    set_f32!("add_node_rate", add_node_rate);
+    set_f32!("add_connection_rate", add_connection_rate);
+    set_f32!("delete_connection_rate", delete_connection_rate);
+    set_u32!("max_hidden_nodes", max_hidden_nodes);
+    set_u32!("max_ticks", max_ticks);
+    set_f32!("compatibility_threshold", compatibility_threshold);
+    set_f32!("compatibility_min_normalization", compatibility_min_normalization);
+    set_f32!("c1_excess", c1_excess);
+    set_f32!("c2_disjoint", c2_disjoint);
+    set_f32!("c3_weight", c3_weight);
+    set_u64!("seed", seed);
+    set_u32!("report_interval_ticks", report_interval_ticks);
+    Ok(config)
 }

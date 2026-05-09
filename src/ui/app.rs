@@ -50,13 +50,13 @@ impl App {
         };
 
         let run_label = run_label.to_owned();
-        let config_for_app = config.clone();
+        let config_for_app = *config;
         let ui_for_app = ui_config.clone();
         eframe::run_native(
             "MoonAI",
             native_options,
             Box::new(move |_creation_context| {
-                Self::new(&run_label, config_for_app.clone(), ui_for_app.clone())
+                Self::new(&run_label, config_for_app, ui_for_app.clone())
                     .map(|app| -> Box<dyn eframe::App> { Box::new(app) })
                     .map_err(|error| -> Box<dyn std::error::Error + Send + Sync> {
                         Box::new(std::io::Error::other(error.to_string()))
@@ -68,7 +68,7 @@ impl App {
 
     fn new(run_label: &str, config: SimulationConfig, ui_config: UiConfig) -> Result<Self> {
         let mut state = SimulationState::init_from_config(&config)?;
-        let camera = render::default_camera(config.grid_size as f32);
+        let camera = render::default_camera(config.grid_size);
         let (ui_stats, metrics_summary, free_list_state, snapshot) = refresh_snapshot(&mut state)?;
         let initial_overlay =
             OverlayStats::from_snapshot(ui_stats, metrics_summary, free_list_state.active_food_count, 1, false, 0.0);
@@ -100,7 +100,7 @@ impl App {
     }
 
     fn tick_limit(&self) -> Option<u32> {
-        (self.config.max_ticks > 0).then_some(self.config.max_ticks as u32)
+        (self.config.max_ticks > 0).then_some(self.config.max_ticks)
     }
 
     fn handle_shortcuts(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
@@ -116,7 +116,7 @@ impl App {
             self.decrease_speed();
         }
         if ctx.input(|input| input.key_pressed(Key::Home)) {
-            self.camera = render::default_camera(self.config.grid_size as f32);
+            self.camera = render::default_camera(self.config.grid_size);
         }
         if ctx.input(|input| input.key_pressed(Key::Escape)) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
@@ -463,7 +463,7 @@ impl App {
                 snapshot: &self.snapshot,
                 ui_config: &self.ui_config,
                 camera: self.camera,
-                world_size: self.config.grid_size as f32,
+                world_size: self.config.grid_size,
                 selected: self.selected_data.as_ref(),
                 image_size: [width, height],
                 vision_range: self.config.vision_range,
@@ -493,14 +493,14 @@ impl App {
             let scroll = ctx.input(|input| input.smooth_scroll_delta.y);
             if scroll.abs() > f32::EPSILON {
                 let hover = ctx.input(|input| input.pointer.hover_pos()).unwrap_or(rect.center());
-                let world_before = render::screen_to_world(rect, self.camera, self.config.grid_size as f32, hover);
+                let world_before = render::screen_to_world(rect, self.camera, self.config.grid_size, hover);
                 let zoom_factor = (scroll * 0.0015).exp();
                 self.camera.zoom *= zoom_factor;
-                render::clamp_camera(&mut self.camera, self.config.grid_size as f32, &self.ui_config);
-                let world_after = render::screen_to_world(rect, self.camera, self.config.grid_size as f32, hover);
+                render::clamp_camera(&mut self.camera, self.config.grid_size, &self.ui_config);
+                let world_after = render::screen_to_world(rect, self.camera, self.config.grid_size, hover);
                 self.camera.center_x += world_before.0 - world_after.0;
                 self.camera.center_y += world_before.1 - world_after.1;
-                render::clamp_camera(&mut self.camera, self.config.grid_size as f32, &self.ui_config);
+                render::clamp_camera(&mut self.camera, self.config.grid_size, &self.ui_config);
             }
         }
 
@@ -509,10 +509,10 @@ impl App {
         if dragging {
             let delta = ctx.input(|input| input.pointer.delta());
             let scale =
-                rect.width().min(rect.height()).max(1.0) / (self.config.grid_size as f32 / self.camera.zoom.max(0.001));
+                rect.width().min(rect.height()).max(1.0) / (self.config.grid_size / self.camera.zoom.max(0.001));
             self.camera.center_x -= delta.x / scale;
             self.camera.center_y += delta.y / scale;
-            render::clamp_camera(&mut self.camera, self.config.grid_size as f32, &self.ui_config);
+            render::clamp_camera(&mut self.camera, self.config.grid_size, &self.ui_config);
         }
 
         if response.clicked_by(egui::PointerButton::Primary)
@@ -527,8 +527,7 @@ impl App {
         let select_radius = self.ui_config.selection_click_radius;
 
         for agent in self.snapshot.predators.iter().chain(self.snapshot.prey.iter()) {
-            let screen =
-                render::world_to_screen(rect, self.camera, self.config.grid_size as f32, agent.pos_x, agent.pos_y);
+            let screen = render::world_to_screen(rect, self.camera, self.config.grid_size, agent.pos_x, agent.pos_y);
             let distance = screen.distance(pointer);
             if distance > select_radius {
                 continue;
@@ -574,7 +573,7 @@ fn refresh_snapshot(
     let ui_stats = state.ui_stats()?;
     let metrics_summary = state.metrics_summary()?;
     let free_list_state = state.free_list_state()?;
-    let snapshot = state.render_snapshot(ui_stats.predator_count, ui_stats.prey_count, state.config().food_capacity)?;
+    let snapshot = state.render_snapshot(ui_stats.predator_count, ui_stats.prey_count, state.config().food_count)?;
     Ok((ui_stats, metrics_summary, free_list_state, snapshot))
 }
 

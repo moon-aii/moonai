@@ -8,8 +8,8 @@ use crate::tick::buffers::{
     FreeListStateReadback, MetricsSummaryReadback, RenderAgentReadback, RenderFoodReadback, RenderSnapshotHeader,
     RenderSnapshotReadback, UiStatsReadback,
 };
-use crate::tick::network::{CompiledNetworkReadbackHeader, SelectedAgentNetworkReadback, SensorSnapshotReadback};
 use crate::tick::simulation::PopulationKind;
+use crate::tick::simulation::{CompiledNetworkReadbackHeader, SelectedAgentNetworkReadback, SensorSnapshotReadback};
 
 #[repr(i32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -26,13 +26,11 @@ impl CudaStatus {
 pub fn check_cuda(status: CudaStatus, context: &str) -> anyhow::Result<()> {
     if status.is_success() { Ok(()) } else { Err(anyhow::anyhow!("{context} failed with status {status:?}")) }
 }
-use crate::tick::simulation::GpuSimulationConfig;
 use crate::tick::species::{
     GenomeConnectionReadback, GenomeNodeReadback, RepresentativeGenomeHeader, RepresentativeGenomeReadback,
     SpeciesBatchReadbackHeader, SpeciesSummaryReadback,
 };
 
-const PHASE3_HIDDEN_NODE_BUDGET_CAP: u32 = 32;
 const PHASE3_CONNECTION_GROWTH_BUDGET_CAP: u32 = 16;
 
 #[repr(C)]
@@ -149,7 +147,7 @@ struct FoodGridEntry {
 #[repr(C)]
 struct GpuEvolutionState {
     config: GpuEvolutionConfig,
-    simulation: GpuSimulationConfig,
+    simulation: SimulationConfig,
     predator: DevicePopulationBuffers,
     prey: DevicePopulationBuffers,
     food: FoodBuffer,
@@ -205,19 +203,9 @@ struct OpaqueHostValue {
 
 impl GpuEvolutionConfig {
     pub fn for_seed_stage(simulation: &SimulationConfig, num_inputs: u32, num_outputs: u32) -> Result<Self> {
-        let predator_capacity = as_non_negative_u32(simulation.predator_count, "predator_count")?;
-        let prey_capacity = as_non_negative_u32(simulation.prey_count, "prey_count")?;
-        let hidden_budget =
-            as_non_negative_u32(simulation.max_hidden_nodes, "max_hidden_nodes")?.min(PHASE3_HIDDEN_NODE_BUDGET_CAP);
-        if simulation.grid_size <= 0 {
-            bail!("grid_size must be positive for GPU evolution, got {}", simulation.grid_size);
-        }
-        if simulation.initial_energy <= 0.0 {
-            bail!("initial_energy must be positive for GPU evolution, got {}", simulation.initial_energy);
-        }
-        if simulation.max_energy <= 0.0 {
-            bail!("max_energy must be positive for GPU evolution, got {}", simulation.max_energy);
-        }
+        let predator_capacity = simulation.predator_count;
+        let prey_capacity = simulation.prey_count;
+        let hidden_budget = simulation.max_hidden_nodes;
 
         let seeded_node_count = num_inputs
             .checked_add(num_outputs)
@@ -239,10 +227,10 @@ impl GpuEvolutionConfig {
             prey_capacity,
             initial_predator_count: predator_capacity,
             initial_prey_count: prey_capacity,
-            world_size: simulation.grid_size as f32,
+            world_size: simulation.grid_size,
             initial_energy: simulation.initial_energy,
             max_energy: simulation.max_energy,
-            seed: simulation.seed as i64 as u64,
+            seed: simulation.seed,
             num_inputs,
             num_outputs,
             node_stride,
@@ -276,7 +264,7 @@ impl EvolutionManager {
         check_cuda_status(status, "moonai_gpu_evolution_seed_initial_population")
     }
 
-    pub fn set_simulation_config(&mut self, config: GpuSimulationConfig) -> Result<()> {
+    pub fn set_simulation_config(&mut self, config: SimulationConfig) -> Result<()> {
         let status = unsafe { moonai_gpu_simulation_set_config(self.raw.as_ptr(), &config) };
         check_cuda_status(status, "moonai_gpu_simulation_set_config")
     }
@@ -752,7 +740,7 @@ impl EvolutionManager {
             add_node_rate: simulation.add_node_rate,
             add_connection_rate: simulation.add_connection_rate,
             delete_connection_rate: simulation.delete_connection_rate,
-            max_connection_attempts: simulation.max_connection_attempts,
+            max_connection_attempts: 16,
         })
     }
 
@@ -800,13 +788,6 @@ impl Drop for EvolutionManager {
     }
 }
 
-fn as_non_negative_u32(value: i32, field_name: &str) -> Result<u32> {
-    if value < 0 {
-        bail!("{field_name} must be non-negative, got {value}");
-    }
-    u32::try_from(value).map_err(|_| anyhow!("{field_name} could not be converted to u32: {value}"))
-}
-
 fn readback<T>(context: &str, mut call: impl FnMut(*mut T) -> CudaStatus) -> Result<T> {
     let mut out = MaybeUninit::<T>::uninit();
     check_cuda_status(call(out.as_mut_ptr()), context)?;
@@ -838,10 +819,7 @@ unsafe extern "C" {
         population_kind: PopulationKind,
         out_live_count: *mut u32,
     ) -> CudaStatus;
-    fn moonai_gpu_simulation_set_config(
-        state: *mut GpuEvolutionState,
-        config: *const GpuSimulationConfig,
-    ) -> CudaStatus;
+    fn moonai_gpu_simulation_set_config(state: *mut GpuEvolutionState, config: *const SimulationConfig) -> CudaStatus;
     fn moonai_gpu_simulation_set_grid(
         state: *mut GpuEvolutionState,
         cell_size: f32,
@@ -999,12 +977,12 @@ unsafe extern "C" {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tick::network::{OUTPUT_COUNT, SENSOR_COUNT};
     use crate::tick::simulation::PopulationKind;
+    use crate::tick::simulation::{OUTPUT_COUNT, SENSOR_COUNT};
 
-    fn smoke_simulation_config(seed: i32) -> SimulationConfig {
+    fn smoke_simulation_config(seed: u64) -> SimulationConfig {
         SimulationConfig {
-            grid_size: 256,
+            grid_size: 256.0,
             predator_count: 8,
             prey_count: 12,
             initial_energy: 0.36,
@@ -1019,11 +997,11 @@ mod tests {
         }
     }
 
-    fn seed_manager(seed: i32) -> Result<EvolutionManager> {
+    fn seed_manager(seed: u64) -> Result<EvolutionManager> {
         let config = GpuEvolutionConfig::for_seed_stage(
             &smoke_simulation_config(seed),
-            SENSOR_COUNT as u32,
-            OUTPUT_COUNT as u32,
+            SENSOR_COUNT,
+            OUTPUT_COUNT,
         )?;
         let mut manager = EvolutionManager::create(config)?;
         manager.seed_initial_population()?;

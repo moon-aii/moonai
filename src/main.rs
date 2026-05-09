@@ -1,5 +1,4 @@
 mod config;
-mod lua;
 mod metrics;
 mod settings;
 mod tick;
@@ -12,7 +11,7 @@ use crate::tick::simulation::PopulationKind;
 use crate::tick::simulation::SimulationState;
 use crate::tick::species::MAX_SPECIES_SUMMARIES;
 use crate::ui::app::App;
-use anyhow::{Context as _, Result, bail};
+use anyhow::{Result, bail};
 use clap::Parser;
 use std::collections::HashMap;
 use std::io::{self, Write as _};
@@ -25,7 +24,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 #[command(author, version, about)]
 pub struct CliArgs {
     #[arg(short = 'n', long)]
-    pub ticks: Option<i32>,
+    pub ticks: Option<u32>,
     #[arg(long)]
     pub headless: bool,
     #[arg(long)]
@@ -73,7 +72,7 @@ fn select_named_experiment(
                         experiments
                             .iter()
                             .next()
-                            .map(|(experiment_name, config)| (experiment_name.clone(), config.clone()))
+                            .map(|(experiment_name, config)| (experiment_name.clone(), *config))
                     } else {
                         None
                     }
@@ -99,14 +98,15 @@ fn resolve_run_name(experiment_name: &str, explicit_name: Option<&str>) -> Strin
     explicit_name.map_or_else(|| experiment_name.to_owned(), ToOwned::to_owned)
 }
 
-fn anonymous_run_name(seed: i32) -> String {
+fn anonymous_run_name(seed: u64) -> String {
     let seconds = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |duration| duration.as_secs());
     format!("run_{seconds}_seed{seed}")
 }
 
-fn resolve_run_dir(output_root: &str, run_name: Option<&str>, seed: i32) -> PathBuf {
+fn resolve_run_dir(run_name: Option<&str>, seed: u64) -> PathBuf {
+    let output_dir = "output/experiments".to_owned();
     let resolved_name = run_name.map_or_else(|| anonymous_run_name(seed), ToOwned::to_owned);
-    Path::new(output_root).join(resolved_name)
+    Path::new(&output_dir).join(resolved_name)
 }
 
 fn log_population_report(
@@ -137,17 +137,8 @@ fn log_report_snapshot(state: &mut SimulationState, logger: &mut Logger) -> Resu
 }
 
 fn run_headless_experiment(run_label: &str, config: &SimulationConfig, run_dir: &Path) -> Result<()> {
-    let report_interval = u32::try_from(config.report_interval_ticks).with_context(|| {
-        format!("report_interval_ticks could not be converted to u32: {}", config.report_interval_ticks)
-    })?;
-    let max_ticks = if config.max_ticks > 0 {
-        Some(
-            u32::try_from(config.max_ticks)
-                .with_context(|| format!("max_ticks could not be converted to u32: {}", config.max_ticks))?,
-        )
-    } else {
-        None
-    };
+    let report_interval = config.report_interval_ticks;
+    let max_ticks = if config.max_ticks > 0 { Some(config.max_ticks) } else { None };
 
     let mut logger = Logger::new(run_dir, config)?;
     let mut state = SimulationState::init_from_config(config)?;
@@ -193,7 +184,7 @@ fn main() -> Result<()> {
     };
 
     let ui_config = settings::load_settings(&root_dir)?;
-    let experiments = lua::load_config(&root_dir)?;
+    let experiments = config::load_config(&root_dir)?;
 
     let mut names: Vec<_> = experiments.keys().map(String::as_str).collect();
     names.sort_unstable();
@@ -213,7 +204,7 @@ fn main() -> Result<()> {
         });
         match validate_config(&config) {
             Err(ConfigError::InvalidConfig(msg)) => {
-                stderr_line(&format!("Configuration is invalid: {msg}"));
+                stderr_line(&format!("Configuration '{name}' is invalid: {msg}"));
                 std::process::exit(1);
             }
             Err(e) => return Err(anyhow::anyhow!(e)),
@@ -228,7 +219,7 @@ fn main() -> Result<()> {
 
     // check cuda
     let cuda_status = crate::tick::evolution::EvolutionManager::runtime_status();
-    if cuda_status != CudaStatus::Success { 
+    if cuda_status != CudaStatus::Success {
         bail!("CUDA runtime unavailable: {cuda_status:?}")
     }
 
@@ -253,14 +244,14 @@ fn main() -> Result<()> {
         runs.sort_by_key(|(name, _)| *name);
         for (name, base_config) in runs {
             let config = args.ticks.map_or_else(
-                || base_config.clone(),
+                || *base_config,
                 |ticks| {
-                    let mut cfg = base_config.clone();
+                    let mut cfg = *base_config;
                     cfg.max_ticks = ticks;
                     cfg
                 },
             );
-            let run_dir = resolve_run_dir(&config.output_dir, Some(name.as_str()), config.seed);
+            let run_dir = resolve_run_dir(Some(name.as_str()), config.seed);
             run_headless_experiment(name, &config, &run_dir)?;
             if is_signal_pending() {
                 break;
@@ -278,7 +269,7 @@ fn main() -> Result<()> {
 
     if args.headless {
         let run_name = resolve_run_name(&selected_name, args.name.as_deref());
-        let run_dir = resolve_run_dir(&config.output_dir, Some(run_name.as_str()), config.seed);
+        let run_dir = resolve_run_dir(Some(run_name.as_str()), config.seed);
         return run_headless_experiment(&selected_name, &config, &run_dir);
     }
 

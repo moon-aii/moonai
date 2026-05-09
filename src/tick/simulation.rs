@@ -1,12 +1,49 @@
-use anyhow::{Context as _, Result, bail};
+use anyhow::Result;
 
 use crate::config::SimulationConfig;
 use crate::tick::buffers::{FreeListStateReadback, MetricsSummaryReadback, RenderSnapshotReadback, UiStatsReadback};
 use crate::tick::evolution::{EvolutionManager, GpuEvolutionConfig};
-use crate::tick::network::{OUTPUT_COUNT, SENSOR_COUNT, SelectedAgentNetworkReadback, SensorSnapshotReadback};
 use crate::tick::species::{
     RepresentativeGenomeHeader, RepresentativeGenomeReadback, SpeciesBatchReadbackHeader, SpeciesSummaryReadback,
 };
+use serde::{Deserialize, Serialize};
+
+pub const SENSOR_COUNT: u32 = 35;
+pub const OUTPUT_COUNT: u32 = 2;
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CompiledNetworkReadbackHeader {
+    pub population_kind: PopulationKind,
+    pub slot: u32,
+    pub node_count: u16,
+    pub eval_node_count: u16,
+    pub output_count: u16,
+    pub connection_count: u16,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SensorSnapshotReadback {
+    pub population_kind: PopulationKind,
+    pub slot: u32,
+    pub input_count: u16,
+    pub reserved: u16,
+    pub inputs: [f32; SENSOR_COUNT as usize],
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct SelectedAgentNetworkReadback {
+    pub population_kind: PopulationKind,
+    pub slot: u32,
+    pub node_count: u16,
+    pub output_count: u16,
+    pub activation_count: u16,
+    pub reserved: u16,
+    pub output_0: f32,
+    pub output_1: f32,
+}
 
 #[repr(u32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -15,162 +52,21 @@ pub enum PopulationKind {
     Prey = 1,
 }
 
-#[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct GpuSimulationConfig {
-    pub food_capacity: u32,
-    pub world_size: f32,
-    pub predator_speed: f32,
-    pub prey_speed: f32,
-    pub vision_range: f32,
-    pub interaction_range: f32,
-    pub mate_range: f32,
-    pub energy_drain_per_tick: f32,
-    pub energy_gain_from_kill: f32,
-    pub energy_gain_from_food: f32,
-    pub initial_energy: f32,
-    pub max_energy: f32,
-    pub reproduction_energy_threshold: f32,
-    pub reproduction_energy_cost: f32,
-    pub offspring_initial_energy: f32,
-    pub mutation_rate: f32,
-    pub weight_mutation_power: f32,
-    pub add_node_rate: f32,
-    pub add_connection_rate: f32,
-    pub delete_connection_rate: f32,
-    pub max_connection_attempts: u32,
-    pub max_age: u32,
-    pub report_interval_ticks: u32,
-    pub seed: u64,
-}
-
-impl GpuSimulationConfig {
-    pub fn for_simulation(config: &SimulationConfig) -> Result<Self> {
-        if config.grid_size <= 0 {
-            bail!("grid_size must be positive for GPU simulation, got {}", config.grid_size);
-        }
-        if config.predator_speed <= 0.0 {
-            bail!("predator_speed must be positive for GPU simulation, got {}", config.predator_speed);
-        }
-        if config.prey_speed <= 0.0 {
-            bail!("prey_speed must be positive for GPU simulation, got {}", config.prey_speed);
-        }
-        if config.vision_range <= 0.0 {
-            bail!("vision_range must be positive for GPU simulation, got {}", config.vision_range);
-        }
-        if config.interaction_range < 0.0 {
-            bail!("interaction_range must be non-negative for GPU simulation, got {}", config.interaction_range);
-        }
-        if config.mate_range < 0.0 {
-            bail!("mate_range must be non-negative for GPU simulation, got {}", config.mate_range);
-        }
-        if config.energy_drain_per_tick < 0.0 {
-            bail!(
-                "energy_drain_per_tick must be non-negative for GPU simulation, got {}",
-                config.energy_drain_per_tick
-            );
-        }
-        if config.energy_gain_from_kill < 0.0 {
-            bail!(
-                "energy_gain_from_kill must be non-negative for GPU simulation, got {}",
-                config.energy_gain_from_kill
-            );
-        }
-        if config.energy_gain_from_food < 0.0 {
-            bail!(
-                "energy_gain_from_food must be non-negative for GPU simulation, got {}",
-                config.energy_gain_from_food
-            );
-        }
-        if config.initial_energy <= 0.0 {
-            bail!("initial_energy must be positive for GPU simulation, got {}", config.initial_energy);
-        }
-        if config.max_energy <= 0.0 {
-            bail!("max_energy must be positive for GPU simulation, got {}", config.max_energy);
-        }
-        if config.reproduction_energy_threshold <= 0.0 {
-            bail!(
-                "reproduction_energy_threshold must be positive for GPU simulation, got {}",
-                config.reproduction_energy_threshold
-            );
-        }
-        if config.reproduction_energy_cost < 0.0 {
-            bail!(
-                "reproduction_energy_cost must be non-negative for GPU simulation, got {}",
-                config.reproduction_energy_cost
-            );
-        }
-        if config.offspring_initial_energy <= 0.0 {
-            bail!(
-                "offspring_initial_energy must be positive for GPU simulation, got {}",
-                config.offspring_initial_energy
-            );
-        }
-        for (name, value) in [
-            ("mutation_rate", config.mutation_rate),
-            ("add_node_rate", config.add_node_rate),
-            ("add_connection_rate", config.add_connection_rate),
-            ("delete_connection_rate", config.delete_connection_rate),
-        ] {
-            if !(0.0..=1.0).contains(&value) {
-                bail!("{name} must be in [0, 1] for GPU simulation, got {value}");
-            }
-        }
-        if config.weight_mutation_power <= 0.0 {
-            bail!("weight_mutation_power must be positive for GPU simulation, got {}", config.weight_mutation_power);
-        }
-        if config.max_age <= 0 {
-            bail!("max_age must be positive for GPU simulation, got {}", config.max_age);
-        }
-        if config.report_interval_ticks <= 0 {
-            bail!("report_interval_ticks must be positive for GPU simulation, got {}", config.report_interval_ticks);
-        }
-
-        Ok(Self {
-            food_capacity: as_non_negative_u32(config.food_count, "food_count")?,
-            world_size: config.grid_size as f32,
-            predator_speed: config.predator_speed,
-            prey_speed: config.prey_speed,
-            vision_range: config.vision_range,
-            interaction_range: config.interaction_range,
-            mate_range: config.mate_range,
-            energy_drain_per_tick: config.energy_drain_per_tick,
-            energy_gain_from_kill: config.energy_gain_from_kill,
-            energy_gain_from_food: config.energy_gain_from_food,
-            initial_energy: config.initial_energy,
-            max_energy: config.max_energy,
-            reproduction_energy_threshold: config.reproduction_energy_threshold,
-            reproduction_energy_cost: config.reproduction_energy_cost,
-            offspring_initial_energy: config.offspring_initial_energy,
-            mutation_rate: config.mutation_rate,
-            weight_mutation_power: config.weight_mutation_power,
-            add_node_rate: config.add_node_rate,
-            add_connection_rate: config.add_connection_rate,
-            delete_connection_rate: config.delete_connection_rate,
-            max_connection_attempts: 16,
-            max_age: as_non_negative_u32(config.max_age, "max_age")?,
-            report_interval_ticks: as_non_negative_u32(config.report_interval_ticks, "report_interval_ticks")?,
-            seed: config.seed as i64 as u64,
-        })
-    }
-}
-
 pub struct SimulationState {
     evolution: EvolutionManager,
-    config: GpuSimulationConfig,
+    config: SimulationConfig,
 }
 
 impl SimulationState {
-    pub fn init_from_config(config: &SimulationConfig) -> Result<Self> {
-        let evolution_config = GpuEvolutionConfig::for_seed_stage(config, SENSOR_COUNT as u32, OUTPUT_COUNT as u32)?;
-        let simulation_config = GpuSimulationConfig::for_simulation(config)?;
+    pub fn init_from_config(simulation_config: &SimulationConfig) -> Result<Self> {
+        let evolution_config = GpuEvolutionConfig::for_seed_stage(simulation_config, SENSOR_COUNT, OUTPUT_COUNT)?;
 
         let mut evolution = EvolutionManager::create(evolution_config)?;
         evolution.seed_initial_population()?;
-        evolution.set_simulation_config(simulation_config)?;
+        evolution.set_simulation_config(*simulation_config)?;
         let grid_cell_size = simulation_config.vision_range.max(1.0);
-        let grid_cols = ((simulation_config.world_size / grid_cell_size).ceil() as u32).max(1);
-        let grid_rows = ((simulation_config.world_size / grid_cell_size).ceil() as u32).max(1);
+        let grid_cols = ((simulation_config.grid_size / grid_cell_size).ceil() as u32).max(1);
+        let grid_rows = ((simulation_config.grid_size / grid_cell_size).ceil() as u32).max(1);
         evolution.set_spatial_grid(grid_cell_size, grid_cols, grid_rows)?;
         evolution.ensure_food_buffer()?;
         evolution.ensure_counter_buffer()?;
@@ -192,10 +88,10 @@ impl SimulationState {
         evolution.compute_sensor_inputs()?;
         evolution.simulation_refresh_reports()?;
 
-        Ok(Self { evolution, config: simulation_config })
+        Ok(Self { evolution, config: *simulation_config })
     }
 
-    pub const fn config(&self) -> GpuSimulationConfig {
+    pub const fn config(&self) -> SimulationConfig {
         self.config
     }
 
@@ -307,20 +203,13 @@ impl SimulationState {
     }
 }
 
-fn as_non_negative_u32(value: i32, field_name: &str) -> Result<u32> {
-    if value < 0 {
-        bail!("{field_name} must be non-negative, got {value}");
-    }
-    u32::try_from(value).with_context(|| format!("{field_name} could not be converted to u32: {value}"))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn simulation_config(seed: i32) -> SimulationConfig {
+    fn simulation_config(seed: u64) -> SimulationConfig {
         SimulationConfig {
-            grid_size: 64,
+            grid_size: 64.0,
             predator_count: 4,
             prey_count: 6,
             food_count: 10,
@@ -410,7 +299,7 @@ mod tests {
 
         assert_eq!(sensors.population_kind, PopulationKind::Predator);
         assert_eq!(sensors.slot, 0);
-        assert_eq!(usize::from(sensors.input_count), SENSOR_COUNT);
+        assert_eq!(sensors.input_count as u32, SENSOR_COUNT);
         assert!(sensors.inputs[..10].iter().any(|value| value.abs() > f32::EPSILON));
         assert!(sensors.inputs[10..20].iter().any(|value| value.abs() > f32::EPSILON));
         assert!(sensors.inputs[20..30].iter().any(|value| value.abs() > f32::EPSILON));
