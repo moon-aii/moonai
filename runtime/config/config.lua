@@ -145,6 +145,11 @@ end
 -- Single named entry for casual use: 'just run' auto-selects this because it is
 -- the only entry with this name. All values come from moonai_defaults (120K agents).
 --
-experiments["default"] = moonai_defaults
+experiments["default"] = extend(moonai_defaults, {
+  grid_size = 360.0,
+  predator_count = 60,
+  prey_count = 240,
+  food_count = 600,
+})
 
 return experiments

@@ -102,24 +102,21 @@ impl SimulationState {
         self.evolution.infer_population(PopulationKind::Prey)?;
         self.evolution.update_vitals(PopulationKind::Predator)?;
         self.evolution.update_vitals(PopulationKind::Prey)?;
-        self.evolution.resolve_food()?;
-        self.evolution.resolve_combat()?;
         self.evolution.apply_movement(PopulationKind::Predator)?;
         self.evolution.apply_movement(PopulationKind::Prey)?;
+        self.evolution.resolve_food()?;
+        self.evolution.resolve_combat()?;
 
         self.evolution.build_spatial_grid()?;
+
         let predator_births = self.evolution.reproduction_candidate_count(PopulationKind::Predator)?;
         self.ensure_birth_capacity(PopulationKind::Predator, predator_births)?;
         self.evolution.run_reproduction(PopulationKind::Predator)?;
-
-        self.evolution.build_spatial_grid()?;
         let prey_births = self.evolution.reproduction_candidate_count(PopulationKind::Prey)?;
         self.ensure_birth_capacity(PopulationKind::Prey, prey_births)?;
         self.evolution.run_reproduction(PopulationKind::Prey)?;
 
         self.evolution.advance_tick()?;
-        self.evolution.build_spatial_grid()?;
-        self.evolution.compute_sensor_inputs()?;
 
         let ui_stats = self.evolution.simulation_ui_stats()?;
         if self.config.report_interval_ticks > 0 && ui_stats.tick % self.config.report_interval_ticks == 0 {
