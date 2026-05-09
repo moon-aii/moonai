@@ -29,7 +29,7 @@ pub struct SensorSnapshotReadback {
     pub slot: u32,
     pub input_count: u16,
     pub reserved: u16,
-    pub inputs: [f32; SENSOR_COUNT as usize],
+    pub inputs: [f32; 35],
 }
 
 #[repr(C)]

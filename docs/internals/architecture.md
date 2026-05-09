@@ -15,7 +15,7 @@ MoonAI follows a **GPU-first execution model**.
 - **Cadence separation** — `report_interval_ticks` controls CSV/JSON/species/genome export cadence, while UI `speed_multiplier` controls visualization refresh cadence. They are independent.
 - **Readback/interop is minimal** — only the current UI-frame render snapshot, selected-agent inspection buffers, and report/export structs are transferred out of the simulation buffers.
 - **No duplication** — there is no separate CPU algorithmic path for evolution, inference, speciation, or verification. Host Rust may define FFI layouts and export structs only.
-- **Typed host-state FFI** — Host Rust mirrors the host-side CUDA state layout for metadata access (capacities, strides, cached configs, scratch buffers), while CUDA still owns all device allocations and kernel execution.
+- **Generated shared POD ABI** — Shared Rust/CUDA enums and structs are defined in Rust and emitted to a generated C++ header from `build.rs`. CUDA internal runtime state stays opaque to Rust.
 - **Buffer expansion** — buffers grow by 2x when capacity threshold is reached. No artificial ceiling.
 
 ## Desicions
@@ -43,17 +43,17 @@ MoonAI follows a **GPU-first execution model**.
 
 ## Technology Choices
 
-| Technology         | Choice                                  |
-| ------------------ | --------------------------------------- |
-| Language           | Rust 2024                               |
-| CUDA binding       | Rust FFI + `nvcc` via `build.rs` / `cc` |
-| Logging            | `tracing` + `tracing-subscriber`        |
-| JSON               | `serde` + `serde_json`                  |
-| Lua binding        | `mlua` crate                            |
-| GUI framework      | winit + egui + wgpu                     |
-| GPU rendering      | wgpu instanced rendering                |
-| Atomic counters    | CUDA atomics for GPU-to-CPU events      |
-| Genome compilation | GPU (persistent kernel)                 |
+| Technology         | Choice                                                         |
+| ------------------ | -------------------------------------------------------------- |
+| Language           | Rust 2024                                                      |
+| CUDA binding       | Rust FFI + generated C++ header + `nvcc` via `build.rs` / `cc` |
+| Logging            | `tracing` + `tracing-subscriber`                               |
+| JSON               | `serde` + `serde_json`                                         |
+| Lua binding        | `mlua` crate                                                   |
+| GUI framework      | winit + egui + wgpu                                            |
+| GPU rendering      | wgpu instanced rendering                                       |
+| Atomic counters    | CUDA atomics for GPU-to-CPU events                             |
+| Genome compilation | GPU (persistent kernel)                                        |
 
 ## Cadence Rules
 

@@ -6,23 +6,11 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "moonai_gpu_ffi.hpp"
+
 namespace moonai_gpu {
 
 extern std::int32_t g_last_cuda_error_code;
-
-enum class CudaStatus : std::int32_t {
-  Success = 0,
-  InvalidArgument = 1,
-  AllocationFailed = 2,
-  KernelLaunchFailed = 3,
-  DeviceCopyFailed = 4,
-  RuntimeUnavailable = 5,
-};
-
-enum class PopulationKind : std::uint32_t {
-  Predator = 0,
-  Prey = 1,
-};
 
 constexpr std::uint8_t kInputNodeType = 0;
 constexpr std::uint8_t kHiddenNodeType = 1;
@@ -103,210 +91,6 @@ struct DeviceInnovationState {
   std::uint32_t next_node_id;
 };
 
-struct GpuEvolutionConfig {
-  std::uint32_t predator_capacity;
-  std::uint32_t prey_capacity;
-  std::uint32_t initial_predator_count;
-  std::uint32_t initial_prey_count;
-  float world_size;
-  float initial_energy;
-  float max_energy;
-  std::uint64_t seed;
-  std::uint32_t num_inputs;
-  std::uint32_t num_outputs;
-  std::uint32_t node_stride;
-  std::uint32_t connection_stride;
-};
-
-struct UiStatsReadback {
-  std::uint32_t tick;
-  std::uint32_t predator_count;
-  std::uint32_t prey_count;
-  std::uint32_t predator_births;
-  std::uint32_t prey_births;
-  std::uint32_t predator_deaths;
-  std::uint32_t prey_deaths;
-  std::uint32_t kills;
-  std::uint32_t food_eaten;
-  float avg_predator_energy;
-  float avg_prey_energy;
-};
-
-struct GpuSimulationConfig {
-  float world_size;
-  std::uint32_t predator_count;
-  std::uint32_t prey_count;
-  std::uint32_t food_count;
-  float predator_speed;
-  float prey_speed;
-  float vision_range;
-  float interaction_range;
-  float mate_range;
-  float food_respawn_rate;
-  float energy_drain_per_tick;
-  float energy_gain_from_kill;
-  float energy_gain_from_food;
-  float initial_energy;
-  float max_energy;
-  float reproduction_energy_threshold;
-  float reproduction_energy_cost;
-  float offspring_initial_energy;
-  float max_energy;
-  float mutation_rate;
-  float weight_mutation_power;
-  float add_node_rate;
-  float add_connection_rate;
-  float delete_connection_rate;
-  std::uint32_t max_connection_attempts;
-  std::uint32_t max_age;
-  std::uint64_t seed;
-  std::uint32_t report_interval_ticks;
-};
-
-struct GpuMutationConfig {
-  float mutation_rate;
-  float weight_mutation_power;
-  float add_node_rate;
-  float add_connection_rate;
-  float delete_connection_rate;
-  std::uint32_t max_connection_attempts;
-};
-
-struct SpeciesSummaryReadback {
-  PopulationKind population_kind;
-  std::uint32_t species_id;
-  std::uint32_t size;
-  std::uint32_t representative_slot;
-  float avg_complexity;
-};
-
-struct RepresentativeGenomeHeader {
-  PopulationKind population_kind;
-  std::uint32_t slot;
-  std::uint32_t entity_id;
-  std::uint32_t generation;
-  std::uint32_t species_id;
-  std::uint16_t num_nodes;
-  std::uint16_t num_connections;
-};
-
-struct GenomeNodeReadback {
-  std::uint32_t id;
-  std::uint8_t node_type;
-  std::uint8_t reserved0;
-  std::uint16_t reserved1;
-};
-
-struct GenomeConnectionReadback {
-  std::int32_t from_node;
-  std::int32_t to_node;
-  float weight;
-  std::uint32_t innovation;
-  std::uint8_t enabled;
-  std::uint8_t reserved0;
-  std::uint16_t reserved1;
-};
-
-struct SpeciesBatchReadbackHeader {
-  PopulationKind population_kind;
-  std::uint32_t species_count;
-  std::uint32_t returned_species_count;
-};
-
-struct CompiledNetworkReadbackHeader {
-  PopulationKind population_kind;
-  std::uint32_t slot;
-  std::uint16_t node_count;
-  std::uint16_t eval_node_count;
-  std::uint16_t output_count;
-  std::uint16_t connection_count;
-};
-
-struct SelectedAgentNetworkReadback {
-  PopulationKind population_kind;
-  std::uint32_t slot;
-  std::uint16_t node_count;
-  std::uint16_t output_count;
-  std::uint16_t activation_count;
-  std::uint16_t reserved;
-  float output_0;
-  float output_1;
-};
-
-struct SensorSnapshotReadback {
-  PopulationKind population_kind;
-  std::uint32_t slot;
-  std::uint16_t input_count;
-  std::uint16_t reserved;
-  float inputs[kSensorInputCount];
-};
-
-struct RenderSnapshotHeader {
-  std::uint32_t tick;
-  std::uint32_t total_predators;
-  std::uint32_t total_prey;
-  std::uint32_t total_food;
-  std::uint32_t returned_predators;
-  std::uint32_t returned_prey;
-  std::uint32_t returned_food;
-};
-
-struct RenderAgentReadback {
-  PopulationKind population_kind;
-  std::uint32_t slot;
-  std::uint32_t entity_id;
-  std::uint32_t species_id;
-  std::uint32_t generation;
-  float age;
-  float pos_x;
-  float pos_y;
-  float dir_x;
-  float dir_y;
-  float energy;
-};
-
-struct RenderFoodReadback {
-  std::uint32_t slot;
-  std::uint8_t active;
-  std::uint8_t reserved0;
-  std::uint16_t reserved1;
-  float pos_x;
-  float pos_y;
-};
-
-struct ReproductionPair {
-  std::uint32_t parent_a_slot;
-  std::uint32_t parent_b_slot;
-};
-
-struct FreeListStateReadback {
-  std::uint32_t tick;
-  std::uint32_t predator_free_slots;
-  std::uint32_t prey_free_slots;
-  std::uint32_t active_food_count;
-  std::uint32_t food_capacity;
-};
-
-struct MetricsSummaryReadback {
-  std::uint32_t tick;
-  std::uint32_t predator_count;
-  std::uint32_t prey_count;
-  std::uint32_t predator_births;
-  std::uint32_t prey_births;
-  std::uint32_t predator_deaths;
-  std::uint32_t prey_deaths;
-  std::uint32_t predator_species;
-  std::uint32_t prey_species;
-  float avg_predator_complexity;
-  float avg_prey_complexity;
-  float avg_predator_energy;
-  float avg_prey_energy;
-  std::uint32_t max_predator_generation;
-  float avg_predator_generation;
-  std::uint32_t max_prey_generation;
-  float avg_prey_generation;
-};
-
 struct SimulationCounters {
   std::uint32_t tick;
   std::uint32_t predator_births;
@@ -331,7 +115,7 @@ struct FoodGridEntry {
 
 struct GpuEvolutionState {
   GpuEvolutionConfig config;
-  GpuSimulationConfig simulation;
+  SimulationConfig simulation;
   DevicePopulationBuffers predator;
   DevicePopulationBuffers prey;
   FoodBuffer food;
@@ -344,8 +128,8 @@ struct GpuEvolutionState {
   std::uint32_t *prey_free_len;
   std::uint32_t *predator_mate_claims;
   std::uint32_t *prey_mate_claims;
-  ReproductionPair *predator_reproduction_pairs;
-  ReproductionPair *prey_reproduction_pairs;
+  ReproductionPairReadback *predator_reproduction_pairs;
+  ReproductionPairReadback *prey_reproduction_pairs;
   std::uint32_t *predator_pair_count;
   std::uint32_t *prey_pair_count;
   std::uint32_t *population_live_count_scratch;

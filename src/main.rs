@@ -1,18 +1,13 @@
-mod config;
-mod metrics;
-mod settings;
-mod tick;
-mod ui;
-
-use crate::config::{ConfigError, SimulationConfig, validate_config};
-use crate::metrics::Logger;
-use crate::tick::evolution::CudaStatus;
-use crate::tick::simulation::PopulationKind;
-use crate::tick::simulation::SimulationState;
-use crate::tick::species::MAX_SPECIES_SUMMARIES;
-use crate::ui::app::App;
 use anyhow::{Result, bail};
 use clap::Parser;
+use moonai::config::{self, ConfigError, SimulationConfig, validate_config};
+use moonai::metrics::Logger;
+use moonai::settings;
+use moonai::tick::evolution::CudaStatus;
+use moonai::tick::simulation::PopulationKind;
+use moonai::tick::simulation::SimulationState;
+use moonai::tick::species::MAX_SPECIES_SUMMARIES;
+use moonai::ui::app::App;
 use std::collections::HashMap;
 use std::io::{self, Write as _};
 use std::path::{Path, PathBuf};
@@ -69,10 +64,7 @@ fn select_named_experiment(
                 .map(|config| ("default".to_owned(), config))
                 .or_else(|| {
                     if experiments.len() == 1 {
-                        experiments
-                            .iter()
-                            .next()
-                            .map(|(experiment_name, config)| (experiment_name.clone(), *config))
+                        experiments.iter().next().map(|(experiment_name, config)| (experiment_name.clone(), *config))
                     } else {
                         None
                     }
@@ -218,7 +210,7 @@ fn main() -> Result<()> {
     }
 
     // check cuda
-    let cuda_status = crate::tick::evolution::EvolutionManager::runtime_status();
+    let cuda_status = moonai::tick::evolution::EvolutionManager::runtime_status();
     if cuda_status != CudaStatus::Success {
         bail!("CUDA runtime unavailable: {cuda_status:?}")
     }

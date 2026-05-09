@@ -16,7 +16,7 @@ moonai/
 ├── runtime/                    # Runtime assets (config/, assets/)
 ├── .gitattributes              # Git attributes
 ├── .gitignore                  # Git ignore rules
-├── build.rs                    # CUDA build script
+├── build.rs                    # CUDA build script + shared ABI header generation
 ├── Cargo.toml                  # Rust package manifest
 ├── Cargo.lock                  # Locked dependency versions
 ├── clippy.toml                 # Clippy linter configuration
@@ -38,15 +38,11 @@ MoonAI now uses a single crate with a flattened source tree. Only `ui/` and `tic
 
 ```
 src/
+├── lib.rs                      # Shared crate root for runtime code and ABI generation
 ├── main.rs                     # Binary entry point and CLI routing
-├── cli.rs                      # Clap args
-├── config.rs                   # SimulationConfig defaults + serde
-├── config_error.rs             # ConfigError + validation rules
-├── lua.rs                      # Lua loading and moonai_defaults injection
+├── config.rs                   # SimulationConfig loading, defaults, and validation
 ├── settings.rs                 # settings.json loading + UiConfig
-├── types.rs                    # Core shared types/constants
 ├── metrics.rs                  # Metrics logger facade
-├── signal.rs                   # SIGINT/SIGTERM handling
 ├── ui/                         # UI runtime/rendering modules
 └── tick/                       # Merged simulation + evolution runtime
 ```

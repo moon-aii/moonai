@@ -22,6 +22,7 @@ wgpu = { version = "29.0.3", default-features = false, features = ["vulkan"] }
 
 [build-dependencies]
 cc = "1.2"
+cbindgen = "0.29"
 
 [lints.rust]
 elided_lifetimes_in_paths = "deny"

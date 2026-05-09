@@ -9,14 +9,14 @@ using moonai_gpu::DevicePopulationBuffers;
 using moonai_gpu::FoodBuffer;
 using moonai_gpu::GpuEvolutionConfig;
 using moonai_gpu::GpuEvolutionState;
-using moonai_gpu::GpuSimulationConfig;
 using moonai_gpu::PopulationKind;
 using moonai_gpu::RenderAgentReadback;
 using moonai_gpu::RenderFoodReadback;
 using moonai_gpu::RenderSnapshotHeader;
-using moonai_gpu::ReproductionPair;
+using moonai_gpu::ReproductionPairReadback;
 using moonai_gpu::SensorSnapshotReadback;
 using moonai_gpu::SimulationCounters;
+using moonai_gpu::SimulationConfig;
 using moonai_gpu::UiStatsReadback;
 using moonai_gpu::PopulationGridEntry;
 using moonai_gpu::FoodGridEntry;
@@ -823,7 +823,7 @@ __global__ void find_reproduction_pairs_kernel(DevicePopulationBuffers populatio
                                                std::uint32_t grid_cols, std::uint32_t grid_rows,
                                                float grid_cell_size, float mate_range,
                                                float reproduction_energy_threshold, std::uint32_t *mate_claims,
-                                               ReproductionPair *out_pairs, std::uint32_t *out_pair_count) {
+                                               ReproductionPairReadback *out_pairs, std::uint32_t *out_pair_count) {
   const auto idx = (blockIdx.x * blockDim.x) + threadIdx.x;
   if (idx >= population.capacity || population.alive[idx] == 0U) {
     return;
@@ -885,12 +885,13 @@ __global__ void find_reproduction_pairs_kernel(DevicePopulationBuffers populatio
   }
 
   const auto pair_index = atomicAdd(out_pair_count, 1U);
-  out_pairs[pair_index] = ReproductionPair{idx, best_mate};
+  out_pairs[pair_index] = ReproductionPairReadback{idx, best_mate};
 }
 
-__global__ void apply_reproduction_energy_kernel(DevicePopulationBuffers population, const ReproductionPair *pairs,
-                                                  std::uint32_t pair_count, float energy_cost,
-                                                  std::uint32_t *birth_counter, std::uint32_t *death_counter) {
+__global__ void apply_reproduction_energy_kernel(DevicePopulationBuffers population,
+                                                  const ReproductionPairReadback *pairs,
+                                                   std::uint32_t pair_count, float energy_cost,
+                                                   std::uint32_t *birth_counter, std::uint32_t *death_counter) {
   const auto idx = (blockIdx.x * blockDim.x) + threadIdx.x;
   if (idx >= pair_count) {
     return;
@@ -1635,7 +1636,7 @@ extern "C" std::int32_t moonai_gpu_evolution_population_live_count(const void *s
   return static_cast<std::int32_t>(status);
 }
 
-extern "C" std::int32_t moonai_gpu_simulation_set_config(void *state_ptr, const GpuSimulationConfig *config) {
+extern "C" std::int32_t moonai_gpu_simulation_set_config(void *state_ptr, const SimulationConfig *config) {
   auto *state = static_cast<GpuEvolutionState *>(state_ptr);
   if (state == nullptr || config == nullptr) {
     return static_cast<std::int32_t>(CudaStatus::InvalidArgument);
@@ -1661,16 +1662,16 @@ extern "C" std::int32_t moonai_gpu_simulation_ensure_food_buffer(void *state_ptr
   if (state == nullptr) {
     return static_cast<std::int32_t>(CudaStatus::InvalidArgument);
   }
-  if (state->food.capacity != state->simulation.food_capacity) {
+  if (state->food.capacity != state->simulation.food_count) {
     free_food_buffers(state->food);
     moonai_gpu::free_array(state->render_food_scratch);
   }
-  if (state->simulation.food_capacity > 0U && state->food.capacity == 0U) {
-    auto status = allocate_food_buffers(state->food, state->simulation.food_capacity);
+  if (state->simulation.food_count > 0U && state->food.capacity == 0U) {
+    auto status = allocate_food_buffers(state->food, state->simulation.food_count);
     if (status != CudaStatus::Success) {
       return static_cast<std::int32_t>(status);
     }
-    status = moonai_gpu::alloc_array(&state->render_food_scratch, state->simulation.food_capacity);
+    status = moonai_gpu::alloc_array(&state->render_food_scratch, state->simulation.food_count);
     return static_cast<std::int32_t>(status);
   }
   return static_cast<std::int32_t>(CudaStatus::Success);
@@ -1773,7 +1774,7 @@ extern "C" std::int32_t moonai_gpu_simulation_seed_food(void *state_ptr) {
   }
   const auto food_blocks = (state->food.capacity + 255U) / 256U;
   seed_food_kernel<<<food_blocks == 0U ? 1U : food_blocks, 256U>>>(state->food, state->simulation.seed ^ 0xC0FFEEULL,
-                                                                    state->simulation.world_size);
+                                                                    state->simulation.grid_size);
   return static_cast<std::int32_t>(moonai_gpu::synchronize_kernels());
 }
 
@@ -1812,12 +1813,12 @@ extern "C" std::int32_t moonai_gpu_simulation_compute_sensor_inputs(void *state_
       state->predator, state->predator_cell_offsets, state->predator_grid_entries, state->prey_cell_offsets,
       state->prey_grid_entries, state->food_cell_offsets, state->food_grid_entries, state->grid_cols, state->grid_rows,
       state->grid_cell_size, state->config.num_inputs, state->simulation.vision_range, state->simulation.max_energy,
-      state->simulation.predator_speed, state->simulation.world_size);
+      state->simulation.predator_speed, state->simulation.grid_size);
   compute_sensor_inputs_kernel<false><<<prey_blocks == 0U ? 1U : prey_blocks, 256U>>>(
       state->prey, state->predator_cell_offsets, state->predator_grid_entries, state->prey_cell_offsets,
       state->prey_grid_entries, state->food_cell_offsets, state->food_grid_entries, state->grid_cols, state->grid_rows,
       state->grid_cell_size, state->config.num_inputs, state->simulation.vision_range, state->simulation.max_energy,
-      state->simulation.prey_speed, state->simulation.world_size);
+      state->simulation.prey_speed, state->simulation.grid_size);
   return static_cast<std::int32_t>(moonai_gpu::synchronize_kernels());
 }
 
@@ -1854,7 +1855,7 @@ extern "C" std::int32_t moonai_gpu_simulation_resolve_food(void *state_ptr) {
   }
   resolve_food_kernel<<<1U, 1U>>>(state->prey, state->food, state->counters, state->simulation.interaction_range,
                                   state->simulation.energy_gain_from_food, state->simulation.max_energy,
-                                  state->simulation.world_size);
+                                  state->simulation.grid_size);
   return static_cast<std::int32_t>(moonai_gpu::synchronize_kernels());
 }
 
@@ -1877,7 +1878,7 @@ extern "C" std::int32_t moonai_gpu_simulation_apply_movement(void *state_ptr, Po
   auto &population = moonai_gpu::population_for_kind(*state, population_kind);
   const auto speed = population_kind == PopulationKind::Predator ? state->simulation.predator_speed : state->simulation.prey_speed;
   const auto blocks = (population.capacity + 255U) / 256U;
-  apply_movement_kernel<<<blocks == 0U ? 1U : blocks, 256U>>>(population, speed, state->simulation.world_size);
+  apply_movement_kernel<<<blocks == 0U ? 1U : blocks, 256U>>>(population, speed, state->simulation.grid_size);
   return static_cast<std::int32_t>(moonai_gpu::synchronize_kernels());
 }
 
@@ -1910,7 +1911,7 @@ extern "C" std::int32_t moonai_gpu_simulation_reproduction_candidate_count(void 
 extern "C" std::int32_t moonai_gpu_simulation_read_reproduction_pairs(const void *state_ptr,
                                                                         PopulationKind population_kind,
                                                                         std::uint32_t max_pairs,
-                                                                        ReproductionPair *out_pairs,
+                                                                        ReproductionPairReadback *out_pairs,
                                                                         std::uint32_t *out_returned_pairs) {
   auto *state = static_cast<const GpuEvolutionState *>(state_ptr);
   if (state == nullptr || out_returned_pairs == nullptr || (max_pairs != 0U && out_pairs == nullptr)) {
@@ -1932,7 +1933,8 @@ extern "C" std::int32_t moonai_gpu_simulation_read_reproduction_pairs(const void
     return static_cast<std::int32_t>(CudaStatus::Success);
   }
 
-  status = moonai_gpu::copy_compact_device_readback(pair_buffer, out_pairs, sizeof(ReproductionPair) * returned_pairs);
+  status = moonai_gpu::copy_compact_device_readback(pair_buffer, out_pairs,
+                                                    sizeof(ReproductionPairReadback) * returned_pairs);
   return static_cast<std::int32_t>(status);
 }
 
