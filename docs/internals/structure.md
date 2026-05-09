@@ -47,7 +47,7 @@ src/
 └── tick/                       # Merged simulation + evolution runtime
 ```
 
-`src/ui/world.rs` owns the custom `egui_wgpu` callback renderer used for instanced world drawing. `src/ui/render.rs` remains focused on camera math, screenshots, and low-volume overlays instead of the hot-path scene draw.
+`src/ui/world.rs` owns the custom `egui_wgpu` callback renderer used for instanced world drawing. `src/ui/render.rs` remains focused on camera math and low-volume UI drawing instead of the hot-path scene draw.
 
 ## `analysis/`
 

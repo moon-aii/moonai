@@ -1,6 +1,5 @@
-use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::Instant;
 
 use anyhow::{Context as _, Result};
 use eframe::egui::{self, Color32, Key, Pos2, Sense, Shape, Stroke, Vec2};
@@ -32,7 +31,6 @@ pub struct App {
     selected_data: Option<SelectedAgentData>,
     last_frame_started: Instant,
     fps: f32,
-    last_world_image_size: [usize; 2],
     status_message: Option<String>,
     error_message: Option<String>,
     reached_tick_limit: bool,
@@ -101,7 +99,6 @@ impl App {
             selected_data: None,
             last_frame_started: Instant::now(),
             fps: 0.0,
-            last_world_image_size: [1, 1],
             status_message: None,
             error_message: None,
             reached_tick_limit: false,
@@ -129,11 +126,6 @@ impl App {
         }
         if ctx.input(|input| input.key_pressed(Key::Escape)) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-        }
-        if ctx.input(|input| input.key_pressed(Key::S))
-            && let Err(error) = self.save_screenshot()
-        {
-            self.error_message = Some(error.to_string());
         }
 
         let mut request_step = false;
@@ -270,26 +262,6 @@ impl App {
         Ok(())
     }
 
-    fn save_screenshot(&mut self) -> Result<()> {
-        let path = screenshot_path(&self.run_label, self.ui_stats.tick)?;
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)
-                .with_context(|| format!("failed to create screenshot directory {}", parent.display()))?;
-        }
-        let image = render::render_scene(&render::SceneRenderInput {
-            snapshot: self.world_frame.snapshot.as_ref(),
-            ui_config: &self.ui_config,
-            camera: self.camera,
-            world_size: self.config.grid_size,
-            selected: self.selected_data.as_ref(),
-            image_size: self.last_world_image_size,
-            vision_range: self.config.vision_range,
-        });
-        render::save_png(&path, &image)?;
-        self.status_message = Some(format!("Saved screenshot to {}", path.display()));
-        Ok(())
-    }
-
     fn update_fps(&mut self) {
         let now = Instant::now();
         let delta = now.saturating_duration_since(self.last_frame_started);
@@ -329,7 +301,6 @@ impl App {
                     ui.label("Space: pause/resume");
                     ui.label("Up/Down or +/-: speed");
                     ui.label(".: single tick while paused");
-                    ui.label("S: screenshot");
                     ui.label("Home: reset camera");
                     ui.label("Scroll: zoom");
                     ui.label("Middle/right drag: pan");
@@ -493,7 +464,7 @@ impl App {
     fn draw_world(&mut self, ui: &mut egui::Ui) {
         egui::CentralPanel::default().show_inside(ui, |ui| {
             let (rect, response) = world::allocate_world_rect(ui);
-            self.last_world_image_size = [rect.width().max(1.0) as usize, rect.height().max(1.0) as usize];
+            self.handle_view_input(ui.ctx(), response.rect, &response);
             world::paint_world(
                 ui,
                 rect,
@@ -504,8 +475,6 @@ impl App {
                 self.selected_data.as_ref(),
                 self.config.vision_range,
             );
-
-            self.handle_view_input(ui.ctx(), response.rect, &response);
         });
     }
 
@@ -611,11 +580,6 @@ fn find_agent_by_entity(
         PopulationKind::Prey => &snapshot.prey,
     };
     collection.iter().find(|agent| agent.entity_id == entity_id)
-}
-
-fn screenshot_path(run_label: &str, tick: u32) -> Result<PathBuf> {
-    let seconds = SystemTime::now().duration_since(UNIX_EPOCH).context("system time is before UNIX_EPOCH")?.as_secs();
-    Ok(PathBuf::from("output").join("screenshots").join(format!("{run_label}_tick{tick}_{seconds}.png")))
 }
 
 struct ChartSeries<'a> {

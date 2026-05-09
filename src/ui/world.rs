@@ -645,7 +645,8 @@ fn pixels_per_world() -> f32 {
 
 fn world_to_ndc(world: vec2<f32>) -> vec2<f32> {
     let scale = pixels_per_world();
-    let centered = vec2<f32>(world.x - scene.camera_center.x, scene.camera_center.y - world.y);
+    // Match the CPU world_to_screen transform so overlays and GPU geometry stay aligned.
+    let centered = vec2<f32>(world.x - scene.camera_center.x, world.y - scene.camera_center.y);
     return vec2<f32>(
         (2.0 * centered.x * scale) / scene.viewport_size.x,
         (2.0 * centered.y * scale) / scene.viewport_size.y,
@@ -656,7 +657,7 @@ fn world_delta_to_ndc(delta: vec2<f32>) -> vec2<f32> {
     let scale = pixels_per_world();
     return vec2<f32>(
         (2.0 * delta.x * scale) / scene.viewport_size.x,
-        (-2.0 * delta.y * scale) / scene.viewport_size.y,
+        (2.0 * delta.y * scale) / scene.viewport_size.y,
     );
 }
 

@@ -106,7 +106,6 @@ just experiment-run
 | `Space`                | Pause / resume                                |
 | `↑` / `↓` or `+` / `-` | Increase / decrease simulation speed          |
 | `.`                    | Step one tick (while paused)                  |
-| `S`                    | Save screenshot                               |
 | `Esc`                  | Quit                                          |
 | Left-click             | Select an agent (shows stats + live NN panel) |
 | Middle-click drag      | Pan camera                                    |

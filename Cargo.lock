@@ -1573,7 +1573,6 @@ dependencies = [
  "clap",
  "ctrlc",
  "eframe",
- "image",
  "mlua",
  "serde",
  "serde_json",
