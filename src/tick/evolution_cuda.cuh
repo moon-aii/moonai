@@ -133,13 +133,16 @@ struct UiStatsReadback {
 };
 
 struct GpuSimulationConfig {
-  std::uint32_t food_capacity;
   float world_size;
+  std::uint32_t predator_count;
+  std::uint32_t prey_count;
+  std::uint32_t food_count;
   float predator_speed;
   float prey_speed;
   float vision_range;
   float interaction_range;
   float mate_range;
+  float food_respawn_rate;
   float energy_drain_per_tick;
   float energy_gain_from_kill;
   float energy_gain_from_food;
@@ -148,6 +151,7 @@ struct GpuSimulationConfig {
   float reproduction_energy_threshold;
   float reproduction_energy_cost;
   float offspring_initial_energy;
+  float max_energy;
   float mutation_rate;
   float weight_mutation_power;
   float add_node_rate;
@@ -155,8 +159,8 @@ struct GpuSimulationConfig {
   float delete_connection_rate;
   std::uint32_t max_connection_attempts;
   std::uint32_t max_age;
-  std::uint32_t report_interval_ticks;
   std::uint64_t seed;
+  std::uint32_t report_interval_ticks;
 };
 
 struct GpuMutationConfig {
