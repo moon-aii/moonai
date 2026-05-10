@@ -252,7 +252,7 @@ impl EvolutionManager {
     }
 
     pub fn reproduction_candidate_count(&mut self, population_kind: PopulationKind) -> Result<u32> {
-        profile_scope!("reproduction");
+        profile_scope!("reprod_candidate");
         readback("moonai_gpu_simulation_reproduction_candidate_count", |out| unsafe {
             moonai_gpu_simulation_reproduction_candidate_count(self.raw.as_ptr(), population_kind, out)
         })
@@ -270,6 +270,7 @@ impl EvolutionManager {
     }
 
     pub fn run_reproduction(&mut self, population_kind: PopulationKind) -> Result<()> {
+        profile_scope!("run_reprod");
         let pair_count = self.reproduction_candidate_count(population_kind)?;
         if pair_count == 0 {
             return Ok(());
@@ -323,7 +324,7 @@ impl EvolutionManager {
     }
 
     pub fn simulation_refresh_reports(&mut self) -> Result<()> {
-        profile_scope!("reports");
+        profile_scope!("refresh_reports");
         let status = unsafe { moonai_gpu_simulation_refresh_reports(self.raw.as_ptr()) };
         check_cuda_status(status, "moonai_gpu_simulation_refresh_reports")
     }

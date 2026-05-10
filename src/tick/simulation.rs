@@ -110,7 +110,6 @@ impl SimulationState {
         self.evolution.build_spatial_grid()?;
         self.evolution.resolve_food()?;
         self.evolution.resolve_combat()?;
-        self.evolution.build_spatial_grid()?;
         let predator_births = self.evolution.reproduction_candidate_count(PopulationKind::Predator)?;
         self.ensure_birth_capacity(PopulationKind::Predator, predator_births)?;
         self.evolution.run_reproduction(PopulationKind::Predator)?;
@@ -175,6 +174,8 @@ impl SimulationState {
     }
 
     fn ensure_birth_capacity(&mut self, population_kind: PopulationKind, births_pending: u32) -> Result<()> {
+        profile_scope!("birth_cap");
+
         if births_pending == 0 {
             return Ok(());
         }
