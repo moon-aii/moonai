@@ -1206,7 +1206,7 @@ __global__ void resolve_food_kernel(DevicePopulationBuffers prey, FoodBuffer foo
 
 __global__ void finalize_food_kernel(DevicePopulationBuffers prey, FoodBuffer food, SimulationCounters *counters,
                                      const std::uint32_t *food_claimed_by, float energy_gain_from_food,
-                                     float max_energy, float world_size) {
+                                     float max_energy) {
   const auto food_idx = (blockIdx.x * blockDim.x) + threadIdx.x;
   if (food_idx >= food.capacity || food.active[food_idx] == 0U) {
     return;
@@ -1217,15 +1217,29 @@ __global__ void finalize_food_kernel(DevicePopulationBuffers prey, FoodBuffer fo
     return;
   }
 
-  auto rng = prey.rng_state[prey_idx] ^ (static_cast<std::uint64_t>(food_idx) << 16U) ^ counters->tick;
-  food.pos_x[food_idx] = moonai_gpu::next_unit_float(rng) * world_size;
-  food.pos_y[food_idx] = moonai_gpu::next_unit_float(rng) * world_size;
-  prey.rng_state[prey_idx] = rng;
+  food.active[food_idx] = 0U;
   prey.energy[prey_idx] += energy_gain_from_food;
   if (prey.energy[prey_idx] > max_energy) {
     prey.energy[prey_idx] = max_energy;
   }
   atomicAdd(&counters->food_eaten, 1U);
+}
+
+__global__ void respawn_food_kernel(FoodBuffer food, const SimulationCounters *counters, std::uint64_t base_seed,
+                                    float respawn_rate, float world_size) {
+  const auto food_idx = (blockIdx.x * blockDim.x) + threadIdx.x;
+  if (food_idx >= food.capacity || food.active[food_idx] != 0U) {
+    return;
+  }
+
+  auto rng = moonai_gpu::splitmix64(base_seed ^ (static_cast<std::uint64_t>(counters->tick) << 32U) ^ food_idx);
+  if (moonai_gpu::next_unit_float(rng) >= respawn_rate) {
+    return;
+  }
+
+  food.pos_x[food_idx] = moonai_gpu::next_unit_float(rng) * world_size;
+  food.pos_y[food_idx] = moonai_gpu::next_unit_float(rng) * world_size;
+  food.active[food_idx] = 1U;
 }
 
 __global__ void resolve_combat_kernel(DevicePopulationBuffers predator, DevicePopulationBuffers prey,
@@ -1958,7 +1972,11 @@ extern "C" std::int32_t moonai_gpu_simulation_resolve_food(void *state_ptr) {
       state->food_claimed_by, state->grid_cols, state->grid_rows, state->grid_cell_size, state->simulation.interaction_range);
   finalize_food_kernel<<<food_blocks == 0U ? 1U : food_blocks, 256U>>>(
       state->prey, state->food, state->counters, state->food_claimed_by, state->simulation.energy_gain_from_food,
-      state->simulation.max_energy, state->simulation.grid_size);
+      state->simulation.max_energy);
+  respawn_food_kernel<<<food_blocks == 0U ? 1U : food_blocks, 256U>>>(state->food, state->counters,
+                                                                       state->simulation.seed ^ 0xC0FFEEULL,
+                                                                       state->simulation.food_respawn_rate,
+                                                                       state->simulation.grid_size);
   return static_cast<std::int32_t>(moonai_gpu::synchronize_kernels());
 }
 

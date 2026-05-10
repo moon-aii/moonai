@@ -292,6 +292,46 @@ mod tests {
     }
 
     #[test]
+    fn simulation_food_deactivates_when_respawn_disabled() -> Result<()> {
+        let mut config = simulation_config(68);
+        config.food_respawn_rate = 0.0;
+        let mut state = SimulationState::init_from_config(&config)?;
+
+        let before = state.free_list_state()?;
+        let stats = state.tick()?;
+        let after = state.free_list_state()?;
+        let snapshot = state.render_snapshot(16, 16, config.food_count)?;
+
+        assert!(stats.food_eaten > 0);
+        assert_eq!(before.active_food_count, config.food_count);
+        assert_eq!(after.active_food_count, before.active_food_count - stats.food_eaten);
+        assert_eq!(snapshot.food.len() as u32, after.active_food_count);
+        assert_eq!(snapshot.header.total_food, after.active_food_count);
+
+        Ok(())
+    }
+
+    #[test]
+    fn simulation_food_respawns_when_respawn_rate_is_one() -> Result<()> {
+        let mut config = simulation_config(69);
+        config.food_respawn_rate = 1.0;
+        let mut state = SimulationState::init_from_config(&config)?;
+
+        let before = state.free_list_state()?;
+        let stats = state.tick()?;
+        let after = state.free_list_state()?;
+        let snapshot = state.render_snapshot(16, 16, config.food_count)?;
+
+        assert!(stats.food_eaten > 0);
+        assert_eq!(before.active_food_count, config.food_count);
+        assert_eq!(after.active_food_count, config.food_count);
+        assert_eq!(snapshot.food.len() as u32, config.food_count);
+        assert_eq!(snapshot.header.total_food, config.food_count);
+
+        Ok(())
+    }
+
+    #[test]
     fn simulation_sensor_snapshot_encodes_targets_and_walls() -> Result<()> {
         let state = SimulationState::init_from_config(&simulation_config(64))?;
         let sensors = state.sensor_snapshot(PopulationKind::Predator, 0)?;

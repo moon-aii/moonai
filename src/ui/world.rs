@@ -86,7 +86,7 @@ impl WorldFrame {
     }
 
     pub fn active_food_count(&self) -> u32 {
-        self.snapshot.header.total_food
+        self.snapshot.header.returned_food
     }
 }
 
