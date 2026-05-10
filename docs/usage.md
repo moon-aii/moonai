@@ -15,6 +15,8 @@ MoonAI separates simulation configuration from UI configuration:
 
 Both files live in the `config/` subdirectory of the binary. The runtime resolves them from `$(dirname $0)/config/`, or you can specify explicit paths via CLI flags.
 
+`settings.json` includes panel layout controls such as `left_panel_width`, `right_panel_width`, and the global UI `font_size`.
+
 ### `config.lua`
 
 Simulation config uses a single **`config.lua`** file at the project root. It returns a named table of experiments — every entry is a fully-specified run. The runtime injects C++ struct defaults as the `moonai_defaults` global (24000 predators, 96000 prey on a 3600×3600 square world), so Lua only needs to override what it changes.

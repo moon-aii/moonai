@@ -104,8 +104,12 @@ pub struct UiConfig {
     pub energy_bucket_3: [f32; 3],
     #[serde(default = "default_energy_bucket_4")]
     pub energy_bucket_4: [f32; 3],
-    #[serde(default = "default_ui_side_margin")]
-    pub ui_side_margin: f32,
+    #[serde(default = "default_left_panel_width")]
+    pub left_panel_width: f32,
+    #[serde(default = "default_right_panel_width")]
+    pub right_panel_width: f32,
+    #[serde(default = "default_font_size")]
+    pub font_size: f32,
     #[serde(default = "default_simulation_margin")]
     pub simulation_margin: f32,
     #[serde(default = "default_fps_limit")]
@@ -190,7 +194,9 @@ impl Default for UiConfig {
             energy_bucket_2: default_energy_bucket_2(),
             energy_bucket_3: default_energy_bucket_3(),
             energy_bucket_4: default_energy_bucket_4(),
-            ui_side_margin: default_ui_side_margin(),
+            left_panel_width: default_left_panel_width(),
+            right_panel_width: default_right_panel_width(),
+            font_size: default_font_size(),
             simulation_margin: default_simulation_margin(),
             fps_limit: default_fps_limit(),
             window_width: default_window_width(),
@@ -347,8 +353,14 @@ const fn default_energy_bucket_3() -> [f32; 3] {
 const fn default_energy_bucket_4() -> [f32; 3] {
     [0.863, 0.863, 0.863]
 }
-const fn default_ui_side_margin() -> f32 {
+const fn default_left_panel_width() -> f32 {
     300.0
+}
+const fn default_right_panel_width() -> f32 {
+    300.0
+}
+const fn default_font_size() -> f32 {
+    14.0
 }
 const fn default_simulation_margin() -> f32 {
     25.0

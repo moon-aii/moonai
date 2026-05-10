@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use anyhow::{Context as _, Result};
-use eframe::egui::{self, Color32, Key, Pos2, Sense, Shape, Stroke, Vec2};
+use eframe::egui::{self, Color32, FontId, Key, Pos2, Sense, Shape, Stroke, TextStyle, Vec2};
 
 use crate::config::SimulationConfig;
 use crate::profile_scope;
@@ -72,6 +72,7 @@ impl App {
         config: SimulationConfig,
         ui_config: UiConfig,
     ) -> Result<Self> {
+        apply_text_style(&creation_context.egui_ctx, &ui_config);
         let render_state = creation_context
             .wgpu_render_state
             .as_ref()
@@ -295,7 +296,7 @@ impl App {
 
         egui::Panel::left("moonai_left_panel")
             .resizable(false)
-            .default_size(self.ui_config.ui_side_margin)
+            .default_size(self.ui_config.left_panel_width)
             .show_inside(ui, |ui| {
                 let overlay = self.overlay_stats();
                 egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
@@ -399,7 +400,7 @@ impl App {
 
         egui::Panel::right("moonai_right_panel")
             .resizable(false)
-            .default_size(self.ui_config.ui_side_margin)
+            .default_size(self.ui_config.right_panel_width)
             .show_inside(ui, |ui| {
                 let overlay = self.overlay_stats();
                 egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
@@ -654,6 +655,17 @@ fn colored_stat(ui: &mut egui::Ui, color: [f32; 3], label: &str, value: String) 
         ui.colored_label(rgb(color), label);
         ui.label(value);
     });
+}
+
+fn apply_text_style(ctx: &egui::Context, ui_config: &UiConfig) {
+    let font_size = ui_config.font_size.max(1.0);
+    let mut style = (*ctx.global_style()).clone();
+    style.text_styles.insert(TextStyle::Small, FontId::proportional((font_size - 2.0).max(1.0)));
+    style.text_styles.insert(TextStyle::Body, FontId::proportional(font_size));
+    style.text_styles.insert(TextStyle::Button, FontId::proportional(font_size));
+    style.text_styles.insert(TextStyle::Monospace, FontId::monospace(font_size));
+    style.text_styles.insert(TextStyle::Heading, FontId::proportional(font_size * 1.25));
+    ctx.set_global_style(style);
 }
 
 fn draw_chart_panel(ui: &mut egui::Ui, ui_config: &UiConfig, title: &str, series: &[ChartSeries<'_>], height: f32) {
