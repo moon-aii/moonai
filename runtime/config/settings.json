@@ -1,7 +1,7 @@
 {
-  "predator_radius": 1.2,
-  "prey_radius": 1.0,
-  "food_radius": 0.6,
+  "predator_size": 3.6,
+  "prey_size": 3.0,
+  "food_size": 2.4,
   "predator_color": [1.0, 0.42, 0.21],
   "prey_color": [0.306, 0.804, 0.769],
   "food_color": [0.667, 1.0, 0.427],

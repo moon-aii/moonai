@@ -49,7 +49,7 @@ impl WorldFrame {
             .iter()
             .map(|entry| FoodInstance {
                 pos: [entry.pos_x, entry.pos_y],
-                radius: ui_config.food_radius,
+                radius: ui_config.food_size * 0.5,
                 color: food_color,
             })
             .collect();
@@ -62,7 +62,7 @@ impl WorldFrame {
                     entry.pos_y,
                     entry.dir_x,
                     entry.dir_y,
-                    ui_config.prey_radius,
+                    ui_config.prey_size,
                     prey_color,
                 )
             })
@@ -76,7 +76,7 @@ impl WorldFrame {
                     entry.pos_y,
                     entry.dir_x,
                     entry.dir_y,
-                    ui_config.predator_radius,
+                    ui_config.predator_size,
                     predator_color,
                 )
             })
@@ -231,11 +231,7 @@ impl WorldRenderResources {
             contents: bytemuck::cast_slice(&QUAD_INDICES),
             usage: wgpu::BufferUsages::INDEX,
         });
-        let triangle_vertices = [
-            [ui_config.triangle_tip_factor, 0.0],
-            [-ui_config.triangle_base_factor, ui_config.triangle_width_factor],
-            [-ui_config.triangle_base_factor, -ui_config.triangle_width_factor],
-        ];
+        let triangle_vertices = triangle_vertices(ui_config);
         let triangle_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("moonai_world_triangle_vertices"),
             contents: bytemuck::cast_slice(&triangle_vertices),
@@ -429,10 +425,13 @@ fn paint_selected_overlay(
     vision_range: f32,
 ) {
     let center = render::world_to_screen(rect, camera, world_size, selected.agent.pos_x, selected.agent.pos_y);
-    let selection_radius =
-        scaled_radius(rect, camera, world_size, ui_config.predator_radius.max(ui_config.prey_radius))
-            + ui_config.selected_outline_thickness
-            + 2.0;
+    let selection_radius = scaled_radius(
+        rect,
+        camera,
+        world_size,
+        agent_selection_radius_world(ui_config.predator_size.max(ui_config.prey_size), ui_config),
+    ) + ui_config.selected_outline_thickness
+        + 2.0;
     painter.circle_stroke(
         center,
         selection_radius,
@@ -490,6 +489,19 @@ fn sensor_lines(selected: &SelectedAgentData, vision_range: f32) -> Vec<(f32, f3
 fn scaled_radius(rect: Rect, camera: CameraState, world_size: f32, radius_world: f32) -> f32 {
     let shortest = rect.width().min(rect.height()).max(1.0);
     ((shortest / world_size.max(1.0)) * camera.zoom * radius_world).max(0.0)
+}
+
+fn triangle_vertices(ui_config: &UiConfig) -> [[f32; 2]; 3] {
+    let tip = ui_config.triangle_tip_factor.max(0.0);
+    let base = ui_config.triangle_base_factor.max(0.0);
+    let width = ui_config.triangle_width_factor.max(0.0);
+    let max_extent = (tip + base).max(width * 2.0).max(1.0);
+    let scale = 1.0 / max_extent;
+    [[tip * scale, 0.0], [-base * scale, width * scale], [-base * scale, -width * scale]]
+}
+
+fn agent_selection_radius_world(size: f32, ui_config: &UiConfig) -> f32 {
+    triangle_vertices(ui_config).iter().map(|vertex| vertex[0].hypot(vertex[1]) * size).fold(0.0_f32, f32::max)
 }
 
 fn create_pipeline(
@@ -663,8 +675,7 @@ fn world_delta_to_ndc(delta: vec2<f32>) -> vec2<f32> {
 
 @vertex
 fn food_vertex(input: FoodVertexInput) -> VertexOutput {
-    let radius = max(input.radius, 1.0 / max(pixels_per_world(), 0.0001));
-    let world = input.pos + (input.local * radius);
+    let world = input.pos + (input.local * input.radius);
     var out: VertexOutput;
     out.position = vec4<f32>(world_to_ndc(world), 0.0, 1.0);
     out.local = input.local;
@@ -674,9 +685,8 @@ fn food_vertex(input: FoodVertexInput) -> VertexOutput {
 
 @vertex
 fn agent_vertex(input: AgentVertexInput) -> VertexOutput {
-    let radius = max(input.radius, 2.0 / max(pixels_per_world(), 0.0001));
     let perp = vec2<f32>(-input.dir.y, input.dir.x);
-    let world_offset = ((input.dir * input.local.x) + (perp * input.local.y)) * radius;
+    let world_offset = ((input.dir * input.local.x) + (perp * input.local.y)) * input.radius;
     var out: VertexOutput;
     out.position = vec4<f32>(world_to_ndc(input.pos) + world_delta_to_ndc(world_offset), 0.0, 1.0);
     out.local = input.local;
@@ -697,3 +707,51 @@ fn flat_fragment(input: VertexOutput) -> @location(0) vec4<f32> {
     return input.color;
 }
 "#;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tick::buffers::{RenderFoodReadback, RenderSnapshotHeader};
+
+    #[test]
+    fn triangle_vertices_normalize_longest_dimension_to_one() {
+        let ui_config = UiConfig::default();
+        let vertices = triangle_vertices(&ui_config);
+        let min_x = vertices.iter().map(|vertex| vertex[0]).fold(f32::INFINITY, f32::min);
+        let max_x = vertices.iter().map(|vertex| vertex[0]).fold(f32::NEG_INFINITY, f32::max);
+        let min_y = vertices.iter().map(|vertex| vertex[1]).fold(f32::INFINITY, f32::min);
+        let max_y = vertices.iter().map(|vertex| vertex[1]).fold(f32::NEG_INFINITY, f32::max);
+        let width = max_y - min_y;
+        let length = max_x - min_x;
+
+        assert!((length.max(width) - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn agent_selection_radius_stays_within_configured_size() {
+        let ui_config = UiConfig::default();
+        assert!(agent_selection_radius_world(1.0, &ui_config) <= 1.0);
+    }
+
+    #[test]
+    fn food_size_uses_setting_as_world_diameter() {
+        let snapshot = RenderSnapshotReadback {
+            header: RenderSnapshotHeader {
+                tick: 0,
+                total_predators: 0,
+                total_prey: 0,
+                total_food: 1,
+                returned_predators: 0,
+                returned_prey: 0,
+                returned_food: 1,
+            },
+            predators: Vec::new(),
+            prey: Vec::new(),
+            food: vec![RenderFoodReadback { slot: 0, active: 1, reserved0: 0, reserved1: 0, pos_x: 1.0, pos_y: 2.0 }],
+        };
+        let ui_config = UiConfig { food_size: 1.0, ..UiConfig::default() };
+        let frame = WorldFrame::from_snapshot(snapshot, &ui_config);
+
+        assert_eq!(frame.food_instances[0].radius, 0.5);
+    }
+}

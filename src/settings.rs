@@ -14,12 +14,12 @@ pub fn load_settings(root_dir: &Path) -> Result<UiConfig, ConfigError> {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UiConfig {
-    #[serde(default = "default_predator_radius")]
-    pub predator_radius: f32,
-    #[serde(default = "default_prey_radius")]
-    pub prey_radius: f32,
-    #[serde(default = "default_food_radius")]
-    pub food_radius: f32,
+    #[serde(default = "default_predator_size")]
+    pub predator_size: f32,
+    #[serde(default = "default_prey_size")]
+    pub prey_size: f32,
+    #[serde(default = "default_food_size")]
+    pub food_size: f32,
     #[serde(default = "default_predator_color")]
     pub predator_color: [f32; 3],
     #[serde(default = "default_prey_color")]
@@ -149,9 +149,9 @@ pub struct UiConfig {
 impl Default for UiConfig {
     fn default() -> Self {
         Self {
-            predator_radius: default_predator_radius(),
-            prey_radius: default_prey_radius(),
-            food_radius: default_food_radius(),
+            predator_size: default_predator_size(),
+            prey_size: default_prey_size(),
+            food_size: default_food_size(),
             predator_color: default_predator_color(),
             prey_color: default_prey_color(),
             food_color: default_food_color(),
@@ -218,13 +218,13 @@ impl Default for UiConfig {
     }
 }
 
-const fn default_predator_radius() -> f32 {
+const fn default_predator_size() -> f32 {
     1.2
 }
-const fn default_prey_radius() -> f32 {
+const fn default_prey_size() -> f32 {
     1.0
 }
-const fn default_food_radius() -> f32 {
+const fn default_food_size() -> f32 {
     0.6
 }
 const fn default_predator_color() -> [f32; 3] {

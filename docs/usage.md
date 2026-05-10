@@ -16,6 +16,7 @@ MoonAI separates simulation configuration from UI configuration:
 Both files live in the `config/` subdirectory of the binary. The runtime resolves them from `$(dirname $0)/config/`, or you can specify explicit paths via CLI flags.
 
 `settings.json` includes panel layout controls such as `left_panel_width`, `right_panel_width`, and the global UI `font_size`.
+Entity rendering sizes are configured with `predator_size`, `prey_size`, and `food_size`, all expressed directly in world units.
 
 ### `config.lua`
 

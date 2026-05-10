@@ -45,7 +45,7 @@ pub struct SimulationConfig {
 impl Default for SimulationConfig {
     fn default() -> Self {
         Self {
-            grid_size: 3600.0,
+            grid_size: 3000.0,
             predator_count: 12000,
             prey_count: 48000,
             food_count: 60000,
@@ -54,10 +54,10 @@ impl Default for SimulationConfig {
             vision_range: 12.0,
             interaction_range: 1.0,
             mate_range: 6.0,
-            food_respawn_rate: 0.003,
+            food_respawn_rate: 0.01,
             energy_drain_per_tick: 0.001,
             energy_gain_from_kill: 0.24,
-            energy_gain_from_food: 0.24,
+            energy_gain_from_food: 0.30,
             initial_energy: 0.36,
             max_energy: 2.0,
             reproduction_energy_threshold: 1.0,
