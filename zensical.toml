@@ -1,0 +1,139 @@
+[project]
+site_name = "MoonAI"
+site_description = "Predator-Prey Neuroevolution Simulation"
+site_author = "Emir Irkılata, Caner Aras, Oğuzhan Özkaya"
+site_url = "https://moon-aii.github.io/moonai/"
+
+repo_name = "moon-aii/moonai"
+repo_url = "https://github.com/moon-aii/moonai"
+
+copyright = "CMPE 491/492 - Senior Design Project | TED University"
+
+extra_css = ["_assets/extra.css"]
+extra_javascript = ["_assets/extra.js"]
+
+nav = [
+  "index.md",
+  "about.md",
+  "installation.md",
+  "usage.md",
+  { "Internals" = [
+    "internals/structure.md",
+    "internals/architecture.md",
+    "internals/standarts.md",
+    "internals/workflow.md",
+    "internals/roadmap.md"
+  ]}
+]
+
+[project.theme]
+language = "en"
+
+favicon = "_assets/logo.svg"
+logo = "_assets/logo.svg"
+
+#custom_dir = "overrides"
+
+features = [
+    "announce.dismiss",
+    "content.code.annotate",
+    "content.code.copy",
+    "content.code.select",
+    "content.footnote.tooltips",
+    "content.tabs.link",
+    "content.tooltips",
+    # "navigation.expand", # Turn on this feature to expand all collapsible sections in the navigation sidebar by default.
+    "navigation.instant",
+    "navigation.instant.prefetch",
+    "navigation.instant.progress",
+    "navigation.prune",
+    # "navigation.sections", # When sections are enabled, top-level sections are rendered as groups in the sidebar for viewports above 1220px, but remain as-is on mobile.
+    "navigation.tabs",
+    "navigation.top",
+    "navigation.tracking",
+    "search.highlight",
+    "toc.follow",
+    "toc.integrate",
+]
+
+[project.extra]
+generator = false
+
+[project.theme.icon]
+repo = "fontawesome/brands/github"
+
+[project.theme.font]
+text = "IBM Plex Sans"
+code = "Source Code Pro"
+
+[[project.theme.palette]]
+scheme = "default"
+toggle.icon = "lucide/sun"
+toggle.name = "Switch to dark mode"
+primary = "custom"
+accent = "custom"
+
+[[project.theme.palette]]
+scheme = "slate"
+toggle.icon = "lucide/moon"
+toggle.name = "Switch to light mode"
+primary = "custom"
+accent = "custom"
+
+[project.markdown_extensions.abbr]
+
+[project.markdown_extensions.admonition]
+
+[project.markdown_extensions.attr_list]
+
+[project.markdown_extensions.def_list]
+
+[project.markdown_extensions.footnotes]
+
+[project.markdown_extensions.md_in_html]
+
+[project.markdown_extensions.toc]
+permalink = false
+toc_depth = 6
+
+[project.markdown_extensions.pymdownx.arithmatex]
+generic = true
+
+[project.markdown_extensions.pymdownx.betterem]
+
+[project.markdown_extensions.pymdownx.caret]
+
+[project.markdown_extensions.pymdownx.details]
+
+[project.markdown_extensions.pymdownx.emoji]
+emoji_generator = "zensical.extensions.emoji.to_svg"
+emoji_index = "zensical.extensions.emoji.twemoji"
+
+[project.markdown_extensions.pymdownx.highlight]
+anchor_linenums = true
+line_spans = "__span"
+pygments_lang_class = true
+
+[project.markdown_extensions.pymdownx.inlinehilite]
+
+[project.markdown_extensions.pymdownx.keys]
+
+[project.markdown_extensions.pymdownx.magiclink]
+
+[project.markdown_extensions.pymdownx.mark]
+
+[project.markdown_extensions.pymdownx.smartsymbols]
+
+[project.markdown_extensions.pymdownx.superfences]
+custom_fences = [
+  { name = "mermaid", class = "mermaid", format = "pymdownx.superfences.fence_code_format" }
+]
+
+[project.markdown_extensions.pymdownx.tabbed]
+alternate_style = true
+combine_header_slug = true
+
+[project.markdown_extensions.pymdownx.tasklist]
+custom_checkbox = false
+
+[project.markdown_extensions.pymdownx.tilde]

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/types.hpp"
 #include "evolution/genome.hpp"
 #include "visualization/constants.hpp"
 
@@ -14,6 +15,7 @@
 #include <deque>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace moonai {
 
@@ -25,6 +27,10 @@ struct OverlayStats {
   int active_food = 0;
   int predator_species = 0;
   int prey_species = 0;
+  float avg_predator_complexity = 0.0f;
+  float avg_prey_complexity = 0.0f;
+  float avg_predator_energy = 0.0f;
+  float avg_prey_energy = 0.0f;
   float fps = 0.0f;
   int speed_multiplier = 1;
   bool paused = false;
@@ -34,8 +40,7 @@ struct OverlayStats {
   int selected_agent = -1;
   float selected_energy = 0.0f;
   int selected_age = 0;
-  int selected_kills = 0;
-  int selected_food_eaten = 0;
+  int selected_generation = 0;
   int selected_genome_complexity = 0;
 
   // Energy distribution (5 buckets: 0-20%, 20-40%, 40-60%, 60-80%, 80-100%)
@@ -46,8 +51,16 @@ struct OverlayStats {
   // Event counts for the whole run
   int total_kills = 0;
   int total_food_eaten = 0;
-  int total_births = 0;
-  int total_deaths = 0;
+  int total_predator_births = 0;
+  int total_prey_births = 0;
+  int total_predator_deaths = 0;
+  int total_prey_deaths = 0;
+
+  // Generation metrics
+  int max_predator_generation = 0;
+  float avg_predator_generation = 0.0f;
+  int max_prey_generation = 0;
+  float avg_prey_generation = 0.0f;
 };
 
 class UIOverlay {
@@ -64,12 +77,35 @@ public:
   void set_activations(const std::unordered_map<std::uint32_t, float> &vals);
 
   void push_population(int predators, int prey, int food);
+  void push_complexity(float predator_complexity, float prey_complexity);
+  void push_energy(float predator_energy, float prey_energy);
 
 private:
+  struct CachedNnNode {
+    std::uint32_t id = INVALID_ENTITY;
+    NodeType type = NodeType::Input;
+    sf::Vector2f position;
+    sf::Color color = sf::Color::White;
+  };
+
+  struct CachedNnPanel {
+    const Genome *genome = nullptr;
+    sf::Vector2f view_size;
+    float panel_x = 0.0f;
+    float panel_y = 0.0f;
+    float panel_width = 0.0f;
+    float panel_height = 0.0f;
+    float node_radius = 0.0f;
+    sf::VertexArray connection_lines{sf::PrimitiveType::Lines};
+    std::vector<CachedNnNode> nodes;
+    bool valid = false;
+  };
+
   void draw_panel(sf::RenderTarget &target, float x, float y, float w, float h);
   void draw_text(sf::RenderTarget &target, const std::string &str, float x, float y, unsigned int size = 14,
                  sf::Color color = sf::Color::White);
   void draw_nn_panel(sf::RenderTarget &target, const Genome &genome);
+  void rebuild_nn_panel_cache(const Genome &genome, sf::Vector2f view_size);
 
   // Left column panels
   void draw_left_column(sf::RenderTarget &target, const OverlayStats &stats);
@@ -79,11 +115,20 @@ private:
   void draw_energy_distribution(sf::RenderTarget &target, const OverlayStats &stats, float x, float y, float w,
                                 float h);
   void draw_stats_widget(sf::RenderTarget &target, const OverlayStats &stats, float x, float y, float w, float h);
+  void draw_complexity_chart(sf::RenderTarget &target, float x, float y, float w, float h);
+  void draw_energy_chart(sf::RenderTarget &target, float x, float y, float w, float h);
 
   // Population history: tuple of {predators, prey, food}
   std::deque<std::tuple<int, int, int>> population_history_;
 
+  // Complexity history: tuple of {predator_complexity, prey_complexity}
+  std::deque<std::tuple<float, float>> complexity_history_;
+
+  // Energy history: tuple of {predator_energy, prey_energy}
+  std::deque<std::tuple<float, float>> energy_history_;
+
   std::unordered_map<std::uint32_t, float> node_activations_;
+  CachedNnPanel nn_panel_cache_;
 
   sf::Font font_;
   bool font_loaded_ = false;

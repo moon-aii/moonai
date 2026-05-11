@@ -5,7 +5,7 @@ target_include_directories(moonai_app PUBLIC ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(moonai_app PUBLIC
     moonai_build_config
     moonai_core
-    moonai_data
+    moonai_metrics
     moonai_simulation
     moonai_evolution
     moonai_visualization
@@ -17,7 +17,7 @@ if(MOONAI_BUILD_PROFILER)
     target_link_libraries(moonai_app_profiler PUBLIC
         moonai_build_config
         moonai_core_profiler
-        moonai_data_profiler
+        moonai_metrics_profiler
         moonai_simulation_profiler
         moonai_evolution_profiler
         moonai_visualization_profiler

@@ -19,8 +19,6 @@ public:
 
   int weighted_select(const std::vector<float> &weights);
 
-  std::vector<int> sample_indices(int total, int count);
-
   int seed() const {
     return seed_;
   }

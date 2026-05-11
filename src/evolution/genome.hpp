@@ -53,11 +53,11 @@ public:
   // Genome complexity (nodes + connections)
   int complexity() const;
 
-  static float compatibility_distance(const Genome &a, const Genome &b, float c1, float c2, float c3);
+  static float compatibility_distance(const Genome &a, const Genome &b, float c1, float c2, float c3,
+                                      float min_normalization = 1.0f);
 
   // JSON serialization
   std::string to_json() const;
-  static Genome from_json(const std::string &json_str);
 
 private:
   std::vector<NodeGene> nodes_;

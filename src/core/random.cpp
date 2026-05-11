@@ -41,14 +41,4 @@ int Random::weighted_select(const std::vector<float> &weights) {
   return static_cast<int>(weights.size()) - 1;
 }
 
-std::vector<int> Random::sample_indices(int total, int count) {
-  std::vector<int> indices(total);
-  std::iota(indices.begin(), indices.end(), 0);
-  std::shuffle(indices.begin(), indices.end(), engine_);
-  if (count < total) {
-    indices.resize(count);
-  }
-  return indices;
-}
-
 } // namespace moonai

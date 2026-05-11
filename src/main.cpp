@@ -17,7 +17,6 @@ struct MainArgs {
   bool headless = false;
   bool verbose = false;
   bool help = false;
-  bool no_gpu = false;
   std::optional<int> max_steps_override;
 
   std::string experiment_name;
@@ -33,14 +32,7 @@ struct ParseMainResult {
 };
 
 void print_main_usage(const char *program_name) {
-#ifdef MOONAI_ENABLE_CUDA
-  const char *cuda_note = " (cuda compiled in)";
-#else
-  const char *cuda_note = " (no-cuda build: always CPU)";
-#endif
-
   std::printf("MoonAI - Predator-Prey Evolutionary Simulation\n"
-              "\n"
               "Usage: %s [OPTIONS] [config.lua]\n"
               "\n"
               "Options:\n"
@@ -48,7 +40,6 @@ void print_main_usage(const char *program_name) {
               "  -n, --steps <n>           Override max steps (0 = infinite)\n"
               "      --headless            Run without visualization\n"
               "  -v, --verbose             Enable debug logging\n"
-              "      --no-gpu              Disable CUDA GPU acceleration (use CPU path)%s\n"
               "\n"
               "Experiment orchestration:\n"
               "      --experiment <name>   Select one experiment from a multi-config Lua file\n"
@@ -58,7 +49,7 @@ void print_main_usage(const char *program_name) {
               "      --validate            Validate config and exit\n"
               "\n"
               "  -h, --help                Show this help message\n",
-              program_name, cuda_note);
+              program_name);
 }
 
 bool parse_int_arg(const char *value, int &out) {
@@ -85,8 +76,6 @@ ParseMainResult parse_main_args(int argc, const char *argv[]) {
       result.args.headless = true;
     } else if (arg == "-v" || arg == "--verbose") {
       result.args.verbose = true;
-    } else if (arg == "--no-gpu") {
-      result.args.no_gpu = true;
     } else if (arg == "--all") {
       result.args.run_all = true;
     } else if (arg == "--list") {
@@ -155,7 +144,6 @@ int run_experiment(const std::string &name, const moonai::SimulationConfig &conf
   app_cfg.sim_config = config;
   app_cfg.experiment_name = name;
   app_cfg.headless = args.headless;
-  app_cfg.enable_gpu = !args.no_gpu;
   app_cfg.run_name_override = args.run_name.empty() ? std::nullopt : std::optional(args.run_name);
   app_cfg.speed_multiplier = 1;
 

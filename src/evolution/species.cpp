@@ -16,8 +16,9 @@ void Species::reset_id_counter() {
 
 Species::Species(const Genome &representative) : id_(next_species_id()), representative_(representative) {}
 
-bool Species::is_compatible(const Genome &genome, float threshold, float c1, float c2, float c3) const {
-  return Genome::compatibility_distance(representative_, genome, c1, c2, c3) < threshold;
+bool Species::is_compatible(const Genome &genome, float threshold, float c1, float c2, float c3,
+                            float min_normalization) const {
+  return Genome::compatibility_distance(representative_, genome, c1, c2, c3, min_normalization) < threshold;
 }
 
 void Species::add_member(uint32_t entity, const Genome &genome) {

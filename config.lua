@@ -36,7 +36,7 @@ end
 -- ── Experiments ───────────────────────────────────────────────────────────────
 -- All experiments start from moonai_defaults (3000x3000, 500 predators, 1500 prey,
 -- 1500-step report windows) and override exactly the variable(s) under study.
--- 66 conditions × 5 seeds = 330 deterministic runs.
+-- 55 conditions × 5 seeds = 275 seeded runs, plus the unseeded default entry.
 
 -- Pre-compute scale bases for commonly used population sizes
 local base_1k  = scale_base(250,  750)
@@ -61,8 +61,6 @@ local conditions = {
     pop_massive    = extend(moonai_defaults, base_20k),
     no_speciation  = extend(moonai_defaults, { compatibility_threshold = 100.0 }),
     tight_speciation = extend(moonai_defaults, { compatibility_threshold = 1.0 }),
-    crossover_low  = extend(moonai_defaults, { crossover_rate = 0.25 }),
-    crossover_none = extend(moonai_defaults, { crossover_rate = 0.0 }),
 
     -- ── Group B: Scale experiments (proportional world) ──────────────────
     scale_1k       = extend(moonai_defaults, base_1k),
@@ -79,14 +77,11 @@ local conditions = {
     s5k_mut_very_high = extend(moonai_defaults, base_5k, { mutation_rate = 0.8 }),
     s5k_no_spec       = extend(moonai_defaults, base_5k, { compatibility_threshold = 100.0 }),
     s5k_tight_spec    = extend(moonai_defaults, base_5k, { compatibility_threshold = 1.0 }),
-    s5k_crossover_low = extend(moonai_defaults, base_5k, { crossover_rate = 0.25 }),
-    s5k_crossover_none= extend(moonai_defaults, base_5k, { crossover_rate = 0.0 }),
 
     -- ── Group D: Parameter sweeps at 10K ─────────────────────────────────
     s10k_mut_low      = extend(moonai_defaults, base_10k, { mutation_rate = 0.1 }),
     s10k_mut_high     = extend(moonai_defaults, base_10k, { mutation_rate = 0.5 }),
     s10k_no_spec      = extend(moonai_defaults, base_10k, { compatibility_threshold = 100.0 }),
-    s10k_crossover_low= extend(moonai_defaults, base_10k, { crossover_rate = 0.25 }),
 
     -- ── Group E: World density (5K agents, varying world size) ───────────
     -- Area-matched square worlds (matching original rectangular areas)
@@ -107,12 +102,12 @@ local conditions = {
     steps_3000_5k = extend(moonai_defaults, base_5k, { max_steps = 3000 }),
 
     -- ── Group G: Energy / resource dynamics ──────────────────────────────
-    energy_scarce_2k   = extend(moonai_defaults, { initial_energy = 75.0, food_respawn_rate = 0.01 }),
-    energy_abundant_2k = extend(moonai_defaults, { initial_energy = 300.0, food_respawn_rate = 0.05 }),
-    energy_scarce_5k   = extend(moonai_defaults, base_5k, { initial_energy = 75.0, food_respawn_rate = 0.01 }),
-    energy_abundant_5k = extend(moonai_defaults, base_5k, { initial_energy = 300.0, food_respawn_rate = 0.05 }),
-    energy_extreme_5k  = extend(moonai_defaults, base_5k, { initial_energy = 50.0, food_respawn_rate = 0.005, energy_drain_per_step = 0.15 }),
-    energy_rich_5k     = extend(moonai_defaults, base_5k, { initial_energy = 500.0, food_respawn_rate = 0.08, energy_drain_per_step = 0.03 }),
+    energy_scarce_2k   = extend(moonai_defaults, { initial_energy = 75.0, max_energy = 75.0, food_respawn_rate = 0.01 }),
+    energy_abundant_2k = extend(moonai_defaults, { initial_energy = 300.0, max_energy = 300.0, food_respawn_rate = 0.05 }),
+    energy_scarce_5k   = extend(moonai_defaults, base_5k, { initial_energy = 75.0, max_energy = 75.0, food_respawn_rate = 0.01 }),
+    energy_abundant_5k = extend(moonai_defaults, base_5k, { initial_energy = 300.0, max_energy = 300.0, food_respawn_rate = 0.05 }),
+    energy_extreme_5k  = extend(moonai_defaults, base_5k, { initial_energy = 50.0, max_energy = 50.0, food_respawn_rate = 0.005, energy_drain_per_step = 0.15 }),
+    energy_rich_5k     = extend(moonai_defaults, base_5k, { initial_energy = 500.0, max_energy = 500.0, food_respawn_rate = 0.08, energy_drain_per_step = 0.03 }),
 
     -- ── Group H: Agent speed / interaction range (5K) ────────────────────
     fast_agents_5k   = extend(moonai_defaults, base_5k, { predator_speed = 6.0, prey_speed = 7.0 }),
