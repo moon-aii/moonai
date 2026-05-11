@@ -1,0 +1,16 @@
+msrv = "1.95"
+
+avoid-breaking-exported-api = true
+
+allow-expect-in-tests = true
+allow-unwrap-in-tests = true
+
+disallowed-names = ["foo", "bar"]
+
+too-many-arguments-threshold = 15
+cognitive-complexity-threshold = 15
+enum-variant-size-threshold = 128
+type-complexity-threshold = 256
+large-error-threshold = 256
+
+source-item-ordering = ['enum', 'struct', 'trait']

@@ -17,26 +17,23 @@ class SummaryRow:
 
 @dataclass(frozen=True)
 class SummaryData:
-    step: int
+    tick: int
     headers: list[str]
     rows: list[SummaryRow]
     skipped_runs: list[SkippedRun]
 
 
-def build_summary(
-    aggregates: list[ConditionAggregate], skipped_runs: list[SkippedRun]
-) -> SummaryData:
-    step = min(int(aggregate.summary_frame["step"].max()) for aggregate in aggregates)
+def build_summary(aggregates: list[ConditionAggregate], skipped_runs: list[SkippedRun]) -> SummaryData:
+    tick = min(int(aggregate.summary_frame["tick"].max()) for aggregate in aggregates)
     rows: list[SummaryRow] = []
 
     for aggregate in aggregates:
-        eligible = aggregate.summary_frame[aggregate.summary_frame["step"] <= step]
+        eligible = aggregate.summary_frame[aggregate.summary_frame["tick"] <= tick]
         if eligible.empty:
             eligible = aggregate.summary_frame
         row = eligible.iloc[-1]
         metrics = {
-            metric: f"{row[f'{metric}_mean']:.3f} +/- {row[f'{metric}_std']:.3f}"
-            for metric in COMPARISON_METRICS
+            metric: f"{row[f'{metric}_mean']:.3f} +/- {row[f'{metric}_std']:.3f}" for metric in COMPARISON_METRICS
         }
         rows.append(
             SummaryRow(
@@ -47,7 +44,7 @@ def build_summary(
         )
 
     return SummaryData(
-        step=step,
+        tick=tick,
         headers=["condition", "runs", *COMPARISON_METRICS],
         rows=rows,
         skipped_runs=skipped_runs,

@@ -1,24 +1,4 @@
-# Auto-detect text files and normalize line endings
-* text=auto
+* text=auto eol=lf
 
-# Force specific file types
-*.cpp text eol=lf
-*.hpp text eol=lf
-*.h text eol=lf
-*.cu text eol=lf
-*.cuh text eol=lf
-*.cmake text eol=lf
-*.json text eol=lf
-*.py text eol=lf
-*.md text eol=lf
-*.txt text eol=lf
-*.sh text eol=lf
-
-# Windows batch files need CRLF
-*.bat text eol=crlf
-
-# Binary files
 *.pdf binary
-*.docx binary
 *.png binary
-*.jpg binary

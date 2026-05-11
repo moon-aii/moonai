@@ -1,191 +1,103 @@
-# MoonAI - Project Commands
+# MoonAI - Rust Project Commands
 # Usage: just <recipe>
 # Run `just --list` to see all available recipes.
 
-# ─── Configuration ──────────────────────────────────────────────────────────
 
-# Detect OS
-os := if os() == "windows" { "windows" } else { "linux" }
-
-# vcpkg root (falls back to ~/.vcpkg if not set in environment)
-export VCPKG_ROOT := env("VCPKG_ROOT", env("HOME") + "/.vcpkg")
-
-# Build type (override with: just build-type=release build)
-build-type := "debug"
-
-preset := os + "-" + build-type
-build-dir := "build" / preset
-release-dir := "build" / (os + "-release")
-
-# ─── Build ──────────────────────────────────────────────────────────────────
-
-# Set up Python environments for simulation and profiler analysis
+# Set up Python environment
 [group('build')]
-setup-python:
+sync:
   uv sync
 
-# Configure CMake (run after setup or when CMakeLists change)
-# Pass extra cmake args (e.g., just configure -DVAR=value)
+# Build in debug mode
 [group('build')]
-configure *args:
-  cmake --preset {{preset}} {{args}}
+build-debug:
+  cargo build
+  cp -r runtime/* target/debug
 
-# Build the project
+# Build in release mode
 [group('build')]
 build:
-  cmake --build {{build-dir}} --parallel
+  cargo build --release
+  cp -r runtime/* target/release
 
-# Build in release mode (with LTO, native optimizations, and strict warnings)
-# Pass extra cmake args (e.g., just release -DMOONAI_BUILD_PROFILER=ON)
-[group('build')]
-release *args:
-  just build-type=release configure {{args}}
-  just build-type=release build
 
-# ─── Run ────────────────────────────────────────────────────────────────────
-
-# Run the simulation with default config (pass additional args after --)
-[group('run')]
-run *args: build
-  {{build-dir}}/moonai config.lua --experiment default {{args}}
-
-# Run the release build with default config (pass additional args after --)
+# Run the release build with bundled runtime files
 [default]
 [group('run')]
-run-release *args: release
-  {{release-dir}}/moonai config.lua --experiment default {{args}}
+run: build
+  cargo run --release
 
-# Validate a config file
+# Run the debug build with bundled runtime files
 [group('run')]
-validate config_path="config.lua": build
-  {{build-dir}}/moonai --validate {{config_path}}
-
-# ─── Experiments ─────────────────────────────────────────────────────────────
-
-# List all experiments defined in the Lua config
-[group('experiment')]
-list-experiments: build
-  {{build-dir}}/moonai config.lua --list
-
-# Run the full experiment matrix (all conditions × seeds, headless)
-[group('experiment')]
-experiment-run: release
-  {{release-dir}}/moonai config.lua --all --headless
+run-debug: build-debug
+  cargo run
 
 # Generate the self-contained HTML analysis report from output/
-[group('experiment')]
-experiment-analyse:
+[group('run')]
+analyse:
   uv run analysis
 
-# Full experiment pipeline: run all experiments → generate report
-[group('experiment')]
-experiment: experiment-run experiment-analyse
 
-# ─── Profile ────────────────────────────────────────────────────────────────
+# Fix: format and lint
+[group('quality')]
+fix:
+  bunx prettier --log-level=warn --write .
+  uv run ruff format .
+  uv run ruff check . --fix
+  cargo fmt --all
+  cargo clippy --all-targets --all-features --fix --allow-dirty
 
-# Full profiler pipeline: run profiler -> generate profiler report
-[group('profile')]
-profile: profile-run profile-analyse
+# Check code: format, lint checks and manual supression command grep
+[group('quality')]
+check:
+  bunx prettier --log-level warn --check .
+  uv run ruff format . --check
+  uv run ruff check .
+  ! rg -n -F -e '#[allow' -e '#![allow' -g '*.rs' -g '!tests/**'
+  cargo fmt --all -- --check
+  cargo clippy --all-targets --all-features
 
-# Run the built-in profiler with optional arguments
-[group('profile')]
-profile-run *args: (release "-DMOONAI_BUILD_PROFILER=ON")
-  {{release-dir}}/moonai_profiler {{args}}
+# Run tests
+[group('quality')]
+test *args:
+  cargo test --all-targets --all-features --locked -- --nocapture {{args}}
 
-# Generate the self-contained HTML profiler report from output/profiles/
-[group('profile')]
-profile-analyse:
-  uv run profiler
+# Full check + test gate (github ci runs this command)
+[group('quality')]
+ci: check test
 
-# ─── Development ────────────────────────────────────────────────────────────
+# Fix + Gate, prefer this recipe to save time instead of doing gate -> fix -> gate.
+[group('quality')]
+qual: fix ci
 
-# Run tests (optional args: --verbose, -R pattern, etc.)
+# Update dependencies
 [group('dev')]
-test *args: build
-  ctest --test-dir {{build-dir}} --output-on-failure {{args}}
+update:
+  cargo update
 
-# Run code quality checks: auto-format all C++ files and run static analysis
-[group('dev')]
-lint: configure
-  find src \( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.cu" -o -name "*.cuh" \) | xargs clang-format --style=file -i
-  cppcheck --enable=warning,style,performance \
-    --std=c++17 \
-    --suppress=missingIncludeSystem \
-    --suppress=*:*/vcpkg_installed/* \
-    --project={{build-dir}}/compile_commands.json
-  run-clang-tidy -p {{build-dir}} src/
 
-# Generate compile_commands.json for IDE/LSP integration
-[group('dev')]
-compdb:
-  cmake --preset {{preset}} -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-  ln -sf {{build-dir}}/compile_commands.json compile_commands.json
-
-# Show project info and detected configuration
-[group('dev')]
-info:
-  @echo "MoonAI Project"
-  @echo "─────────────────────────────"
-  @echo "OS:         {{os}}"
-  @echo "Build type: {{build-type}}"
-  @echo "Preset:     {{preset}}"
-  @echo "Build dir:  {{build-dir}}"
-  @echo "VCPKG_ROOT: ${VCPKG_ROOT:-NOT SET}"
-
-# ─── GPU ────────────────────────────────────────────────────────────────────
-
-# Run Nsight Compute on the hottest GPU kernel with CLI output only (requires sudo for GPU perf counters)
-[group('gpu')]
-ncu: release
-  sudo ncu \
-    --target-processes all \
-    --kernel-name "regex:.*sensor_build_kernel.*" \
-    --launch-skip 0 \
-    --launch-count 1 \
-    --set basic \
-    {{release-dir}}/moonai config.lua --experiment baseline_seed42 --headless --steps 60 --name nsight-baseline
-  @echo "Note: Output files may be owned by root. Run: sudo chown -R $(whoami):$(whoami) output/nsight-baseline*"
-
-# Run a deeper Nsight Compute pass on the hottest GPU kernel (requires sudo for GPU perf counters)
-[group('gpu')]
-ncu-full: release
-  sudo ncu \
-    --target-processes all \
-    --kernel-name "regex:.*sensor_build_kernel.*" \
-    --launch-skip 0 \
-    --launch-count 1 \
-    --set full \
-    {{release-dir}}/moonai config.lua --experiment baseline_seed42 --headless --steps 60 --name nsight-baseline
-  @echo "Note: Output files may be owned by root. Run: sudo chown -R $(whoami):$(whoami) output/nsight-baseline*"
-
-# Run Nsight Systems for one profiler suite and print CLI stats (requires sudo for GPU perf counters)
-[group('gpu')]
-nsys: release
-  mkdir -p output/nsight
-  sudo nsys profile \
-    --trace=cuda,nvtx,osrt \
-    --sample=none \
-    --stats=true \
-    --force-overwrite=true \
-    --output=output/nsight/nsys-baseline \
-    {{release-dir}}/moonai config.lua --experiment baseline_seed42 --headless --steps 60 --name nsight-baseline
-  @echo "Note: Output files may be owned by root. Run: sudo chown -R $(whoami):$(whoami) output/nsight*"
-
-# ─── Clean ──────────────────────────────────────────────────────────────────
-
-# Remove build directory
+# Remove build artifacts
 [group('clean')]
 clean:
-  rm -rf build/
+  cargo clean
+  uv run ruff clean
+  rm -rf node_modules/
+  rm -rf site/
 
 # Remove all output and generated report artifacts
 [group('clean')]
 clean-outputs:
   rm -rf output/
 
-# ─── Docs ──────────────────────────────────────────────────────────────────
 
-# Clean and start website at localhost
+# Clean and start docs website at localhost
+[group('docs')]
 docs:
   rm -rf site/
-  zensical serve
+  uv run --group docs zensical serve
+
+upgrade-check:
+  cargo upgrade -i --dry-run
+
+upgrade:
+  cargo upgrade -i

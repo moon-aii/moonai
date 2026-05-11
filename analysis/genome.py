@@ -11,7 +11,6 @@ import networkx as nx
 
 from .io import load_json
 
-
 NODE_TYPE_NAMES = {0: "Input", 1: "Hidden", 2: "Output", 3: "Bias"}
 NODE_COLORS = {0: "#3B82F6", 1: "#F59E0B", 2: "#EF4444", 3: "#8B5CF6"}
 
@@ -42,9 +41,7 @@ def render_genome_plot(genome: dict, title: str) -> str:
 
     for connection in genome.get("connections", []):
         if connection.get("enabled", False):
-            graph.add_edge(
-                connection["in"], connection["out"], weight=connection["weight"]
-            )
+            graph.add_edge(connection["in"], connection["out"], weight=connection["weight"])
 
     positions = _build_layout(node_types)
     figure, axis = plt.subplots(figsize=(14, 8))
@@ -71,11 +68,7 @@ def render_genome_plot(genome: dict, title: str) -> str:
             )
 
     for node_type, color in NODE_COLORS.items():
-        nodes = [
-            node_id
-            for node_id, current_type in node_types.items()
-            if current_type == node_type
-        ]
+        nodes = [node_id for node_id, current_type in node_types.items() if current_type == node_type]
         if nodes:
             nx.draw_networkx_nodes(
                 graph,

@@ -1,0 +1,67 @@
+[package]
+name = "moonai"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95.0"
+authors = ["MoonAI"]
+license = "MIT"
+
+[dependencies]
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+clap = { version = "4.6", features = ["derive"] }
+mlua = { version = "0.11", features = ["luau"] }
+anyhow = "1.0"
+thiserror = "2.0"
+ctrlc = "3.5"
+bytemuck = { version = "1.25.0", features = ["derive"] }
+eframe = { version = "0.34", default-features = false, features = ["default_fonts", "wayland", "x11", "wgpu"] }
+wgpu = { version = "29.0.3", default-features = false, features = ["vulkan"] }
+
+[build-dependencies]
+cc = "1.2"
+cbindgen = "0.29"
+
+[lints.rust]
+elided_lifetimes_in_paths = "deny"
+absolute_paths_not_starting_with_crate = "deny"
+unused = { level = "warn", priority = -1 }
+unsafe_code = { level = "allow", priority = -2 }
+
+[lints.clippy]
+correctness = "deny"
+suspicious = "deny"
+complexity = "deny"
+perf = "deny"
+style = "deny"
+
+dbg_macro = "deny"
+expect_used = "deny"
+needless_collect = "deny"
+panic = "deny"
+redundant_clone = "deny"
+redundant_closure_for_method_calls = "deny"
+trivially_copy_pass_by_ref = "deny"
+todo = "deny"
+uninlined_format_args = "deny"
+unwrap_used = "deny"
+implicit_clone = "deny"
+inefficient_to_string = "deny"
+large_stack_arrays = "deny"
+missing_const_for_fn = "deny"
+needless_pass_by_value = "deny"
+option_if_let_else = "deny"
+print_stdout = "deny"
+print_stderr = "deny"
+clone_on_ref_ptr = "deny"
+rest_pat_in_fully_bound_structs = "deny"
+str_to_string = "deny"
+
+[profile.release]
+strip = true
+lto = true
+panic = 'abort'
+incremental = true
+codegen-units = 16

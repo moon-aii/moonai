@@ -4,822 +4,383 @@ description: System Architecture.
 
 # Architecture
 
-MoonAI is a CUDA-first predator-prey simulation platform with NEAT-based neural evolution.
-It uses ECS-style SoA data for simulation state and GPU kernels, and OOP-style graph/genetics logic for NEAT mutation, crossover, and speciation.
+## Design Principles
 
-The diagrams below describe execution, dataflow, layouts, ECS, spatial indexing, NEAT, GPU execution, and module dependencies.
+MoonAI follows a **GPU-first execution model**.
 
-## 1. Runtime Architecture
+- **GPU owns all simulation state** — positions, velocities, energy, age, alive flags, genomes, compiled networks, innovation counters, and species metadata live in GPU memory.
+- **CPU is orchestrator only** — it loads experiments and settings, allocates buffers, launches kernels, and writes files from compact readbacks. It does not maintain or execute a population-wide simulation, evolution, or verification path.
+- **Tick-based cadence** — GPU runs initialization, simulation, evolution, report-window reduction, and on-demand inspection kernels. CPU only sequences those launches.
+- **GPU-native evolution** — seeding, crossover, mutation, network compilation, and species classification happen entirely on GPU via the evolution portion of `src/tick/`.
+- **Cadence separation** — `report_interval_ticks` controls CSV/JSON/species/genome export cadence, while UI `speed_multiplier` controls visualization refresh cadence. They are independent.
+- **Readback/interop is minimal** — only the current UI-frame render snapshot, selected-agent inspection buffers, and report/export structs are transferred out of the simulation buffers.
+- **No duplication** — there is no separate CPU algorithmic path for evolution, inference, speciation, or verification. Host Rust may define FFI layouts and export structs only.
+- **Generated shared POD ABI** — Shared Rust/CUDA enums and structs are defined in Rust and emitted to a generated C++ header from `build.rs`. CUDA internal runtime state stays opaque to Rust.
+- **Buffer expansion** — buffers grow by 2x when capacity threshold is reached. No artificial ceiling.
 
-Primary references: `src/main.cpp`, `src/app/app.cpp`, `src/core/app_state.hpp`, `src/simulation/batch.cu`, `src/evolution/evolution_manager.cpp`.
+## Desicions
+
+- `experiments.lua` contains **simulation config only** (no UI overrides).
+- `settings.json` contains persisted application settings, with UI config nested under `ui`.
+- File locations: `experiments.lua` and `settings.json` live next to the binary executable.
+- `UiConfig` defaults are hardcoded in Rust; `settings.json` overrides them.
+- `ExperimentCatalog` loads `experiments.lua` once at startup and exposes the resulting presets to the UI.
+- `UiState` (paused, speed_multiplier, tick_requested, selected_agent_id) is **runtime state**,
+  lives in `src/ui/types.rs`. NOT in the config-loading modules.
+- Predator and prey use separate GPU buffers; no `AgentType` enum needed.
+- `experiments.lua` is loaded via `mlua`. `moonai_defaults` is injected as a global table.
+- Experiment selection, draft editing, run replacement, and queueing all live in the UI shell.
+- Initial population seeding happens on GPU.
+- `report_interval_ticks` is the artifact-export cadence only. It controls when the runtime writes `stats.csv`, `species.csv`, `genomes.json`, and related report data.
+- UI `speed_multiplier` is the visualization cadence only. `1x` means refresh UI every tick, `8x` means refresh UI every 8 ticks, and so on.
+- Runs execute through one queue-driven lifecycle. When the active run finishes, the next queued snapshot starts automatically.
+- A UI refresh must include all active predators, prey, and food needed for rendering, plus aggregate population statistics.
+- Reproduction is **sexual** — two parent genomes crossover on GPU, mutation applied on GPU, network compiled on GPU.
+- Species classification happens on GPU at report intervals so `species.csv`, species counts, and representative-genome export do not require a host-side genome walk.
+- FPS target: 120fps. Speed multiplier: 1x-1024x ticks per frame. Every frame renders everything live.
+- Selected-agent inspection is additive: the main view always renders the full population, and selection only requests extra vision/sensor/network data for that one agent.
+- UI needs fresh data every UI refresh: population counts, positions, and movement directions for all visible agents.
+- Verification must rely on GPU-side invariants, fixed-seed determinism, readback schema checks, and end-to-end runtime tests. There is no CPU reference implementation for algorithm validation.
+
+## Technology Choices
+
+| Technology         | Choice                                                         |
+| ------------------ | -------------------------------------------------------------- |
+| Language           | Rust 2024                                                      |
+| CUDA binding       | Rust FFI + generated C++ header + `nvcc` via `build.rs` / `cc` |
+| Logging            | `tracing` + `tracing-subscriber`                               |
+| JSON               | `serde` + `serde_json`                                         |
+| Lua binding        | `mlua` crate                                                   |
+| GUI framework      | winit + egui + wgpu                                            |
+| GPU rendering      | wgpu instanced rendering                                       |
+| Atomic counters    | CUDA atomics for GPU-to-CPU events                             |
+| Genome compilation | GPU (persistent kernel)                                        |
+
+## Cadence Rules
+
+- `report_interval_ticks` controls artifact export cadence only. It governs when `stats.csv`, `species.csv`, `genomes.json`, and related report data are produced.
+- UI `speed_multiplier` controls visualization cadence only. `1x` refreshes the UI every tick, `8x` refreshes the UI every 8 ticks, and in general the UI refreshes when `tick % speed_multiplier == 0`.
+- These cadences are independent. A report export may occur on a tick that does not trigger a UI refresh, and a UI refresh may occur on a tick that does not trigger artifact export.
+- A UI refresh must carry the full population render state: all active predator, prey, and food positions, predator/prey movement directions, and aggregate overlay statistics.
+- Selected-agent inspection is additive. The selected agent adds vision, sensor, and neural-network inspection data on top of the normal full-population render path.
+
+## Verification Strategy
+
+Verification stays GPU-only as well.
+
+- Kernel smoke tests validate launch, memory layout, and readback contracts.
+- Device-side invariant checks validate genome bounds, node counts, connection counts, and compiled-network ranges.
+- Fixed-seed determinism tests compare compact GPU readbacks across repeated runs on the same machine.
+- End-to-end runtime tests validate output schema and artifact generation.
+
+There is no separate CPU reference implementation used to confirm algorithm correctness.
+
+## Readback Rules
+
+- Per-frame UI render data should stay compact. The current runtime compacts live predators, prey, and food into contiguous render snapshots on the GPU, then copies only those compact arrays to host memory on the UI refresh cadence.
+- The hot path must not rasterize the full world on the CPU. Host-side UI work should stop at compact readback and instance-buffer uploads for the custom `wgpu` world pass.
+- A UI frame must include full-population render state, not only the selected agent.
+- CPU-visible inspection data should stay limited to compact snapshots such as overlay counters and selected-agent inspection results.
+- Metrics export must use GPU-side reduction first, then copy only compact report structs needed for `stats.csv`, `species.csv`, and `genomes.json`.
+
+## UI Run Flow
+
+```mermaid
+flowchart TB
+    Launch[launch app]
+    LoadExperiments[load experiments.lua once]
+    LoadSettings[load settings.json]
+    Shell[open UI shell]
+    Select[select experiment preset]
+    Draft[edit draft config]
+    Start[start or replace active run]
+    Queue[append draft to queue]
+    Finish[active run finishes]
+    Next{queued run available?}
+    Idle[idle]
+
+    Launch --> LoadExperiments --> LoadSettings --> Shell
+    Shell --> Select --> Draft
+    Draft --> Start --> Finish
+    Draft --> Queue --> Next
+    Finish --> Next
+    Next -->|yes| Start
+    Next -->|no| Idle
+```
+
+## Tick Execution Flow
+
+```mermaid
+flowchart TD
+    subgraph CPU["CPU Orchestrator"]
+        BOOT[load experiments.lua + settings.json]
+        INIT_UI[init src/ui shell]
+        INIT_SIM[create or replace run session]
+        INIT_LOG[init metrics logger]
+        TICK_LOOP{while running}
+        LOG[log CSV/JSON]
+        RENDER[wgpu_render_frame]
+        UI[egui_overlay_draw]
+        QUEUE[next queued run]
+        EXIT[exit]
+    end
+
+    subgraph GPU["GPU Persistent Kernel"]
+        SEED[seed_initial_population]
+        GRID[grid_build]
+        SENSOR[sensor_compute]
+        INFERENCE[neural_inference]
+        VITALS[update_vitals]
+        FOOD[resolve_food]
+        COMBAT[resolve_combat]
+        MOVE[apply_movement]
+        REPRO[reproduction]
+        EVAL[evaluate eligibility]
+        FIND[find_mate]
+        CROSS[gpu_crossover]
+        MUT[gpu_mutate]
+        COMPILE[gpu_compile_network]
+        ACTIVATE[activate_slot]
+        ATOMICS[write_atomics]
+        UISTATS[write_ui_stats]
+        REPORT[classify_species + reduce_metrics]
+    end
+
+    BOOT --> INIT_UI --> INIT_SIM --> INIT_LOG --> SEED --> TICK_LOOP
+    TICK_LOOP -->|dispatch tick ops| GRID
+    GRID --> SENSOR --> INFERENCE --> VITALS --> FOOD --> COMBAT --> MOVE
+    MOVE --> REPRO
+    REPRO --> EVAL --> FIND --> CROSS --> MUT --> COMPILE --> ACTIVATE
+    ACTIVATE --> ATOMICS --> UISTATS
+    TICK_LOOP -->|report_interval| REPORT --> LOG
+    TICK_LOOP -->|GUI mode| RENDER --> UI
+    TICK_LOOP -->|finished| QUEUE
+    QUEUE -->|next queued snapshot| INIT_SIM
+    TICK_LOOP -->|close app| EXIT
+```
+
+## Ownership Boundaries
 
 ```mermaid
 flowchart LR
-  subgraph Host[CPU Host Runtime]
-    Main[main.cpp CLI]
-    App[App Orchestrator]
-    Core[Core Config + State]
-    Evo[Evolution Manager]
-    Metrics[Metrics + Logger]
-    Viz[Visualization]
-  end
+    SHELL[UI shell + queue]
+    HOST[Host orchestrator]
+    GPUSTATE[GPU state buffers]
+    UIBUF[UI readback buffers]
+    METBUF[Metrics/export buffers]
+    RENDER[wgpu renderer]
+    FILES[CSV / JSON writer]
 
-  subgraph Device[GPU Device Runtime]
-    SimKernels[Simulation Kernels]
-    InfKernel[Inference Kernel]
-    Grid[Spatial Grid Buffers]
-  end
-
-  Main --> App
-  App --> Core
-  App --> Evo
-  App --> Metrics
-  App --> Viz
-  App --> SimKernels
-  Evo --> InfKernel
-  SimKernels --> Grid
-  SimKernels --> Metrics
-  Evo --> Metrics
+    SHELL --> HOST
+    HOST -->|upload config and launch commands| GPUSTATE
+    GPUSTATE -->|compact snapshots| UIBUF
+    GPUSTATE -->|report-window reductions| METBUF
+    UIBUF --> RENDER
+    METBUF --> FILES
 ```
 
-## 2. Execution and Dataflow
-
-### 2.1 Program Entry and Experiment Selection
+## Runtime Flow
 
 ```mermaid
-flowchart TB
-  Start[Process Start]
-  Parse[parse_main_args]
-  Load[load_all_configs_lua]
-  Route{Mode}
-  List[list experiments]
-  Validate[validate config]
-  RunOne[run_experiment selected]
-  RunAll[run_experiment for each config]
-  End[Exit]
+flowchart TD
+    START[load settings and experiments]
+    SEED[GPU seed kernel]
+    LOOP{run ticks}
+    STEP[host sequences kernel launches]
+    REPORT{report interval}
+    REDUCE[GPU species classify + metrics reduce]
+    EXPORT[CPU writes compact exports]
+    UIFRAME{UI refresh boundary}
+    SNAPSHOT[GPU publishes full render snapshot + overlay stats]
+    UIREQ{UI inspection request}
+    INSPECT[GPU selected-agent inspection kernel]
+    NEXT{queued run waiting}
+    DRAW[render frame]
+    END[shutdown]
 
-  Start --> Parse --> Load --> Route
-  Route -->|list| List --> End
-  Route -->|validate| Validate --> End
-  Route -->|run single| RunOne --> End
-  Route -->|run all| RunAll --> End
+    START --> SEED --> LOOP
+    LOOP --> STEP --> REPORT
+    REPORT -->|yes| REDUCE --> EXPORT --> UIFRAME
+    REPORT -->|no| UIFRAME
+    UIFRAME -->|yes| SNAPSHOT --> UIREQ
+    UIFRAME -->|no| LOOP
+    UIREQ -->|yes| INSPECT --> DRAW --> LOOP
+    UIREQ -->|no| DRAW --> LOOP
+    LOOP -->|run finished| NEXT
+    NEXT -->|yes| SEED
+    NEXT -->|no| END
 ```
 
-### 2.2 App Construction Path
+## GPU Kernel Reference
 
-Source: `src/app/app.cpp:33-72`.
+### `crossover.cu` — High-Level Algorithm
 
-```mermaid
-flowchart TB
-  Ctor[App constructor]
-  Seed{"seed equals 0"}
-  SetSeed[set seed from clock]
-  InitState[create app state]
-  Validate[validate config]
-  SimInit[initialize food]
-  EvoInit[initialize evolution]
-  SeedPop[seed initial population]
-  Species[refresh species]
-  InfInit[initialize inference]
-  MetricsInit[refresh metrics]
-  LogInit[initialize logger]
-  VizCheck{headless mode}
-  VizInit[initialize visualization]
-  Ready[run loop ready]
+```
+gpu_crossover_kernel(parent_a_ptr, parent_b_ptr, offspring_ptr, rng_state_ptr):
+    tid = blockIdx.x * blockDim.x + threadIdx.x
+    if tid >= num_offspring: return
 
-  Ctor --> Seed
-  Seed -->|yes| SetSeed --> InitState
-  Seed -->|no| InitState
-  InitState --> Validate --> SimInit --> EvoInit --> SeedPop --> Species --> InfInit --> MetricsInit --> LogInit --> VizCheck
-  VizCheck -->|true| Ready
-  VizCheck -->|false| VizInit --> Ready
+    // 1. Read parent connection arrays into shared memory (32 threads cooperatively)
+    // 2. Warp-level bitonic sort by innovation number
+    // 3. Merge phase:
+    //    for each innovation in union:
+    //      if in both parents:
+    //        inherit = (rand() < 0.50) ? parent_a : parent_b
+    //      elif in one parent:
+    //        inherit = (rand() < 0.50) ? parent_with_gene : DISABLED
+    // 4. Disable mismatched with 75% probability
+    // 5. Write child genome to offspring_ptr
 ```
 
-### 2.3 Main Loop
+### `mutation.cu` — High-Level Algorithm
 
-Source: `src/app/app.cpp:138-194`.
+```
+gpu_mutate_kernel(genome_ptr, innovation_counter, rng_state_ptr, config):
+    tid = blockIdx.x * blockDim.x + threadIdx.x
+    if tid >= num_agents: return
 
-```mermaid
-flowchart TB
-  LoopStart[while max_steps not reached]
-  Signal{signal stop?}
-  HandleEvents[handle visualization events]
-  Window{window close?}
-  StepCount[compute steps to run]
-  StepIter[iterate step count]
-  StepCall[run simulation step]
-  StepOk{step ok?}
-  Report{"step is on report interval"}
-  Record[record and log]
-  Render[render frame]
-  Flush[flush logger]
-  End[return success or failure]
+    // Per-agent mutations (independent):
 
-  LoopStart --> Signal
-  Signal -->|yes| Flush
-  Signal -->|no| HandleEvents
-  HandleEvents --> Window
-  Window -->|yes| Flush
-  Window -->|no| StepCount --> StepIter --> StepCall --> StepOk
-  StepOk -->|no| Flush
-  StepOk -->|yes| Report
-  Report -->|yes| Record --> StepIter
-  Report -->|no| StepIter
-  StepIter --> Render --> LoopStart
-  Flush --> End
+    // Weight perturbation
+    if rand() < config.weight_mutation_rate:
+        for each connection:
+            if rand() < config.prob_mutate_weight:
+                weight += Gaussian(rand(), config.weight_perturb_strength)
+
+    // Add connection
+    if rand() < config.add_connection_rate:
+        for attempt in 0..max_attempts:
+            from, to = random_node_pair()
+            if not has_connection(genome, from, to):
+                new_innov = atomic_inc(innovation_counter)
+                add_connection(genome, from, to, new_innov)
+                break
+
+    // Add node
+    if rand() < config.add_node_rate:
+        conn = random_enabled_connection(genome)
+        if conn exists:
+            new_node = atomic_inc(next_node_id)
+            disable_connection(genome, conn)
+            i1 = atomic_inc(innovation_counter)
+            i2 = atomic_inc(innovation_counter)
+            add_connection(genome, conn.from, new_node, i1)
+            add_connection(genome, new_node, conn.to, i2)
 ```
 
-### 2.4 Five-Phase Step Pipeline
+### `network_compilation.cu` — High-Level Algorithm
 
-Sources: `src/app/app.cpp:74-98`, `src/simulation/simulation.cpp:159-221`, `src/evolution/evolution_manager.cpp:124-127`, `src/evolution/evolution_manager.cpp:368-373`.
-
-```mermaid
-sequenceDiagram
-  participant App as App::step
-  participant Sim as simulation
-  participant Batch as simulation::Batch
-  participant Evo as EvolutionManager
-  participant GPU as CUDA Stream
-
-  App->>Sim: prepare_step(state, config)
-  Sim->>Batch: ensure_capacity
-  Sim->>Batch: pack_state
-  Batch->>GPU: upload_async
-  Batch->>GPU: launch_build_sensors_async
-
-  App->>Evo: run_inference(state)
-  Evo->>GPU: launch_population_inference predators
-  Evo->>GPU: launch_population_inference prey
-
-  App->>Sim: resolve_step(state, config)
-  Sim->>Batch: launch_post_inference_async
-  Sim->>Batch: download_async
-  Sim->>Batch: synchronize
-  Sim->>Sim: apply_results
-  Sim->>Sim: collect_step_events
-
-  App->>Sim: post_step(state, config)
-  Sim->>Sim: predator.compact
-  Sim->>Sim: prey.compact
-  Sim->>Sim: food.respawn_step
-
-  App->>Evo: post_step(state)
-  Evo->>Evo: reproduce_population predators
-  Evo->>Evo: reproduce_population prey
+```
+gpu_compile_network_kernel(slot_id, genome_ptr, inference_ptr):
+    // 1. Topological sort nodes → eval_order[]
+    // 2. Build conn_ptr[] — offset into conn_from[] for each node
+    // 3. Copy weights, enabled flags into inference arrays
+    // 4. Mark output node indices
 ```
 
-## 3. Failure and Recovery Paths
+## GPU-Side Innovation Tracking
 
-### 3.1 Step Failure Propagation
+NEAT innovation tracking requires assigning globally unique innovation IDs to new structural mutations. A GPU hash map (open addressing) suffers from bank conflicts under heavy concurrent insert from thousands of threads. Instead, use **atomic counter + direct assignment**:
 
-Sources: `src/simulation/simulation.cpp:168-176`, `src/simulation/simulation.cpp:192-209`, `src/evolution/evolution_manager.cpp:391-410`, `src/app/app.cpp:167-187`.
+```
+Global GPU state:
+  innovation_counter: atomic<uint32>   // monotonic, starts at (num_inputs + num_outputs + 1)
+  next_node_id: atomic<uint32>        // monotonic for hidden nodes
 
-```mermaid
-flowchart TB
-  StepCall[App step]
-  Prepare[simulation prepare_step]
-  Inf[evolution run_inference]
-  Resolve[simulation resolve_step]
-  Post[post_step phases]
-  Success[step returns true]
-
-  PrepErr[return false]
-  InfErr[batch.mark_error and return false]
-  ResErr[return false]
-  LoopFail[App run sets failed=true]
-  Stop[break loop and report Simulation step failed]
-
-  StepCall --> Prepare
-  Prepare -->|ok| Inf
-  Prepare -->|error state or ensure_capacity fail| PrepErr --> LoopFail
-  Inf -->|ok| Resolve
-  Inf -->|launch failure| InfErr --> LoopFail
-  Resolve -->|ok| Post --> Success
-  Resolve -->|batch error before or after sync| ResErr --> LoopFail
-  LoopFail --> Stop
+Per-tick innovation log (append-only):
+  innovation_log[tick][innovation_id] = {from_node, to_node, innovation_type}
+  // Used for matching homologues during crossover
 ```
 
-## 4. Critical Data Layouts
+**Mutation -- add_connection**:
 
-### 4.1 AppState Composition
+1. Pick random `(from_node, to_node)` pair
+2. Check if connection exists by scanning this agent's connection array (O(C), typically <500)
+3. If not found and `num_connections < max_connections`: atomically increment `innovation_counter` -> new ID -> insert connection
 
-Source: `src/core/app_state.hpp:111-124`.
+**Mutation -- add_node**:
 
-```mermaid
-classDiagram
-  class AppState {
-    +UiState ui
-    +AgentRegistry predator
-    +AgentRegistry prey
-    +Food food
-    +MetricsSnapshot metrics
-    +RuntimeState runtime
-    +StepBuffers step_buffers
-    +simulation::Batch batch
-  }
+1. Pick random enabled connection `(a, b)` with innovation `I`
+2. Atomically increment `next_node_id` -> hidden node `h`
+3. Atomically increment `innovation_counter` twice -> `I1`, `I2`
+4. Disable connection `(a, b)`, insert `(a, h): I1`, `(h, b): I2`
 
-  class UiState {
-    +bool paused
-    +bool step_requested
-    +int speed_multiplier
-    +uint32 selected_agent_id
-  }
+**Why this is fast**:
 
-  class RuntimeState {
-    +Random rng
-    +uint32 next_agent_id
-    +int step
-  }
+- No hash map contention -- atomics only on counter increments (1-2 ops each)
+- Connection existence check is a simple linear scan -- O(C) is fine since most connections do not mutate
+- All other mutations (weight perturbation, enable/disable) are data movement, no atomics
 
-  AppState --> UiState
-  AppState --> RuntimeState
+## UI Data Path
+
+`report_interval_ticks` and UI `speed_multiplier` are separate runtime cadences.
+
+- `report_interval_ticks` controls artifact export only.
+- UI `speed_multiplier` controls visualization refresh only.
+- `1x` means the UI refreshes every tick.
+- `8x` means the UI refreshes every 8 ticks, so the runtime publishes the latest render snapshot only when `tick % 8 == 0`.
+- These cadences are independent; a report tick may or may not coincide with a UI refresh tick.
+
+Runtime UI refresh now uses a hybrid readback + GPU draw path.
+
+```
+GPU on UI refresh:
+  write compact UiStats readback
+  compact live predators -> contiguous RenderAgentReadback array
+  compact live prey      -> contiguous RenderAgentReadback array
+  compact live food      -> contiguous RenderFoodReadback array
+
+CPU on UI refresh:
+  copy UiStats + compact render snapshot to host
+  rebuild food/prey/predator instance arrays once for that snapshot
+
+wgpu world render pass:
+  upload instance arrays into persistent vertex buffers
+  draw food as instanced billboards
+  draw prey/predators as instanced oriented triangles
+  draw egui panels and selected-agent overlays around the world pass
+
+UiStats readback contains:
+  tick, predator_count, prey_count
+  predator_births, prey_births
+  predator_deaths, prey_deaths
+  kills, food_eaten
+  avg_predator_energy, avg_prey_energy
 ```
 
-### 4.2 AgentRegistry SoA Layout
+This keeps the heavy world draw path on the GPU while limiting host work to compact readback and instance-buffer uploads. The UI no longer builds a full `egui::ColorImage` or uploads a full-scene texture every frame.
 
-Source: `src/core/app_state.hpp:38-67`.
+**Selected Agent Readback (On Demand)**:
 
-```mermaid
-flowchart TB
-  subgraph EntityIndexSpace[Entity Index Space]
-    E0[0]
-    E1[1]
-    EN[N]
-  end
-
-  subgraph Components[SoA Arrays]
-    PX[pos_x]
-    PY[pos_y]
-    VX[vel_x]
-    VY[vel_y]
-    ENE[energy]
-    AGE[age]
-    ALV[alive]
-    SID[species_id]
-    AID[entity_id]
-    GEN[generation]
-  end
-
-  E0 --> PX
-  E0 --> PY
-  E0 --> VX
-  E0 --> VY
-  E0 --> ENE
-  E0 --> AGE
-  E0 --> ALV
-  E0 --> SID
-  E0 --> AID
-  E0 --> GEN
-  E1 --> PX
-  EN --> GEN
+```
+User clicks agent:
+  GPU: kernel_compute_selected_agent_features(slot_id, staging_buffer)
+    - sensor lines (5 nearest predators, prey, food)
+    - vision circle
+    - node activations (forward pass)
+  CPU: cudaMemcpy async -> read staging buffer -> update NN panel
 ```
 
-### 4.3 Registry API Semantics
+The selected-agent path does **not** replace the population render path. It augments the existing full-population view with extra inspection data for the chosen agent.
 
-Sources: `src/core/app_state.cpp:50-56`.
+## Buffer Expansion
 
-```mermaid
-flowchart TB
-  Valid[valid entity check] --> Expr1[entity is not INVALID_ENTITY]
-  Valid --> Expr2[entity is less than registry size]
-  Size[size query] --> Expr3[returns position array size]
+```
+Trigger: when live_count > capacity * 0.9
+
+Expansion:
+  new_capacity = capacity * 2
+  allocate new buffer (all SoA arrays)
+  gpu_copy_all(old_buffer, new_buffer, live_count)
+  swap buffer pointers
+
+No artificial ceiling. Buffers grow as needed.
 ```
 
-### 4.4 Host and Device Buffers
-
-Source: `src/simulation/buffers.hpp`.
-
-```mermaid
-flowchart LR
-  subgraph HostPinned[Host Pinned Buffers]
-    HPX[h_pos_x]
-    HPY[h_pos_y]
-    HVX[h_vel_x]
-    HVY[h_vel_y]
-    HE[h_energy]
-    HA[h_age]
-    HAL[h_alive]
-    HK[h_kill_counts]
-    HC[h_claimed_by]
-    HO[h_brain_outputs]
-  end
-
-  subgraph DeviceBuffers[Device Buffers]
-    DPX[d_pos_x]
-    DPY[d_pos_y]
-    DVX[d_vel_x]
-    DVY[d_vel_y]
-    DE[d_energy]
-    DA[d_age]
-    DAL[d_alive]
-    DK[d_kill_counts]
-    DC[d_claimed_by]
-    DS[d_sensor_inputs]
-    DO[d_brain_outputs]
-  end
-
-  HPX --> DPX
-  HPY --> DPY
-  HVX --> DVX
-  HVY --> DVY
-  HE --> DE
-  HA --> DA
-  HAL --> DAL
-  DK --> HK
-  DC --> HC
-  DO --> HO
-```
-
-### 4.5 Spatial Entry Layout
-
-Source: `src/simulation/layout.hpp:5-17`.
-
-```mermaid
-classDiagram
-  class PopulationEntry {
-    +unsigned id
-    +float pos_x
-    +float pos_y
-    +float padding
-  }
-  class FoodEntry {
-    +unsigned id
-    +float pos_x
-    +float pos_y
-    +float padding
-  }
-```
-
-## 5. ECS Architecture
-
-### 5.1 Lifecycle for Agents
-
-```mermaid
-stateDiagram-v2
-  [*] --> Created: create()
-  Created --> Alive: alive=1
-  Alive --> Dead: energy <= 0 or age >= max_age
-  Dead --> Removed: compact()
-  Removed --> [*]
-```
-
-### 5.2 Food Lifecycle
-
-```mermaid
-stateDiagram-v2
-  [*] --> Active
-  Active --> Inactive: consumed by prey
-  Inactive --> Active: respawn_step()
-```
-
-### 5.3 Compaction Procedure
-
-Source: `src/core/app_state.cpp:62-98`.
-
-```mermaid
-flowchart TB
-  Start[compact loop from first index]
-  AliveCheck{"alive flag at index is not zero"}
-  NextI[increment index]
-  Last[last index is size minus one]
-  SwapNeeded{"i is not last"}
-  SwapComp[swap entities]
-  MoveGenome[move genome from last to current]
-  MoveNet[move network cache entry]
-  SwapInf[swap remove inference cache entry]
-  RemoveLastNet[remove last network cache entry]
-  Pop[remove last SoA entries]
-  Loop[continue while index is in range]
-
-  Start --> AliveCheck
-  AliveCheck -->|yes| NextI --> Loop --> AliveCheck
-  AliveCheck -->|no| Last --> SwapNeeded
-  SwapNeeded -->|yes| SwapComp --> MoveGenome --> MoveNet --> SwapInf --> RemoveLastNet --> Pop --> Loop
-  SwapNeeded -->|no| SwapInf --> RemoveLastNet --> Pop --> Loop
-```
-
-### 5.4 ECS + Evolution Cache Consistency
-
-```mermaid
-sequenceDiagram
-  participant ECS as AgentRegistry
-  participant NC as NetworkCache
-  participant IC as InferenceCache
-
-  ECS->>ECS: compact removes dead slot
-  ECS->>NC: move_entity(last, i)
-  ECS->>IC: swap_remove_entity(i, last)
-  ECS->>NC: remove(last)
-```
-
-## 6. Spatial Grid
-
-### 6.1 Grid Resources
-
-Source: `src/simulation/batch.hpp:91-109`.
-
-```mermaid
-flowchart TB
-  subgraph PredatorGrid
-    PCount[d_predator_cell_counts]
-    POff[d_predator_cell_offsets]
-    PWrite[d_predator_cell_write_offsets]
-    PEntries[d_predator_grid_entries]
-  end
-
-  subgraph PreyGrid
-    YCount[d_prey_cell_counts]
-    YOff[d_prey_cell_offsets]
-    YWrite[d_prey_cell_write_offsets]
-    YEntries[d_prey_grid_entries]
-  end
-
-  subgraph FoodGrid
-    FCount[d_food_cell_counts]
-    FOff[d_food_cell_offsets]
-    FWrite[d_food_cell_write_offsets]
-    FEntries[d_food_grid_entries]
-  end
-
-  Meta[grid_cols, grid_rows, grid_cell_size]
-
-  Meta --> PredatorGrid
-  Meta --> PreyGrid
-  Meta --> FoodGrid
-```
-
-### 6.2 Count-Scan-Scatter Build
-
-Source: `src/simulation/batch.cu:131-192`, `src/simulation/batch.cu:671-776`.
-
-```mermaid
-flowchart LR
-  Input[positions + alive]
-  Count[kernel_count_*_cells_from_positions]
-  Scan[thrust exclusive_scan]
-  Scatter[kernel_scatter_*_cells_from_positions]
-  Entries[cell entries ready]
-
-  Input --> Count --> Scan --> Scatter --> Entries
-```
-
-### 6.3 Sensor Query Pipeline
-
-Source: `src/simulation/batch.cu:194-325`.
-
-```mermaid
-flowchart TB
-  Agent[one agent thread]
-  BaseCell[compute base cell]
-  Radius[compute cell search radius]
-  NeighborLoop[iterate neighboring cells]
-  Cull[cell intersects vision radius]
-  ReadEntries[iterate entries in cell]
-  TrackNearest[keep 5 nearest per target type]
-  Encode[encode_nearest_targets]
-  SelfFeatures[append self energy and velocity]
-  WallFeatures[append wall sensors]
-  Write[write 35 sensor values]
-
-  Agent --> BaseCell --> Radius --> NeighborLoop --> Cull
-  Cull -->|intersects| ReadEntries --> TrackNearest --> NeighborLoop
-  Cull -->|skip| NeighborLoop
-  NeighborLoop --> Encode --> SelfFeatures --> WallFeatures --> Write
-```
-
-### 6.4 Sensor Layout (35 Inputs)
-
-Sources: `src/core/types.hpp:21`, `src/simulation/batch.cu:16-29`.
-
-```mermaid
-flowchart LR
-  subgraph PredatorTargets[10 values]
-    P1[predator 1 dx dy]
-    P2[predator 2 dx dy]
-    P3[predator 3 dx dy]
-    P4[predator 4 dx dy]
-    P5[predator 5 dx dy]
-  end
-
-  subgraph PreyTargets[10 values]
-    Y1[prey 1 dx dy]
-    Y2[prey 2 dx dy]
-    Y3[prey 3 dx dy]
-    Y4[prey 4 dx dy]
-    Y5[prey 5 dx dy]
-  end
-
-  subgraph FoodTargets[10 values]
-    F1[food 1 dx dy]
-    F2[food 2 dx dy]
-    F3[food 3 dx dy]
-    F4[food 4 dx dy]
-    F5[food 5 dx dy]
-  end
-
-  subgraph SelfState[3 values]
-    E[self energy]
-    VX[self vel x]
-    VY[self vel y]
-  end
-
-  subgraph WallState[2 values]
-    WX[wall x signed proximity]
-    WY[wall y signed proximity]
-  end
-```
-
-## 7. NEAT Evolution System
-
-### 7.1 Genome Model
-
-Source: `src/evolution/genome.hpp`.
-
-```mermaid
-classDiagram
-  class Genome {
-    +num_inputs
-    +num_outputs
-    +nodes
-    +connections
-    +add_node()
-    +add_connection()
-    +has_connection()
-    +has_node()
-    +compatibility_distance()
-  }
-
-  class NodeGene {
-    +id
-    +type
-  }
-
-  class ConnectionGene {
-    +in_node
-    +out_node
-    +weight
-    +enabled
-    +innovation
-  }
-
-  class NodeType {
-    Input
-    Hidden
-    Output
-    Bias
-  }
-
-  Genome --> NodeGene
-  Genome --> ConnectionGene
-  NodeGene --> NodeType
-```
-
-### 7.2 Neural Compilation and Launch Path
-
-Sources: `src/evolution/network_cache.hpp`, `src/evolution/inference_cache.hpp`, `src/evolution/evolution_manager.cpp:377-388`.
-
-```mermaid
-flowchart LR
-  GenomeIn[Genome]
-  BuildNN[NeuralNetwork construction]
-  Compile[CompiledNetwork arrays]
-  NetCache[NetworkCache assign]
-  InfCache[InferenceCache prepare_for_launch]
-  Launch[kernel_neural_inference]
-
-  GenomeIn --> BuildNN --> Compile --> NetCache --> InfCache --> Launch
-```
-
-### 7.3 Innovation Tracker
-
-Source: `src/evolution/mutation.cpp:30-55`.
-
-```mermaid
-flowchart TB
-  Pair[node pair in_node out_node]
-  HasInnov{innovation exists}
-  ReturnInnov[return existing innovation]
-  NewInnov[create innovation_counter++]
-  SplitPair[split pair in_node out_node]
-  HasSplit{split node id exists}
-  ReturnSplit[return existing split node id]
-  NewSplit[create next_node_id]
-
-  Pair --> HasInnov
-  HasInnov -->|yes| ReturnInnov
-  HasInnov -->|no| NewInnov
-
-  SplitPair --> HasSplit
-  HasSplit -->|yes| ReturnSplit
-  HasSplit -->|no| NewSplit
-```
-
-### 7.4 Mutation Pipeline
-
-Source: `src/evolution/mutation.cpp:178-198`.
-
-```mermaid
-flowchart TB
-  Start[Mutation::mutate]
-  Weights{rng < mutation_rate}
-  AddConn{rng < add_connection_rate}
-  AddNode{rng < add_node_rate}
-  DelConn{rng < delete_connection_rate}
-  EnsureEnabled[if none enabled then enable random connection]
-  End[return mutated genome]
-
-  Start --> Weights --> AddConn --> AddNode --> DelConn --> EnsureEnabled --> End
-```
-
-### 7.5 Crossover Path
-
-Source: `src/evolution/crossover.cpp:8-76`.
-
-```mermaid
-flowchart TB
-  Parents[parent A and parent B]
-  Index[map genes by innovation]
-  Iterate[iterate all innovation ids]
-  Match{gene in both parents}
-  MatchPick[pick one parent gene]
-  Disabled{either gene disabled}
-  DisableRule[75 percent chance child gene disabled]
-  Single{gene in one parent only}
-  KeepSingle[50 percent chance keep]
-  EnsureOne[if child empty choose one random gene]
-  HiddenNodes[add required hidden nodes]
-  Child[child genome]
-
-  Parents --> Index --> Iterate --> Match
-  Match -->|yes| MatchPick --> Disabled
-  Disabled -->|yes| DisableRule --> Single
-  Disabled -->|no| Single
-  Match -->|no| Single
-  Single --> KeepSingle --> Iterate
-  Iterate --> EnsureOne --> HiddenNodes --> Child
-```
-
-### 7.6 Speciation Path
-
-Sources: `src/evolution/species.hpp`, `src/evolution/evolution_manager.cpp:253-300`.
-
-```mermaid
-flowchart TB
-  Clear[clear all species members]
-  ForGenome[for each genome]
-  FindCompat[check species representative compatibility]
-  Compatible{"distance is at most threshold"}
-  AddMember[add member to species]
-  NewSpecies[create new species with representative]
-  WriteId[write species_id for entity]
-  Refresh[refresh species summaries]
-  Prune[remove empty species]
-
-  Formula[distance uses excess disjoint normalization and weight diff terms]
-
-  Clear --> ForGenome --> FindCompat --> Compatible
-  Compatible -->|yes| AddMember --> WriteId --> ForGenome
-  Compatible -->|no| NewSpecies --> WriteId --> ForGenome
-  ForGenome --> Refresh --> Prune
-  Formula --> FindCompat
-```
-
-### 7.7 Reproduction Path
-
-Source: `src/evolution/evolution_manager.cpp:310-365`.
-
-```mermaid
-flowchart TB
-  BuildGrid[DenseReproductionGrid build]
-  ForEntity[for each entity]
-  EnergyCheck{energy >= reproduction threshold}
-  UsedCheck{already used this step}
-  CandidateSearch[search nearby candidates within mate_range]
-  MateFound{best mate found}
-  Offspring[create_offspring]
-  ChildGenome[crossover and mutation]
-  ChildCache[network_cache assign and inference_cache add_entity]
-  EnergyCost[subtract reproduction energy cost from both parents]
-  MarkUsed[mark both parents used]
-
-  BuildGrid --> ForEntity --> EnergyCheck
-  EnergyCheck -->|no| ForEntity
-  EnergyCheck -->|yes| UsedCheck
-  UsedCheck -->|yes| ForEntity
-  UsedCheck -->|no| CandidateSearch --> MateFound
-  MateFound -->|no| ForEntity
-  MateFound -->|yes| Offspring --> ChildGenome --> ChildCache --> EnergyCost --> MarkUsed --> ForEntity
-```
-
-## 8. GPU Execution
-
-### 8.1 Simulation Kernel Order
-
-Source: `src/simulation/batch.cu:778-849`.
-
-```mermaid
-flowchart LR
-  VPred[kernel_update_vitals predators]
-  VPrey[kernel_update_vitals prey]
-  ClaimFood[kernel_claim_food]
-  FinalFood[kernel_finalize_food]
-  ClaimCombat[kernel_claim_combat]
-  FinalCombat[kernel_finalize_combat]
-  ClampPred[kernel_clamp_energy predators]
-  ClampPrey[kernel_clamp_energy prey]
-  MovePred[kernel_apply_movement predators]
-  MovePrey[kernel_apply_movement prey]
-
-  VPred --> VPrey --> ClaimFood --> FinalFood --> ClaimCombat --> FinalCombat --> ClampPred --> ClampPrey --> MovePred --> MovePrey
-```
-
-### 8.2 Inference Kernel Dataflow
-
-Sources: `src/evolution/inference_cache.cu:39-83`, `src/evolution/inference_cache.hpp:19-31`.
-
-```mermaid
-flowchart TB
-  Slot[network slot thread]
-  Desc[NetworkDescriptor offsets]
-  LoadIn[load SENSOR_COUNT inputs]
-  Bias[set bias node to 1]
-  EvalLoop[for node in eval_order]
-  Sum[sum incoming weighted edges]
-  Act[apply tanh]
-  WriteOut[write OUTPUT_COUNT outputs]
-
-  Slot --> Desc --> LoadIn --> Bias --> EvalLoop --> Sum --> Act --> EvalLoop --> WriteOut
-```
-
-### 8.3 Host-Device Transfer Timeline
-
-Sources: `src/simulation/simulation.cpp:179-184`, `src/simulation/simulation.cpp:202-205`, `src/simulation/buffers.cu`.
-
-```mermaid
-sequenceDiagram
-  participant CPU
-  participant Stream as CUDA stream
-
-  CPU->>Stream: upload_async predator, prey, food
-  CPU->>Stream: launch_build_sensors_async
-  CPU->>Stream: launch_inference_async predator and prey
-  CPU->>Stream: launch_post_inference_async
-  CPU->>Stream: download_async predator, prey, food
-  CPU->>Stream: synchronize
-  CPU->>CPU: apply_results and collect_step_events
-```
-
-### 8.4 Inference Cache Allocation and Repack Policy
-
-Sources: `src/evolution/inference_cache.cu:266-321`, `src/evolution/inference_cache.cu:455-468`, `src/evolution/inference_cache.cu:585-596`.
-
-```mermaid
-flowchart TB
-  Acquire[acquire_entry compiled network]
-  FindFree[search free_entries for capacity fit]
-  Reuse{fit found}
-  ReuseEntry[reuse entry and mark upload pending]
-  NewEntry[append new entry and extend extents]
-  LaunchPrep[prepare_for_launch]
-  Repack{should_repack}
-  Rebuild[build_from network_cache]
-  UploadPending[upload only pending entries]
-  UploadFull[full upload after reallocation]
-
-  Acquire --> FindFree --> Reuse
-  Reuse -->|yes| ReuseEntry --> LaunchPrep
-  Reuse -->|no| NewEntry --> LaunchPrep
-
-  LaunchPrep --> Repack
-  Repack -->|yes| Rebuild --> UploadFull
-  Repack -->|no| UploadPending
-```
-
-## 9. Module Dependencies
-
-### 9.1 CMake Link Graph
-
-Sources: `src/core/CMakeLists.txt`, `src/simulation/CMakeLists.txt`, `src/evolution/CMakeLists.txt`, `src/metrics/CMakeLists.txt`, `src/visualization/CMakeLists.txt`, `src/app/CMakeLists.txt`.
-
-```mermaid
-flowchart TB
-  Core[moonai_core]
-  Sim[moonai_simulation]
-  Evo[moonai_evolution]
-  Metrics[moonai_metrics]
-  Viz[moonai_visualization]
-  App[moonai_app]
-
-  Sim --> Core
-  Evo --> Core
-  Evo --> Sim
-  Metrics --> Core
-  Viz --> Core
-  Viz --> Sim
-  Viz --> Evo
-  App --> Core
-  App --> Sim
-  App --> Evo
-  App --> Metrics
-  App --> Viz
-```
+## Sensor Layout (35 inputs, unchanged)
+
+- 5 nearest predators x 2 values (dx, dy)
+- 5 nearest prey x 2 values
+- 5 nearest food x 2 values
+- Self energy, vel x, vel y (3 values)
+- Wall proximity x, y (2 values)

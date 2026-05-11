@@ -8,7 +8,6 @@ from pathlib import Path
 
 import pandas as pd
 
-
 REQUIRED_RUN_FILES = ("config.json", "stats.csv")
 CONFIG_GROUP_IGNORE_KEYS = {"output_dir", "seed"}
 
@@ -25,8 +24,8 @@ class RunData:
     name: str
     config: dict
     stats: pd.DataFrame
-    final_step: int
-    expected_steps: int | None
+    final_tick: int
+    expected_ticks: int | None
     seed: int | None
     config_signature: str
 
@@ -47,6 +46,20 @@ def load_csv(path: Path, *, required_columns: list[str] | None = None) -> pd.Dat
     return frame
 
 
+def normalize_stats_frame(frame: pd.DataFrame) -> pd.DataFrame:
+    if "avg_complexity" in frame.columns:
+        return frame
+
+    required = {"avg_predator_complexity", "avg_prey_complexity"}
+    if not required.issubset(frame.columns):
+        missing = sorted(required.difference(frame.columns))
+        raise ValueError(f"missing complexity columns {missing} in stats.csv")
+
+    normalized = frame.copy()
+    normalized["avg_complexity"] = (normalized["avg_predator_complexity"] + normalized["avg_prey_complexity"]) / 2.0
+    return normalized
+
+
 def _normalize_value(value):
     if isinstance(value, dict):
         return {key: _normalize_value(value[key]) for key in sorted(value)}
@@ -58,16 +71,12 @@ def _normalize_value(value):
 
 
 def config_signature(config: dict) -> str:
-    normalized = {
-        key: _normalize_value(value)
-        for key, value in config.items()
-        if key not in CONFIG_GROUP_IGNORE_KEYS
-    }
+    normalized = {key: _normalize_value(value) for key, value in config.items() if key not in CONFIG_GROUP_IGNORE_KEYS}
     return json.dumps(normalized, sort_keys=True, separators=(",", ":"))
 
 
-def expected_steps(config: dict) -> int | None:
-    value = int(config.get("max_steps", 0) or 0)
+def expected_ticks(config: dict) -> int | None:
+    value = int(config.get("max_ticks", 0) or 0)
     return value if value > 0 else None
 
 
@@ -82,13 +91,9 @@ def discover_runs(output_dir: Path) -> tuple[list[RunData], list[SkippedRun]]:
         if not path.is_dir():
             continue
 
-        missing_files = [
-            name for name in REQUIRED_RUN_FILES if not (path / name).is_file()
-        ]
+        missing_files = [name for name in REQUIRED_RUN_FILES if not (path / name).is_file()]
         if missing_files:
-            skipped.append(
-                SkippedRun(path, f"missing required files: {', '.join(missing_files)}")
-            )
+            skipped.append(SkippedRun(path, f"missing required files: {', '.join(missing_files)}"))
             continue
 
         try:
@@ -96,25 +101,25 @@ def discover_runs(output_dir: Path) -> tuple[list[RunData], list[SkippedRun]]:
             stats = load_csv(
                 path / "stats.csv",
                 required_columns=[
-                    "step",
+                    "tick",
                     "predator_species",
                     "prey_species",
-                    "avg_complexity",
                     "predator_count",
                     "prey_count",
                 ],
             )
+            stats = normalize_stats_frame(stats)
         except Exception as exc:
             skipped.append(SkippedRun(path, str(exc)))
             continue
 
-        final_step = int(stats["step"].iloc[-1])
-        expected = expected_steps(config)
-        if expected is not None and final_step < expected:
+        final_tick = int(stats["tick"].iloc[-1])
+        expected = expected_ticks(config)
+        if expected is not None and final_tick < expected:
             skipped.append(
                 SkippedRun(
                     path,
-                    f"incomplete run: expected {expected} steps, found {final_step}",
+                    f"incomplete run: expected {expected} ticks, found {final_tick}",
                 )
             )
             continue
@@ -126,8 +131,8 @@ def discover_runs(output_dir: Path) -> tuple[list[RunData], list[SkippedRun]]:
                 name=path.name,
                 config=config,
                 stats=stats,
-                final_step=final_step,
-                expected_steps=expected,
+                final_tick=final_tick,
+                expected_ticks=expected,
                 seed=int(seed) if isinstance(seed, int | float) else None,
                 config_signature=config_signature(config),
             )
@@ -136,9 +141,7 @@ def discover_runs(output_dir: Path) -> tuple[list[RunData], list[SkippedRun]]:
     return runs, skipped
 
 
-def load_optional_csv(
-    path: Path, *, required_columns: list[str] | None = None
-) -> pd.DataFrame | None:
+def load_optional_csv(path: Path, *, required_columns: list[str] | None = None) -> pd.DataFrame | None:
     if not path.is_file():
         return None
     try:
