@@ -102,6 +102,14 @@ pub fn install_renderer_resources(render_state: &egui_wgpu::RenderState, ui_conf
     Ok(())
 }
 
+pub fn refresh_renderer_resources(render_state: &egui_wgpu::RenderState, ui_config: &UiConfig) -> Result<()> {
+    let mut renderer = render_state.renderer.write();
+    let resources = WorldRenderResources::new(&render_state.device, render_state.target_format, ui_config)
+        .context("failed to refresh world renderer resources")?;
+    renderer.callback_resources.insert(resources);
+    Ok(())
+}
+
 pub fn allocate_world_rect(ui: &mut egui::Ui) -> (Rect, egui::Response) {
     ui.allocate_exact_size(ui.available_size().max(egui::vec2(1.0, 1.0)), Sense::click_and_drag())
 }

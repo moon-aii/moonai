@@ -21,16 +21,16 @@ build:
   cp -r runtime/* target/release
 
 
-# Run the release build with default config (pass additional args after --)
+# Run the release build with bundled runtime files
 [default]
 [group('run')]
-run *args: build
-  cargo run --release -- {{args}}
+run: build
+  cargo run --release
 
-# Run the debug build with default config (pass additional args after --)
+# Run the debug build with bundled runtime files
 [group('run')]
-run-debug *args: build-debug
-  cargo run {{args}}
+run-debug: build-debug
+  cargo run
 
 # Generate the self-contained HTML analysis report from output/
 [group('run')]

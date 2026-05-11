@@ -4,11 +4,7 @@
 -- SimulationConfig defaults, so this file never needs updating when parameters
 -- are added or renamed.
 --
--- Usage:
---   ./moonai                                                # runs 'default' directly
---   ./moonai --list                                         # list all experiments
---   ./moonai --all --headless                               # run full experiment matrix
---   ./moonai --experiment baseline_seed42                   # one specific experiment
+-- The application loads this file once at startup and exposes all entries through the UI.
 
 -- Shallow-copy a table and apply any number of override tables (right-most wins).
 local function extend(t, ...)

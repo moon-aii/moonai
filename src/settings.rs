@@ -1,18 +1,40 @@
-use crate::config::ConfigError;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
+use thiserror::Error;
 
-pub fn load_settings(root_dir: &Path) -> Result<UiConfig, ConfigError> {
-    let settings_path = root_dir.join("config").join("settings.json");
+#[derive(Debug, Error)]
+pub enum SettingsError {
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("Settings JSON error: {0}")]
+    Json(#[from] serde_json::Error),
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct AppSettings {
+    #[serde(default)]
+    pub ui: UiConfig,
+}
+
+pub fn load_settings(root_dir: &Path) -> Result<AppSettings, SettingsError> {
+    let settings_path = root_dir.join("settings.json");
     let file = match std::fs::File::open(&settings_path) {
         Ok(f) => f,
-        Err(_) => return Ok(UiConfig::default()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(AppSettings::default()),
+        Err(error) => return Err(SettingsError::Io(error)),
     };
-    let settings: UiConfig = serde_json::from_reader(file)?;
+    let settings: AppSettings = serde_json::from_reader(file)?;
     Ok(settings)
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+pub fn save_settings(root_dir: &Path, settings: &AppSettings) -> Result<(), SettingsError> {
+    let settings_path = root_dir.join("settings.json");
+    let file = std::fs::File::create(settings_path)?;
+    serde_json::to_writer_pretty(std::io::BufWriter::new(file), settings)?;
+    Ok(())
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct UiConfig {
     #[serde(default = "default_predator_size")]
     pub predator_size: f32,

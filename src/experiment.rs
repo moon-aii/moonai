@@ -1,7 +1,6 @@
 use mlua::Lua;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use thiserror::Error;
 
 #[repr(C)]
@@ -40,6 +39,21 @@ pub struct SimulationConfig {
     pub c3_weight: f32,
     pub seed: u64,
     pub report_interval_ticks: u32,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Experiment {
+    pub name: String,
+    pub path: PathBuf,
+    pub simulation_config: SimulationConfig,
+    pub is_default: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExperimentCatalog {
+    path: PathBuf,
+    experiments: Vec<Experiment>,
+    default_index: usize,
 }
 
 impl Default for SimulationConfig {
@@ -83,18 +97,176 @@ impl Default for SimulationConfig {
 }
 
 #[derive(Debug, Error)]
-pub enum ConfigError {
+pub enum ExperimentError {
     #[error("Lua parsing error: {0}")]
     LuaParse(String),
-    #[error("Invalid configuration: {0}")]
-    InvalidConfig(String),
+    #[error("Invalid experiment configuration: {0}")]
+    InvalidExperiment(String),
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
-    #[error("Settings JSON error: {0}")]
-    SettingsJson(#[from] serde_json::Error),
 }
 
-pub fn validate_config(config: &SimulationConfig) -> Result<(), ConfigError> {
+impl ExperimentCatalog {
+    pub fn load(root_dir: &Path) -> Result<Self, ExperimentError> {
+        let path = root_dir.join("experiments.lua");
+        let lua = Lua::new();
+        let defaults = SimulationConfig::default();
+        let globals = lua.globals();
+        let moonai_defaults = lua.create_table().map_err(|e| ExperimentError::LuaParse(e.to_string()))?;
+
+        moonai_defaults
+            .set("grid_size", defaults.grid_size as f64)
+            .map_err(|e| ExperimentError::LuaParse(e.to_string()))?;
+        moonai_defaults
+            .set("predator_count", defaults.predator_count as f64)
+            .map_err(|e| ExperimentError::LuaParse(e.to_string()))?;
+        moonai_defaults
+            .set("prey_count", defaults.prey_count as f64)
+            .map_err(|e| ExperimentError::LuaParse(e.to_string()))?;
+        moonai_defaults
+            .set("food_count", defaults.food_count as f64)
+            .map_err(|e| ExperimentError::LuaParse(e.to_string()))?;
+        moonai_defaults
+            .set("predator_speed", defaults.predator_speed as f64)
+            .map_err(|e| ExperimentError::LuaParse(e.to_string()))?;
+        moonai_defaults
+            .set("prey_speed", defaults.prey_speed as f64)
+            .map_err(|e| ExperimentError::LuaParse(e.to_string()))?;
+        moonai_defaults
+            .set("vision_range", defaults.vision_range as f64)
+            .map_err(|e| ExperimentError::LuaParse(e.to_string()))?;
+        moonai_defaults
+            .set("interaction_range", defaults.interaction_range as f64)
+            .map_err(|e| ExperimentError::LuaParse(e.to_string()))?;
+        moonai_defaults
+            .set("mate_range", defaults.mate_range as f64)
+            .map_err(|e| ExperimentError::LuaParse(e.to_string()))?;
+        moonai_defaults
+            .set("food_respawn_rate", defaults.food_respawn_rate as f64)
+            .map_err(|e| ExperimentError::LuaParse(e.to_string()))?;
+        moonai_defaults
+            .set("energy_drain_per_tick", defaults.energy_drain_per_tick as f64)
+            .map_err(|e| ExperimentError::LuaParse(e.to_string()))?;
+        moonai_defaults
+            .set("energy_gain_from_kill", defaults.energy_gain_from_kill as f64)
+            .map_err(|e| ExperimentError::LuaParse(e.to_string()))?;
+        moonai_defaults
+            .set("energy_gain_from_food", defaults.energy_gain_from_food as f64)
+            .map_err(|e| ExperimentError::LuaParse(e.to_string()))?;
+        moonai_defaults
+            .set("initial_energy", defaults.initial_energy as f64)
+            .map_err(|e| ExperimentError::LuaParse(e.to_string()))?;
+        moonai_defaults
+            .set("max_energy", defaults.max_energy as f64)
+            .map_err(|e| ExperimentError::LuaParse(e.to_string()))?;
+        moonai_defaults
+            .set("reproduction_energy_threshold", defaults.reproduction_energy_threshold as f64)
+            .map_err(|e| ExperimentError::LuaParse(e.to_string()))?;
+        moonai_defaults
+            .set("reproduction_energy_cost", defaults.reproduction_energy_cost as f64)
+            .map_err(|e| ExperimentError::LuaParse(e.to_string()))?;
+        moonai_defaults
+            .set("offspring_initial_energy", defaults.offspring_initial_energy as f64)
+            .map_err(|e| ExperimentError::LuaParse(e.to_string()))?;
+        moonai_defaults
+            .set("max_age", defaults.max_age as f64)
+            .map_err(|e| ExperimentError::LuaParse(e.to_string()))?;
+        moonai_defaults
+            .set("mutation_rate", defaults.mutation_rate as f64)
+            .map_err(|e| ExperimentError::LuaParse(e.to_string()))?;
+        moonai_defaults
+            .set("weight_mutation_power", defaults.weight_mutation_power as f64)
+            .map_err(|e| ExperimentError::LuaParse(e.to_string()))?;
+        moonai_defaults
+            .set("add_node_rate", defaults.add_node_rate as f64)
+            .map_err(|e| ExperimentError::LuaParse(e.to_string()))?;
+        moonai_defaults
+            .set("add_connection_rate", defaults.add_connection_rate as f64)
+            .map_err(|e| ExperimentError::LuaParse(e.to_string()))?;
+        moonai_defaults
+            .set("delete_connection_rate", defaults.delete_connection_rate as f64)
+            .map_err(|e| ExperimentError::LuaParse(e.to_string()))?;
+        moonai_defaults
+            .set("max_hidden_nodes", defaults.max_hidden_nodes as f64)
+            .map_err(|e| ExperimentError::LuaParse(e.to_string()))?;
+        moonai_defaults
+            .set("max_ticks", defaults.max_ticks as f64)
+            .map_err(|e| ExperimentError::LuaParse(e.to_string()))?;
+        moonai_defaults
+            .set("compatibility_threshold", defaults.compatibility_threshold as f64)
+            .map_err(|e| ExperimentError::LuaParse(e.to_string()))?;
+        moonai_defaults
+            .set("compatibility_min_normalization", defaults.compatibility_min_normalization as f64)
+            .map_err(|e| ExperimentError::LuaParse(e.to_string()))?;
+        moonai_defaults
+            .set("c1_excess", defaults.c1_excess as f64)
+            .map_err(|e| ExperimentError::LuaParse(e.to_string()))?;
+        moonai_defaults
+            .set("c2_disjoint", defaults.c2_disjoint as f64)
+            .map_err(|e| ExperimentError::LuaParse(e.to_string()))?;
+        moonai_defaults
+            .set("c3_weight", defaults.c3_weight as f64)
+            .map_err(|e| ExperimentError::LuaParse(e.to_string()))?;
+        moonai_defaults.set("seed", defaults.seed as f64).map_err(|e| ExperimentError::LuaParse(e.to_string()))?;
+        moonai_defaults
+            .set("report_interval_ticks", defaults.report_interval_ticks as f64)
+            .map_err(|e| ExperimentError::LuaParse(e.to_string()))?;
+
+        globals.set("moonai_defaults", moonai_defaults).map_err(|e| ExperimentError::LuaParse(e.to_string()))?;
+
+        let content = std::fs::read_to_string(&path).map_err(ExperimentError::Io)?;
+        let experiments_table: mlua::Table =
+            lua.load(&content).eval().map_err(|e| ExperimentError::LuaParse(e.to_string()))?;
+
+        let mut experiments = Vec::new();
+        for pair in experiments_table.pairs::<String, mlua::Table>() {
+            let (name, cfg_table) = pair.map_err(|e| ExperimentError::LuaParse(e.to_string()))?;
+            let simulation_config = table_to_config(&cfg_table)?;
+            validate_config(&simulation_config)?;
+            experiments.push(Experiment { is_default: name == "default", name, path: path.clone(), simulation_config });
+        }
+
+        experiments.sort_by(|left, right| left.name.cmp(&right.name));
+        if experiments.is_empty() {
+            return Err(ExperimentError::InvalidExperiment(
+                "experiments.lua did not define any experiments".to_owned(),
+            ));
+        }
+
+        let default_index = experiments.iter().position(|experiment| experiment.is_default).unwrap_or(0);
+        Ok(Self { path, experiments, default_index })
+    }
+
+    pub fn experiments(&self) -> &[Experiment] {
+        &self.experiments
+    }
+
+    pub fn default(&self) -> &Experiment {
+        &self.experiments[self.default_index]
+    }
+
+    pub fn get(&self, index: usize) -> Option<&Experiment> {
+        self.experiments.get(index)
+    }
+
+    pub const fn default_index(&self) -> usize {
+        self.default_index
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    pub const fn len(&self) -> usize {
+        self.experiments.len()
+    }
+
+    pub const fn is_empty(&self) -> bool {
+        self.experiments.is_empty()
+    }
+}
+
+pub fn validate_config(config: &SimulationConfig) -> Result<(), ExperimentError> {
     let mut errors = Vec::new();
     if config.grid_size < 1.0 {
         errors.push(format!("grid_size must be >= 1, got {}", config.grid_size));
@@ -196,110 +368,10 @@ pub fn validate_config(config: &SimulationConfig) -> Result<(), ConfigError> {
         ));
     }
 
-    if errors.is_empty() { Ok(()) } else { Err(ConfigError::InvalidConfig(errors.join("; "))) }
+    if errors.is_empty() { Ok(()) } else { Err(ExperimentError::InvalidExperiment(errors.join("; "))) }
 }
 
-pub fn load_config(root_dir: &Path) -> Result<HashMap<String, SimulationConfig>, ConfigError> {
-    let config_path = root_dir.join("config").join("config.lua");
-
-    let lua = Lua::new();
-    let defaults = SimulationConfig::default();
-    let globals = lua.globals();
-    let moonai_defaults = lua.create_table().map_err(|e| ConfigError::LuaParse(e.to_string()))?;
-
-    moonai_defaults.set("grid_size", defaults.grid_size as f64).map_err(|e| ConfigError::LuaParse(e.to_string()))?;
-    moonai_defaults
-        .set("predator_count", defaults.predator_count as f64)
-        .map_err(|e| ConfigError::LuaParse(e.to_string()))?;
-    moonai_defaults.set("prey_count", defaults.prey_count as f64).map_err(|e| ConfigError::LuaParse(e.to_string()))?;
-    moonai_defaults.set("food_count", defaults.food_count as f64).map_err(|e| ConfigError::LuaParse(e.to_string()))?;
-    moonai_defaults
-        .set("predator_speed", defaults.predator_speed as f64)
-        .map_err(|e| ConfigError::LuaParse(e.to_string()))?;
-    moonai_defaults.set("prey_speed", defaults.prey_speed as f64).map_err(|e| ConfigError::LuaParse(e.to_string()))?;
-    moonai_defaults
-        .set("vision_range", defaults.vision_range as f64)
-        .map_err(|e| ConfigError::LuaParse(e.to_string()))?;
-    moonai_defaults
-        .set("interaction_range", defaults.interaction_range as f64)
-        .map_err(|e| ConfigError::LuaParse(e.to_string()))?;
-    moonai_defaults.set("mate_range", defaults.mate_range as f64).map_err(|e| ConfigError::LuaParse(e.to_string()))?;
-    moonai_defaults
-        .set("food_respawn_rate", defaults.food_respawn_rate as f64)
-        .map_err(|e| ConfigError::LuaParse(e.to_string()))?;
-    moonai_defaults
-        .set("energy_drain_per_tick", defaults.energy_drain_per_tick as f64)
-        .map_err(|e| ConfigError::LuaParse(e.to_string()))?;
-    moonai_defaults
-        .set("energy_gain_from_kill", defaults.energy_gain_from_kill as f64)
-        .map_err(|e| ConfigError::LuaParse(e.to_string()))?;
-    moonai_defaults
-        .set("energy_gain_from_food", defaults.energy_gain_from_food as f64)
-        .map_err(|e| ConfigError::LuaParse(e.to_string()))?;
-    moonai_defaults
-        .set("initial_energy", defaults.initial_energy as f64)
-        .map_err(|e| ConfigError::LuaParse(e.to_string()))?;
-    moonai_defaults.set("max_energy", defaults.max_energy as f64).map_err(|e| ConfigError::LuaParse(e.to_string()))?;
-    moonai_defaults
-        .set("reproduction_energy_threshold", defaults.reproduction_energy_threshold as f64)
-        .map_err(|e| ConfigError::LuaParse(e.to_string()))?;
-    moonai_defaults
-        .set("reproduction_energy_cost", defaults.reproduction_energy_cost as f64)
-        .map_err(|e| ConfigError::LuaParse(e.to_string()))?;
-    moonai_defaults
-        .set("offspring_initial_energy", defaults.offspring_initial_energy as f64)
-        .map_err(|e| ConfigError::LuaParse(e.to_string()))?;
-    moonai_defaults.set("max_age", defaults.max_age as f64).map_err(|e| ConfigError::LuaParse(e.to_string()))?;
-    moonai_defaults
-        .set("mutation_rate", defaults.mutation_rate as f64)
-        .map_err(|e| ConfigError::LuaParse(e.to_string()))?;
-    moonai_defaults
-        .set("weight_mutation_power", defaults.weight_mutation_power as f64)
-        .map_err(|e| ConfigError::LuaParse(e.to_string()))?;
-    moonai_defaults
-        .set("add_node_rate", defaults.add_node_rate as f64)
-        .map_err(|e| ConfigError::LuaParse(e.to_string()))?;
-    moonai_defaults
-        .set("add_connection_rate", defaults.add_connection_rate as f64)
-        .map_err(|e| ConfigError::LuaParse(e.to_string()))?;
-    moonai_defaults
-        .set("delete_connection_rate", defaults.delete_connection_rate as f64)
-        .map_err(|e| ConfigError::LuaParse(e.to_string()))?;
-    moonai_defaults
-        .set("max_hidden_nodes", defaults.max_hidden_nodes as f64)
-        .map_err(|e| ConfigError::LuaParse(e.to_string()))?;
-    moonai_defaults.set("max_ticks", defaults.max_ticks as f64).map_err(|e| ConfigError::LuaParse(e.to_string()))?;
-    moonai_defaults
-        .set("compatibility_threshold", defaults.compatibility_threshold as f64)
-        .map_err(|e| ConfigError::LuaParse(e.to_string()))?;
-    moonai_defaults
-        .set("compatibility_min_normalization", defaults.compatibility_min_normalization as f64)
-        .map_err(|e| ConfigError::LuaParse(e.to_string()))?;
-    moonai_defaults.set("c1_excess", defaults.c1_excess as f64).map_err(|e| ConfigError::LuaParse(e.to_string()))?;
-    moonai_defaults
-        .set("c2_disjoint", defaults.c2_disjoint as f64)
-        .map_err(|e| ConfigError::LuaParse(e.to_string()))?;
-    moonai_defaults.set("c3_weight", defaults.c3_weight as f64).map_err(|e| ConfigError::LuaParse(e.to_string()))?;
-    moonai_defaults.set("seed", defaults.seed as f64).map_err(|e| ConfigError::LuaParse(e.to_string()))?;
-    moonai_defaults
-        .set("report_interval_ticks", defaults.report_interval_ticks as f64)
-        .map_err(|e| ConfigError::LuaParse(e.to_string()))?;
-
-    globals.set("moonai_defaults", moonai_defaults).map_err(|e| ConfigError::LuaParse(e.to_string()))?;
-
-    let content = std::fs::read_to_string(config_path).map_err(ConfigError::Io)?;
-    let experiments_table: mlua::Table = lua.load(&content).eval().map_err(|e| ConfigError::LuaParse(e.to_string()))?;
-
-    let mut experiments = HashMap::new();
-    for pair in experiments_table.pairs::<String, mlua::Table>() {
-        let (name, cfg_table) = pair.map_err(|e| ConfigError::LuaParse(e.to_string()))?;
-        let config = table_to_config(&cfg_table)?;
-        experiments.insert(name, config);
-    }
-    Ok(experiments)
-}
-
-fn table_to_config(table: &mlua::Table) -> Result<SimulationConfig, ConfigError> {
+fn table_to_config(table: &mlua::Table) -> Result<SimulationConfig, ExperimentError> {
     let mut config = SimulationConfig::default();
     macro_rules! set_f32 {
         ($k:literal, $f:ident) => {
@@ -312,7 +384,7 @@ fn table_to_config(table: &mlua::Table) -> Result<SimulationConfig, ConfigError>
         ($k:literal, $f:ident) => {
             if let Ok(v) = table.get::<f64>($k) {
                 if v < 0.0 {
-                    return Err(ConfigError::InvalidConfig(format!("$f must be >= 0, got $k")));
+                    return Err(ExperimentError::InvalidExperiment(format!("{} must be >= 0, got {}", $k, v)));
                 }
                 config.$f = v as u64;
             }
@@ -322,7 +394,7 @@ fn table_to_config(table: &mlua::Table) -> Result<SimulationConfig, ConfigError>
         ($k:literal, $f:ident) => {
             if let Ok(v) = table.get::<f64>($k) {
                 if v < 0.0 {
-                    return Err(ConfigError::InvalidConfig(format!("$f must be >= 0, got $k")));
+                    return Err(ExperimentError::InvalidExperiment(format!("{} must be >= 0, got {}", $k, v)));
                 }
                 config.$f = v as u32;
             }

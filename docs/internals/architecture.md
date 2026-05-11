@@ -9,7 +9,7 @@ description: System Architecture.
 MoonAI follows a **GPU-first execution model**.
 
 - **GPU owns all simulation state** — positions, velocities, energy, age, alive flags, genomes, compiled networks, innovation counters, and species metadata live in GPU memory.
-- **CPU is orchestrator only** — it loads config, allocates buffers, launches kernels, and writes files from compact readbacks. It does not maintain or execute a population-wide simulation, evolution, or verification path.
+- **CPU is orchestrator only** — it loads experiments and settings, allocates buffers, launches kernels, and writes files from compact readbacks. It does not maintain or execute a population-wide simulation, evolution, or verification path.
 - **Tick-based cadence** — GPU runs initialization, simulation, evolution, report-window reduction, and on-demand inspection kernels. CPU only sequences those launches.
 - **GPU-native evolution** — seeding, crossover, mutation, network compilation, and species classification happen entirely on GPU via the evolution portion of `src/tick/`.
 - **Cadence separation** — `report_interval_ticks` controls CSV/JSON/species/genome export cadence, while UI `speed_multiplier` controls visualization refresh cadence. They are independent.
@@ -20,19 +20,20 @@ MoonAI follows a **GPU-first execution model**.
 
 ## Desicions
 
-- `config.lua` contains **simulation config only** (no UI overrides).
-- `settings.json` contains **UI config** — loaded from binary directory or explicit path.
-- File locations: `config.lua` and `settings.json` live next to the binary executable.
-  Lookup order: explicit path via CLI flag → binary directory → fallback to defaults.
+- `experiments.lua` contains **simulation config only** (no UI overrides).
+- `settings.json` contains persisted application settings, with UI config nested under `ui`.
+- File locations: `experiments.lua` and `settings.json` live next to the binary executable.
 - `UiConfig` defaults are hardcoded in Rust; `settings.json` overrides them.
+- `ExperimentCatalog` loads `experiments.lua` once at startup and exposes the resulting presets to the UI.
 - `UiState` (paused, speed_multiplier, tick_requested, selected_agent_id) is **runtime state**,
   lives in `src/ui/types.rs`. NOT in the config-loading modules.
 - Predator and prey use separate GPU buffers; no `AgentType` enum needed.
-- `config.lua` is loaded via `mlua`. `moonai_defaults` is injected as a global table.
-- CLI `--experiment` flag is a string passthrough; experiment selection logic lives in the root binary entrypoint.
+- `experiments.lua` is loaded via `mlua`. `moonai_defaults` is injected as a global table.
+- Experiment selection, draft editing, run replacement, and queueing all live in the UI shell.
 - Initial population seeding happens on GPU.
 - `report_interval_ticks` is the artifact-export cadence only. It controls when the runtime writes `stats.csv`, `species.csv`, `genomes.json`, and related report data.
 - UI `speed_multiplier` is the visualization cadence only. `1x` means refresh UI every tick, `8x` means refresh UI every 8 ticks, and so on.
+- Runs execute through one queue-driven lifecycle. When the active run finishes, the next queued snapshot starts automatically.
 - A UI refresh must include all active predators, prey, and food needed for rendering, plus aggregate population statistics.
 - Reproduction is **sexual** — two parent genomes crossover on GPU, mutation applied on GPU, network compiled on GPU.
 - Species classification happens on GPU at report intervals so `species.csv`, species counts, and representative-genome export do not require a host-side genome walk.
@@ -82,26 +83,29 @@ There is no separate CPU reference implementation used to confirm algorithm corr
 - CPU-visible inspection data should stay limited to compact snapshots such as overlay counters and selected-agent inspection results.
 - Metrics export must use GPU-side reduction first, then copy only compact report structs needed for `stats.csv`, `species.csv`, and `genomes.json`.
 
-## CLI routing
+## UI Run Flow
 
 ```mermaid
 flowchart TB
-    Parse[parse CLI]
-    Load[load config.lua]
-    Route{Mode}
-    List[--list]
-    Validate[--validate]
-    RunOne[--experiment name]
-    RunAll[--all]
-    RunDefault[default]
-    Exit[exit]
+    Launch[launch app]
+    LoadExperiments[load experiments.lua once]
+    LoadSettings[load settings.json]
+    Shell[open UI shell]
+    Select[select experiment preset]
+    Draft[edit draft config]
+    Start[start or replace active run]
+    Queue[append draft to queue]
+    Finish[active run finishes]
+    Next{queued run available?}
+    Idle[idle]
 
-    Parse --> Load --> Route
-    Route -->|list| List --> Exit
-    Route -->|validate| Validate --> Exit
-    Route -->|experiment| RunOne --> Exit
-    Route -->|all| RunAll --> Exit
-    Route -->|default| RunDefault --> Exit
+    Launch --> LoadExperiments --> LoadSettings --> Shell
+    Shell --> Select --> Draft
+    Draft --> Start --> Finish
+    Draft --> Queue --> Next
+    Finish --> Next
+    Next -->|yes| Start
+    Next -->|no| Idle
 ```
 
 ## Tick Execution Flow
@@ -109,16 +113,15 @@ flowchart TB
 ```mermaid
 flowchart TD
     subgraph CPU["CPU Orchestrator"]
-        CLI[parse CLI]
-        LUA[load config.lua]
-        ROUTE{Route}
-        INIT_SIM[init src/tick]
-        INIT_LOG[init metrics]
-        INIT_UI[init src/ui]
+        BOOT[load experiments.lua + settings.json]
+        INIT_UI[init src/ui shell]
+        INIT_SIM[create or replace run session]
+        INIT_LOG[init metrics logger]
         TICK_LOOP{while running}
         LOG[log CSV/JSON]
         RENDER[wgpu_render_frame]
         UI[egui_overlay_draw]
+        QUEUE[next queued run]
         EXIT[exit]
     end
 
@@ -143,11 +146,7 @@ flowchart TD
         REPORT[classify_species + reduce_metrics]
     end
 
-    CLI --> LUA --> ROUTE
-    ROUTE -->|list| EXIT
-    ROUTE -->|validate| EXIT
-    ROUTE -->|run| INIT_SIM
-    INIT_SIM --> INIT_LOG --> INIT_UI --> SEED --> TICK_LOOP
+    BOOT --> INIT_UI --> INIT_SIM --> INIT_LOG --> SEED --> TICK_LOOP
     TICK_LOOP -->|dispatch tick ops| GRID
     GRID --> SENSOR --> INFERENCE --> VITALS --> FOOD --> COMBAT --> MOVE
     MOVE --> REPRO
@@ -155,14 +154,16 @@ flowchart TD
     ACTIVATE --> ATOMICS --> UISTATS
     TICK_LOOP -->|report_interval| REPORT --> LOG
     TICK_LOOP -->|GUI mode| RENDER --> UI
-    TICK_LOOP -->|signal| EXIT
+    TICK_LOOP -->|finished| QUEUE
+    QUEUE -->|next queued snapshot| INIT_SIM
+    TICK_LOOP -->|close app| EXIT
 ```
 
 ## Ownership Boundaries
 
 ```mermaid
 flowchart LR
-    CLI[CLI + config loading]
+    SHELL[UI shell + queue]
     HOST[Host orchestrator]
     GPUSTATE[GPU state buffers]
     UIBUF[UI readback buffers]
@@ -170,7 +171,7 @@ flowchart LR
     RENDER[wgpu renderer]
     FILES[CSV / JSON writer]
 
-    CLI --> HOST
+    SHELL --> HOST
     HOST -->|upload config and launch commands| GPUSTATE
     GPUSTATE -->|compact snapshots| UIBUF
     GPUSTATE -->|report-window reductions| METBUF
@@ -182,7 +183,7 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-    START[load config and allocate buffers]
+    START[load settings and experiments]
     SEED[GPU seed kernel]
     LOOP{run ticks}
     STEP[host sequences kernel launches]
@@ -193,6 +194,7 @@ flowchart TD
     SNAPSHOT[GPU publishes full render snapshot + overlay stats]
     UIREQ{UI inspection request}
     INSPECT[GPU selected-agent inspection kernel]
+    NEXT{queued run waiting}
     DRAW[render frame]
     END[shutdown]
 
@@ -204,7 +206,9 @@ flowchart TD
     UIFRAME -->|no| LOOP
     UIREQ -->|yes| INSPECT --> DRAW --> LOOP
     UIREQ -->|no| DRAW --> LOOP
-    LOOP -->|stop| END
+    LOOP -->|run finished| NEXT
+    NEXT -->|yes| SEED
+    NEXT -->|no| END
 ```
 
 ## GPU Kernel Reference

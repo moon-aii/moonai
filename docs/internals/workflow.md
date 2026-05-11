@@ -11,8 +11,7 @@ description: Guide to set up, build, test, and deploy the project.
 ```bash
 just build-debug
 just build
-just run -- --list
-just run -- --validate
+just run
 just analyse
 ```
 
@@ -21,7 +20,7 @@ just analyse
 Before any commit or pull request:
 
 ```bash
-just gate
+just ci
 ```
 
 This runs `just check` followed by `just test`.

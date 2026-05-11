@@ -4,7 +4,7 @@ use std::ptr::{self, NonNull};
 
 use anyhow::{Context as _, Result, anyhow, bail};
 
-use crate::config::SimulationConfig;
+use crate::experiment::SimulationConfig;
 use crate::tick::buffers::{
     FreeListStateReadback, MetricsSummaryReadback, RenderAgentReadback, RenderFoodReadback, RenderSnapshotHeader,
     RenderSnapshotReadback, UiStatsReadback,

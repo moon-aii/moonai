@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-use crate::config::SimulationConfig;
+use crate::experiment::SimulationConfig;
 use crate::profile_scope;
 use crate::tick::buffers::{FreeListStateReadback, MetricsSummaryReadback, RenderSnapshotReadback, UiStatsReadback};
 use crate::tick::evolution::{EvolutionManager, GpuEvolutionConfig};
