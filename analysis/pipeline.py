@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+import shutil
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
-import shutil
 
 from .genome import load_latest_genome, render_genome_plot
 from .html_report import render_html_report
@@ -28,10 +28,7 @@ def run_analysis(input_dir: Path, output_dir: Path) -> None:
     _remove_legacy_artifacts(output_dir)
 
     grouped_runs = _group_runs(runs)
-    aggregates = [
-        build_condition_aggregate(label, grouped_runs[label])
-        for label in sorted(grouped_runs)
-    ]
+    aggregates = [build_condition_aggregate(label, grouped_runs[label]) for label in sorted(grouped_runs)]
 
     generated_at = datetime.now()
     comparison_charts = render_comparison_charts(aggregates)
@@ -43,7 +40,7 @@ def run_analysis(input_dir: Path, output_dir: Path) -> None:
         if genome is not None:
             title = (
                 f"{aggregate.label} - Representative Genome "
-                f"({aggregate.representative_run.name}, Step {genome.get('step', '?')})"
+                f"({aggregate.representative_run.name}, Tick {genome.get('tick', '?')})"
             )
             genome_chart = {
                 "title": "Genome",
@@ -55,7 +52,7 @@ def run_analysis(input_dir: Path, output_dir: Path) -> None:
                 "label": aggregate.label,
                 "run_count": len(aggregate.runs),
                 "representative_run": aggregate.representative_run.name,
-                "final_step": int(aggregate.summary_frame["step"].max()),
+                "final_tick": int(aggregate.summary_frame["tick"].max()),
                 "charts": [chart.__dict__ for chart in charts],
                 "genome_chart": genome_chart,
             }
@@ -72,7 +69,7 @@ def run_analysis(input_dir: Path, output_dir: Path) -> None:
             "run_count": len(runs),
             "condition_count": len(aggregates),
             "skipped_count": len(skipped_runs),
-            "summary_step": summary.step,
+            "summary_tick": summary.tick,
             "summary_headers": summary.headers,
             "summary_rows": [
                 {
@@ -84,10 +81,7 @@ def run_analysis(input_dir: Path, output_dir: Path) -> None:
             ],
             "comparison_charts": [chart.__dict__ for chart in comparison_charts],
             "condition_sections": condition_sections,
-            "skipped_runs": [
-                {"name": skipped.path.name, "reason": skipped.reason}
-                for skipped in skipped_runs
-            ],
+            "skipped_runs": [{"name": skipped.path.name, "reason": skipped.reason} for skipped in skipped_runs],
         }
     )
     report_path.write_text(report_html, encoding="utf-8")

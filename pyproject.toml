@@ -1,3 +1,7 @@
+[build-system]
+requires = ["uv_build>=0.11.8,<0.12"]
+build-backend = "uv_build"
+
 [project]
 name = "moonai-tools"
 version = "0.1.0"
@@ -9,13 +13,23 @@ dependencies = [
     "jinja2>=3.1",
 ]
 
+[tool.uv.build-backend]
+module-name = ["analysis"]
+module-root = ""
+namespace = false
+
 [project.scripts]
 analysis = "analysis.__main__:main"
-profiler = "profiler.__main__:main"
 
-[build-system]
-requires = ["hatchling>=1.24"]
-build-backend = "hatchling.build"
+[dependency-groups]
+dev = [
+    "ruff>=0.15.12",
+    "ty>=0.0.34",
+    "pytest",
+]
+docs = ["zensical>=0.0.37"]
 
-[tool.hatch.build.targets.wheel]
-packages = ["analysis", "profiler"]
+[tool.ruff]
+line-length = 120
+target-version = "py314"
+lint.select = ["E", "F", "I", "UP"]

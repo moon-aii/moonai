@@ -271,8 +271,8 @@
     <p>
       This report summarises {{ run_count }} simulation runs across
       {{ condition_count }} experimental conditions.
-      Metrics are sampled at step {{ summary_step }}
-      (the minimum final step across all conditions).
+      Metrics are sampled at tick {{ summary_tick }}
+      (the minimum final tick across all conditions).
       {{ skipped_count }} run{{ 's' if skipped_count != 1 else '' }} could not be analysed and
       {{ 'are' if skipped_count != 1 else 'is' }} listed in Excluded Runs.
       Source directory: <code>{{ input_dir }}</code>.
@@ -298,7 +298,7 @@
   <section id="summary">
     <h2>Experimental Summary</h2>
     <table>
-      <caption>Grouped metrics at step {{ summary_step }} (mean &plusmn; std across runs).</caption>
+      <caption>Grouped metrics at tick {{ summary_tick }} (mean &plusmn; std across runs).</caption>
       <thead>
         <tr>
           {% for header in summary_headers %}
@@ -342,7 +342,7 @@
         <p class="run-meta">
           <em>Runs:</em> {{ condition.run_count }} &ensp;|&ensp;
           <em>Representative run:</em> {{ condition.representative_run }} &ensp;|&ensp;
-          <em>Final step:</em> {{ condition.final_step }}
+          <em>Final tick:</em> {{ condition.final_tick }}
         </p>
         <div class="figure-grid">
           {% for chart in condition.charts %}

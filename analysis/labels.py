@@ -7,7 +7,6 @@ from dataclasses import dataclass
 
 from .io import RunData
 
-
 SEED_SUFFIX_RE = re.compile(r"^(?P<label>.+)_seed(?P<seed>\d+)$")
 RETRY_SUFFIX_RE = re.compile(r"^(?P<label>.+)_(?P<retry>\d+)$")
 

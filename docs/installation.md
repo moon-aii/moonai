@@ -8,14 +8,14 @@ To be added.
 
 ### Prerequisites
 
-| Tool | Version | Required |
-|------|---------|----------|
-| C++ Compiler | C++17 support (GCC 9+, Clang 10+, MSVC 2019+) | Yes |
-| CMake | 3.21+ | Yes |
-| vcpkg | latest | Yes |
-| CUDA Toolkit | 11.0+ | Yes |
-| just | any | Recommended |
-| uv | 0.11+ | For analysis only |
+| Tool         | Version                                       | Required          |
+| ------------ | --------------------------------------------- | ----------------- |
+| C++ Compiler | C++17 support (GCC 9+, Clang 10+, MSVC 2019+) | Yes               |
+| CMake        | 3.21+                                         | Yes               |
+| vcpkg        | latest                                        | Yes               |
+| CUDA Toolkit | 11.0+                                         | Yes               |
+| just         | any                                           | Recommended       |
+| uv           | 0.11+                                         | For analysis only |
 
 #### Just
 
@@ -56,22 +56,23 @@ just build
 cmake --build build/linux-debug --parallel # manually
 ```
 
-| Command | Description |
-|---------|-------------|
-| `just build` | Debug build |
+| Command        | Description             |
+| -------------- | ----------------------- |
+| `just build`   | Debug build             |
 | `just release` | Optimized release build |
 
 ##### CMake Options
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `MOONAI_BUILD_TESTS` | `ON` | Build unit tests |
-| `MOONAI_BUILD_PROFILER` | `OFF` | Build profiler executable |
+| Option               | Default | Description      |
+| -------------------- | ------- | ---------------- |
+| `MOONAI_BUILD_TESTS` | `ON`    | Build unit tests |
 
 #### 3. Run
 
 ```bash
 just run
 ```
+
+Both `experiments.lua` and `settings.json` ship with the binary and are resolved from the binary directory.
 
 ### Analysis
