@@ -315,25 +315,21 @@ extern "C" std::int32_t moonai_gpu_evolution_compile_population(void *state_ptr,
   if (inspected_slot >= population.capacity) {
     return static_cast<std::int32_t>(CudaStatus::InvalidArgument);
   }
-
-  CompiledNetworkReadbackHeader *device_header = nullptr;
-  auto status = moonai_gpu::alloc_array(&device_header, 1U);
-  if (status != CudaStatus::Success) {
-    return static_cast<std::int32_t>(status);
+  if (state->compiled_header_scratch == nullptr) {
+    return static_cast<std::int32_t>(CudaStatus::InvalidArgument);
   }
 
   const auto blocks = (population.capacity + 255U) / 256U;
   compile_population_kernel<<<blocks == 0U ? 1U : blocks, 256U>>>(population, state->config.num_outputs);
-  status = moonai_gpu::synchronize_kernels();
+  auto status = moonai_gpu::synchronize_kernels();
   if (status == CudaStatus::Success) {
-    compiled_header_kernel<<<1U, 1U>>>(population, population_kind, inspected_slot, state->config.num_outputs, device_header);
+    compiled_header_kernel<<<1U, 1U>>>(population, population_kind, inspected_slot, state->config.num_outputs,
+                                       state->compiled_header_scratch);
     status = moonai_gpu::synchronize_kernels();
   }
   if (status == CudaStatus::Success) {
-    status = moonai_gpu::copy_compact_device_readback(device_header, out_header, sizeof(*out_header));
+    status = moonai_gpu::copy_compact_device_readback(state->compiled_header_scratch, out_header, sizeof(*out_header));
   }
-
-  moonai_gpu::free_array(device_header);
   return static_cast<std::int32_t>(status);
 }
 
@@ -349,15 +345,20 @@ extern "C" std::int32_t moonai_gpu_evolution_compile_slot(void *state_ptr, Popul
   if (slot >= population.capacity) {
     return static_cast<std::int32_t>(CudaStatus::InvalidArgument);
   }
+  if (state->compiled_header_scratch == nullptr) {
+    return static_cast<std::int32_t>(CudaStatus::InvalidArgument);
+  }
 
-  const auto status = moonai_gpu::launch_single_value_readback(out_header, [&](CompiledNetworkReadbackHeader *device_header) {
-    compile_single_slot_kernel<<<1U, 1U>>>(population, slot, state->config.num_outputs);
-    auto launch_status = moonai_gpu::synchronize_kernels();
-    if (launch_status == CudaStatus::Success) {
-      compiled_header_kernel<<<1U, 1U>>>(population, population_kind, slot, state->config.num_outputs, device_header);
-    }
-    return launch_status;
-  });
+  compile_single_slot_kernel<<<1U, 1U>>>(population, slot, state->config.num_outputs);
+  auto status = moonai_gpu::synchronize_kernels();
+  if (status == CudaStatus::Success) {
+    compiled_header_kernel<<<1U, 1U>>>(population, population_kind, slot, state->config.num_outputs,
+                                       state->compiled_header_scratch);
+    status = moonai_gpu::synchronize_kernels();
+  }
+  if (status == CudaStatus::Success) {
+    status = moonai_gpu::copy_compact_device_readback(state->compiled_header_scratch, out_header, sizeof(*out_header));
+  }
   return static_cast<std::int32_t>(status);
 }
 
@@ -374,11 +375,16 @@ extern "C" std::int32_t moonai_gpu_evolution_selected_agent_network(const void *
   if (slot >= population.capacity) {
     return static_cast<std::int32_t>(CudaStatus::InvalidArgument);
   }
+  if (state->selected_network_scratch == nullptr) {
+    return static_cast<std::int32_t>(CudaStatus::InvalidArgument);
+  }
 
-  const auto status = moonai_gpu::launch_single_value_readback(out_network, [&](SelectedAgentNetworkReadback *device_network) {
-    selected_agent_network_kernel<<<1U, 1U>>>(population, population_kind, slot, state->config.num_inputs, device_network);
-    return CudaStatus::Success;
-  });
+  selected_agent_network_kernel<<<1U, 1U>>>(population, population_kind, slot, state->config.num_inputs,
+                                            state->selected_network_scratch);
+  auto status = moonai_gpu::synchronize_kernels();
+  if (status == CudaStatus::Success) {
+    status = moonai_gpu::copy_compact_device_readback(state->selected_network_scratch, out_network, sizeof(*out_network));
+  }
   return static_cast<std::int32_t>(status);
 }
 

@@ -12,11 +12,11 @@ moonai/
 ├── analysis/                   # Python simulation analysis package
 ├── assets/                     # Static assets
 ├── docs/                       # Documentation source
+├── runtime/                    # Shipped runtime assets (experiments.lua, settings.json, assets/)
 ├── src/                        # Single-crate Rust source tree
-├── runtime/                    # Runtime assets (config/, assets/)
 ├── .gitattributes              # Git attributes
 ├── .gitignore                  # Git ignore rules
-├── build.rs                    # CUDA build script
+├── build.rs                    # CUDA build script + shared ABI header generation
 ├── Cargo.toml                  # Rust package manifest
 ├── Cargo.lock                  # Locked dependency versions
 ├── clippy.toml                 # Clippy linter configuration
@@ -34,22 +34,27 @@ moonai/
 
 ## Rust Source Layout (`src/`)
 
-MoonAI now uses a single crate with a flattened source tree. Only `ui/` and `tick/` are subdirectories.
+MoonAI uses a single crate with a flattened source tree. Only `ui/` and `tick/` are subdirectories.
 
 ```
 src/
-├── main.rs                     # Binary entry point and CLI routing
-├── cli.rs                      # Clap args
-├── config.rs                   # SimulationConfig defaults + serde
-├── config_error.rs             # ConfigError + validation rules
-├── lua.rs                      # Lua loading and moonai_defaults injection
-├── settings.rs                 # settings.json loading + UiConfig
-├── types.rs                    # Core shared types/constants
+├── lib.rs                      # Shared crate root for runtime code and ABI generation
+├── main.rs                     # Binary entry point and UI bootstrap
+├── experiment.rs               # Experiment catalog loading, SimulationConfig, defaults, and validation
+├── settings.rs                 # settings.json loading/saving + AppSettings + UiConfig
 ├── metrics.rs                  # Metrics logger facade
-├── signal.rs                   # SIGINT/SIGTERM handling
-├── ui/                         # UI runtime/rendering modules
+├── profiler.rs                 # Runtime scope profiler tree and formatting helpers
+├── ui/
+│   ├── app.rs                  # Top-level UI shell, tabs, queue orchestration, and settings editor
+│   ├── run_queue.rs            # Queued run snapshots and run history tracking
+│   ├── session.rs              # One active simulation session, logging, overlays, and in-run controls
+│   ├── render.rs               # Camera math and neural-network panel drawing
+│   ├── types.rs                # UI runtime state, history structs, and selection types
+│   └── world.rs                # Custom egui_wgpu world renderer and selected-agent overlays
 └── tick/                       # Merged simulation + evolution runtime
 ```
+
+`src/ui/world.rs` owns the custom `egui_wgpu` callback renderer used for instanced world drawing. `src/ui/app.rs` owns the application shell and queue flow, while `src/ui/session.rs` owns one live run at a time.
 
 ## `analysis/`
 
@@ -71,7 +76,7 @@ src/
 | ------------------------ | ------------------------------------------------------ |
 | `_assets`                | Documentation assets, extra.css, extra.js, and reports |
 | `index.md`               | Documentation home                                     |
-| `usage.md`               | Usage guide and CLI reference                          |
+| `usage.md`               | Usage guide and UI workflow                            |
 | `about.md`               | Project overview and motivation                        |
 | `installation.md`        | Build and installation instructions                    |
 | `reports.md`             | Links to project reports                               |

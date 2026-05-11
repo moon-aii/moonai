@@ -1,21 +1,26 @@
-use std::ffi::c_void;
+use crate::profile_scope;
 use std::mem::MaybeUninit;
 use std::ptr::{self, NonNull};
 
 use anyhow::{Context as _, Result, anyhow, bail};
 
-use crate::config::SimulationConfig;
+use crate::experiment::SimulationConfig;
 use crate::tick::buffers::{
     FreeListStateReadback, MetricsSummaryReadback, RenderAgentReadback, RenderFoodReadback, RenderSnapshotHeader,
     RenderSnapshotReadback, UiStatsReadback,
 };
-use crate::tick::network::{CompiledNetworkReadbackHeader, SelectedAgentNetworkReadback, SensorSnapshotReadback};
 use crate::tick::simulation::PopulationKind;
+use crate::tick::simulation::{CompiledNetworkReadbackHeader, SelectedAgentNetworkReadback, SensorSnapshotReadback};
 
 #[repr(i32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CudaStatus {
     Success = 0,
+    InvalidArgument = 1,
+    AllocationFailed = 2,
+    KernelLaunchFailed = 3,
+    DeviceCopyFailed = 4,
+    RuntimeUnavailable = 5,
 }
 
 impl CudaStatus {
@@ -27,13 +32,11 @@ impl CudaStatus {
 pub fn check_cuda(status: CudaStatus, context: &str) -> anyhow::Result<()> {
     if status.is_success() { Ok(()) } else { Err(anyhow::anyhow!("{context} failed with status {status:?}")) }
 }
-use crate::tick::simulation::GpuSimulationConfig;
 use crate::tick::species::{
     GenomeConnectionReadback, GenomeNodeReadback, RepresentativeGenomeHeader, RepresentativeGenomeReadback,
     SpeciesBatchReadbackHeader, SpeciesSummaryReadback,
 };
 
-const PHASE3_HIDDEN_NODE_BUDGET_CAP: u32 = 32;
 const PHASE3_CONNECTION_GROWTH_BUDGET_CAP: u32 = 16;
 
 #[repr(C)]
@@ -55,14 +58,6 @@ pub struct GpuEvolutionConfig {
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct PopulationSummaryReadback {
-    pub population_kind: PopulationKind,
-    pub live_count: u32,
-    pub capacity: u32,
-}
-
-#[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct GpuMutationConfig {
     pub mutation_rate: f32,
     pub weight_mutation_power: f32,
@@ -79,21 +74,16 @@ pub struct ReproductionPairReadback {
     pub parent_b_slot: u32,
 }
 
+#[repr(C)]
+struct GpuEvolutionStateHandle {
+    _private: [u8; 0],
+}
+
 impl GpuEvolutionConfig {
     pub fn for_seed_stage(simulation: &SimulationConfig, num_inputs: u32, num_outputs: u32) -> Result<Self> {
-        let predator_capacity = as_non_negative_u32(simulation.predator_count, "predator_count")?;
-        let prey_capacity = as_non_negative_u32(simulation.prey_count, "prey_count")?;
-        let hidden_budget =
-            as_non_negative_u32(simulation.max_hidden_nodes, "max_hidden_nodes")?.min(PHASE3_HIDDEN_NODE_BUDGET_CAP);
-        if simulation.grid_size <= 0 {
-            bail!("grid_size must be positive for GPU evolution, got {}", simulation.grid_size);
-        }
-        if simulation.initial_energy <= 0.0 {
-            bail!("initial_energy must be positive for GPU evolution, got {}", simulation.initial_energy);
-        }
-        if simulation.max_energy <= 0.0 {
-            bail!("max_energy must be positive for GPU evolution, got {}", simulation.max_energy);
-        }
+        let predator_capacity = simulation.predator_count;
+        let prey_capacity = simulation.prey_count;
+        let hidden_budget = simulation.max_hidden_nodes;
 
         let seeded_node_count = num_inputs
             .checked_add(num_outputs)
@@ -115,10 +105,10 @@ impl GpuEvolutionConfig {
             prey_capacity,
             initial_predator_count: predator_capacity,
             initial_prey_count: prey_capacity,
-            world_size: simulation.grid_size as f32,
+            world_size: simulation.grid_size,
             initial_energy: simulation.initial_energy,
             max_energy: simulation.max_energy,
-            seed: simulation.seed as i64 as u64,
+            seed: simulation.seed,
             num_inputs,
             num_outputs,
             node_stride,
@@ -128,8 +118,10 @@ impl GpuEvolutionConfig {
 }
 
 pub struct EvolutionManager {
-    raw: NonNull<c_void>,
-    simulation: Option<GpuSimulationConfig>,
+    raw: NonNull<GpuEvolutionStateHandle>,
+    simulation: Option<SimulationConfig>,
+    predator_capacity: u32,
+    prey_capacity: u32,
 }
 
 impl EvolutionManager {
@@ -139,12 +131,14 @@ impl EvolutionManager {
     }
 
     pub fn create(config: GpuEvolutionConfig) -> Result<Self> {
+        let predator_capacity = config.predator_capacity;
+        let prey_capacity = config.prey_capacity;
         let mut raw = ptr::null_mut();
         // SAFETY: The CUDA entrypoint reads a plain-old-data config and writes a newly allocated opaque handle.
         let status = unsafe { moonai_gpu_evolution_create(&config, &mut raw) };
         check_cuda_status(status, "moonai_gpu_evolution_create")?;
         let raw = NonNull::new(raw).ok_or_else(|| anyhow!("moonai_gpu_evolution_create returned a null state"))?;
-        Ok(Self { raw, simulation: None })
+        Ok(Self { raw, simulation: None, predator_capacity, prey_capacity })
     }
 
     pub fn seed_initial_population(&mut self) -> Result<()> {
@@ -153,7 +147,7 @@ impl EvolutionManager {
         check_cuda_status(status, "moonai_gpu_evolution_seed_initial_population")
     }
 
-    pub fn set_simulation_config(&mut self, config: GpuSimulationConfig) -> Result<()> {
+    pub fn set_simulation_config(&mut self, config: SimulationConfig) -> Result<()> {
         let status = unsafe { moonai_gpu_simulation_set_config(self.raw.as_ptr(), &config) };
         check_cuda_status(status, "moonai_gpu_simulation_set_config")?;
         self.simulation = Some(config);
@@ -216,41 +210,49 @@ impl EvolutionManager {
     }
 
     pub fn build_spatial_grid(&mut self) -> Result<()> {
+        profile_scope!("spatial_grid");
         let status = unsafe { moonai_gpu_simulation_build_spatial_grid(self.raw.as_ptr()) };
         check_cuda_status(status, "moonai_gpu_simulation_build_spatial_grid")
     }
 
     pub fn compute_sensor_inputs(&mut self) -> Result<()> {
+        profile_scope!("sensor_inputs");
         let status = unsafe { moonai_gpu_simulation_compute_sensor_inputs(self.raw.as_ptr()) };
         check_cuda_status(status, "moonai_gpu_simulation_compute_sensor_inputs")
     }
 
     pub fn infer_population(&mut self, population_kind: PopulationKind) -> Result<()> {
+        profile_scope!("inference");
         let status = unsafe { moonai_gpu_simulation_infer_population(self.raw.as_ptr(), population_kind) };
         check_cuda_status(status, "moonai_gpu_simulation_infer_population")
     }
 
     pub fn update_vitals(&mut self, population_kind: PopulationKind) -> Result<()> {
+        profile_scope!("update_vitals");
         let status = unsafe { moonai_gpu_simulation_update_vitals(self.raw.as_ptr(), population_kind) };
         check_cuda_status(status, "moonai_gpu_simulation_update_vitals")
     }
 
     pub fn resolve_food(&mut self) -> Result<()> {
+        profile_scope!("resolve_food");
         let status = unsafe { moonai_gpu_simulation_resolve_food(self.raw.as_ptr()) };
         check_cuda_status(status, "moonai_gpu_simulation_resolve_food")
     }
 
     pub fn resolve_combat(&mut self) -> Result<()> {
+        profile_scope!("resolve_combat");
         let status = unsafe { moonai_gpu_simulation_resolve_combat(self.raw.as_ptr()) };
         check_cuda_status(status, "moonai_gpu_simulation_resolve_combat")
     }
 
     pub fn apply_movement(&mut self, population_kind: PopulationKind) -> Result<()> {
+        profile_scope!("apply_movement");
         let status = unsafe { moonai_gpu_simulation_apply_movement(self.raw.as_ptr(), population_kind) };
         check_cuda_status(status, "moonai_gpu_simulation_apply_movement")
     }
 
     pub fn reproduction_candidate_count(&mut self, population_kind: PopulationKind) -> Result<u32> {
+        profile_scope!("reprod_candidate");
         readback("moonai_gpu_simulation_reproduction_candidate_count", |out| unsafe {
             moonai_gpu_simulation_reproduction_candidate_count(self.raw.as_ptr(), population_kind, out)
         })
@@ -259,10 +261,16 @@ impl EvolutionManager {
     pub fn expand_population(&mut self, population_kind: PopulationKind, new_capacity: u32) -> Result<()> {
         let status =
             unsafe { moonai_gpu_simulation_expand_population(self.raw.as_ptr(), population_kind, new_capacity) };
-        check_cuda_status(status, "moonai_gpu_simulation_expand_population")
+        check_cuda_status(status, "moonai_gpu_simulation_expand_population")?;
+        match population_kind {
+            PopulationKind::Predator => self.predator_capacity = new_capacity,
+            PopulationKind::Prey => self.prey_capacity = new_capacity,
+        }
+        Ok(())
     }
 
     pub fn run_reproduction(&mut self, population_kind: PopulationKind) -> Result<()> {
+        profile_scope!("run_reprod");
         let pair_count = self.reproduction_candidate_count(population_kind)?;
         if pair_count == 0 {
             return Ok(());
@@ -288,11 +296,13 @@ impl EvolutionManager {
     }
 
     pub fn advance_tick(&mut self) -> Result<()> {
+        profile_scope!("advance_tick");
         let status = unsafe { moonai_gpu_simulation_advance_tick(self.raw.as_ptr()) };
         check_cuda_status(status, "moonai_gpu_simulation_advance_tick")
     }
 
     pub fn simulation_ui_stats(&self) -> Result<UiStatsReadback> {
+        profile_scope!("ui_stats");
         readback("moonai_gpu_simulation_ui_stats", |out| {
             // SAFETY: `self.raw` is valid and `out` points to writable storage for the compact UI stats readback.
             unsafe { moonai_gpu_simulation_ui_stats(self.raw.as_ptr(), out) }
@@ -314,14 +324,22 @@ impl EvolutionManager {
     }
 
     pub fn simulation_refresh_reports(&mut self) -> Result<()> {
+        profile_scope!("refresh_reports");
         let status = unsafe { moonai_gpu_simulation_refresh_reports(self.raw.as_ptr()) };
         check_cuda_status(status, "moonai_gpu_simulation_refresh_reports")
     }
 
-    pub fn population_summary(&self, population_kind: PopulationKind) -> Result<PopulationSummaryReadback> {
-        readback("moonai_gpu_evolution_population_summary", |out| unsafe {
-            moonai_gpu_evolution_population_summary(self.raw.as_ptr(), population_kind, out)
+    pub fn population_live_count(&self, population_kind: PopulationKind) -> Result<u32> {
+        readback("moonai_gpu_evolution_population_live_count", |out| unsafe {
+            moonai_gpu_evolution_population_live_count(self.raw.as_ptr(), population_kind, out)
         })
+    }
+
+    pub const fn population_capacity(&self, population_kind: PopulationKind) -> u32 {
+        match population_kind {
+            PopulationKind::Predator => self.predator_capacity,
+            PopulationKind::Prey => self.prey_capacity,
+        }
     }
 
     pub fn sensor_snapshot(&self, population_kind: PopulationKind, slot: u32) -> Result<SensorSnapshotReadback> {
@@ -616,14 +634,14 @@ impl EvolutionManager {
     }
 
     fn mutation_config(&self) -> Result<GpuMutationConfig> {
-        let simulation = self.simulation.context("simulation config must be set before reproduction")?;
+        let simulation = self.simulation.ok_or_else(|| anyhow!("simulation config not set"))?;
         Ok(GpuMutationConfig {
             mutation_rate: simulation.mutation_rate,
             weight_mutation_power: simulation.weight_mutation_power,
             add_node_rate: simulation.add_node_rate,
             add_connection_rate: simulation.add_connection_rate,
             delete_connection_rate: simulation.delete_connection_rate,
-            max_connection_attempts: simulation.max_connection_attempts,
+            max_connection_attempts: 16,
         })
     }
 
@@ -666,13 +684,6 @@ impl Drop for EvolutionManager {
     }
 }
 
-fn as_non_negative_u32(value: i32, field_name: &str) -> Result<u32> {
-    if value < 0 {
-        bail!("{field_name} must be non-negative, got {value}");
-    }
-    u32::try_from(value).map_err(|_| anyhow!("{field_name} could not be converted to u32: {value}"))
-}
-
 fn readback<T>(context: &str, mut call: impl FnMut(*mut T) -> CudaStatus) -> Result<T> {
     let mut out = MaybeUninit::<T>::uninit();
     check_cuda_status(call(out.as_mut_ptr()), context)?;
@@ -693,80 +704,104 @@ fn check_cuda_status(status: CudaStatus, context: &str) -> Result<()> {
 
 unsafe extern "C" {
     fn moonai_gpu_runtime_available() -> CudaStatus;
-    fn moonai_gpu_evolution_create(config: *const GpuEvolutionConfig, out_state: *mut *mut c_void) -> CudaStatus;
-    fn moonai_gpu_evolution_destroy(state: *mut c_void);
-    fn moonai_gpu_evolution_seed_initial_population(state: *mut c_void) -> CudaStatus;
-    fn moonai_gpu_evolution_population_summary(
-        state: *const c_void,
-        population_kind: PopulationKind,
-        out_summary: *mut PopulationSummaryReadback,
+    fn moonai_gpu_evolution_create(
+        config: *const GpuEvolutionConfig,
+        out_state: *mut *mut GpuEvolutionStateHandle,
     ) -> CudaStatus;
-    fn moonai_gpu_simulation_set_config(state: *mut c_void, config: *const GpuSimulationConfig) -> CudaStatus;
-    fn moonai_gpu_simulation_set_grid(state: *mut c_void, cell_size: f32, grid_cols: u32, grid_rows: u32)
-    -> CudaStatus;
-    fn moonai_gpu_simulation_ensure_food_buffer(state: *mut c_void) -> CudaStatus;
-    fn moonai_gpu_simulation_ensure_counter_buffer(state: *mut c_void) -> CudaStatus;
-    fn moonai_gpu_simulation_ensure_free_lists(state: *mut c_void) -> CudaStatus;
-    fn moonai_gpu_simulation_ensure_reproduction_buffers(state: *mut c_void) -> CudaStatus;
-    fn moonai_gpu_simulation_ensure_metrics_buffer(state: *mut c_void) -> CudaStatus;
-    fn moonai_gpu_simulation_ensure_spatial_grid_buffers(state: *mut c_void) -> CudaStatus;
-    fn moonai_gpu_simulation_reset_counters(state: *mut c_void) -> CudaStatus;
-    fn moonai_gpu_simulation_initialize_free_lists(state: *mut c_void) -> CudaStatus;
-    fn moonai_gpu_simulation_seed_food(state: *mut c_void) -> CudaStatus;
-    fn moonai_gpu_simulation_reset_reproduction_state(state: *mut c_void) -> CudaStatus;
-    fn moonai_gpu_simulation_build_spatial_grid(state: *mut c_void) -> CudaStatus;
-    fn moonai_gpu_simulation_compute_sensor_inputs(state: *mut c_void) -> CudaStatus;
-    fn moonai_gpu_simulation_infer_population(state: *mut c_void, population_kind: PopulationKind) -> CudaStatus;
-    fn moonai_gpu_simulation_update_vitals(state: *mut c_void, population_kind: PopulationKind) -> CudaStatus;
-    fn moonai_gpu_simulation_resolve_food(state: *mut c_void) -> CudaStatus;
-    fn moonai_gpu_simulation_resolve_combat(state: *mut c_void) -> CudaStatus;
-    fn moonai_gpu_simulation_apply_movement(state: *mut c_void, population_kind: PopulationKind) -> CudaStatus;
+    fn moonai_gpu_evolution_destroy(state: *mut GpuEvolutionStateHandle);
+    fn moonai_gpu_evolution_seed_initial_population(state: *mut GpuEvolutionStateHandle) -> CudaStatus;
+    fn moonai_gpu_evolution_population_live_count(
+        state: *const GpuEvolutionStateHandle,
+        population_kind: PopulationKind,
+        out_live_count: *mut u32,
+    ) -> CudaStatus;
+    fn moonai_gpu_simulation_set_config(
+        state: *mut GpuEvolutionStateHandle,
+        config: *const SimulationConfig,
+    ) -> CudaStatus;
+    fn moonai_gpu_simulation_set_grid(
+        state: *mut GpuEvolutionStateHandle,
+        cell_size: f32,
+        grid_cols: u32,
+        grid_rows: u32,
+    ) -> CudaStatus;
+    fn moonai_gpu_simulation_ensure_food_buffer(state: *mut GpuEvolutionStateHandle) -> CudaStatus;
+    fn moonai_gpu_simulation_ensure_counter_buffer(state: *mut GpuEvolutionStateHandle) -> CudaStatus;
+    fn moonai_gpu_simulation_ensure_free_lists(state: *mut GpuEvolutionStateHandle) -> CudaStatus;
+    fn moonai_gpu_simulation_ensure_reproduction_buffers(state: *mut GpuEvolutionStateHandle) -> CudaStatus;
+    fn moonai_gpu_simulation_ensure_metrics_buffer(state: *mut GpuEvolutionStateHandle) -> CudaStatus;
+    fn moonai_gpu_simulation_ensure_spatial_grid_buffers(state: *mut GpuEvolutionStateHandle) -> CudaStatus;
+    fn moonai_gpu_simulation_reset_counters(state: *mut GpuEvolutionStateHandle) -> CudaStatus;
+    fn moonai_gpu_simulation_initialize_free_lists(state: *mut GpuEvolutionStateHandle) -> CudaStatus;
+    fn moonai_gpu_simulation_seed_food(state: *mut GpuEvolutionStateHandle) -> CudaStatus;
+    fn moonai_gpu_simulation_reset_reproduction_state(state: *mut GpuEvolutionStateHandle) -> CudaStatus;
+    fn moonai_gpu_simulation_build_spatial_grid(state: *mut GpuEvolutionStateHandle) -> CudaStatus;
+    fn moonai_gpu_simulation_compute_sensor_inputs(state: *mut GpuEvolutionStateHandle) -> CudaStatus;
+    fn moonai_gpu_simulation_infer_population(
+        state: *mut GpuEvolutionStateHandle,
+        population_kind: PopulationKind,
+    ) -> CudaStatus;
+    fn moonai_gpu_simulation_update_vitals(
+        state: *mut GpuEvolutionStateHandle,
+        population_kind: PopulationKind,
+    ) -> CudaStatus;
+    fn moonai_gpu_simulation_resolve_food(state: *mut GpuEvolutionStateHandle) -> CudaStatus;
+    fn moonai_gpu_simulation_resolve_combat(state: *mut GpuEvolutionStateHandle) -> CudaStatus;
+    fn moonai_gpu_simulation_apply_movement(
+        state: *mut GpuEvolutionStateHandle,
+        population_kind: PopulationKind,
+    ) -> CudaStatus;
     fn moonai_gpu_simulation_reproduction_candidate_count(
-        state: *mut c_void,
+        state: *mut GpuEvolutionStateHandle,
         population_kind: PopulationKind,
         out_pair_count: *mut u32,
     ) -> CudaStatus;
     fn moonai_gpu_simulation_read_reproduction_pairs(
-        state: *const c_void,
+        state: *const GpuEvolutionStateHandle,
         population_kind: PopulationKind,
         max_pairs: u32,
         out_pairs: *mut ReproductionPairReadback,
         out_returned_pairs: *mut u32,
     ) -> CudaStatus;
     fn moonai_gpu_simulation_read_free_slots(
-        state: *const c_void,
+        state: *const GpuEvolutionStateHandle,
         population_kind: PopulationKind,
         max_slots: u32,
         out_slots: *mut u32,
         out_returned_slots: *mut u32,
     ) -> CudaStatus;
     fn moonai_gpu_simulation_apply_reproduction_energy(
-        state: *mut c_void,
+        state: *mut GpuEvolutionStateHandle,
         population_kind: PopulationKind,
         births_applied: u32,
     ) -> CudaStatus;
     fn moonai_gpu_simulation_expand_population(
-        state: *mut c_void,
+        state: *mut GpuEvolutionStateHandle,
         population_kind: PopulationKind,
         new_capacity: u32,
     ) -> CudaStatus;
-    fn moonai_gpu_simulation_advance_tick(state: *mut c_void) -> CudaStatus;
-    fn moonai_gpu_simulation_ui_stats(state: *const c_void, out_stats: *mut UiStatsReadback) -> CudaStatus;
-    fn moonai_gpu_simulation_free_list_state(state: *const c_void, out_state: *mut FreeListStateReadback)
-    -> CudaStatus;
+    fn moonai_gpu_simulation_advance_tick(state: *mut GpuEvolutionStateHandle) -> CudaStatus;
+    fn moonai_gpu_simulation_ui_stats(
+        state: *const GpuEvolutionStateHandle,
+        out_stats: *mut UiStatsReadback,
+    ) -> CudaStatus;
+    fn moonai_gpu_simulation_free_list_state(
+        state: *const GpuEvolutionStateHandle,
+        out_state: *mut FreeListStateReadback,
+    ) -> CudaStatus;
     fn moonai_gpu_simulation_metrics_summary(
-        state: *const c_void,
+        state: *const GpuEvolutionStateHandle,
         out_summary: *mut MetricsSummaryReadback,
     ) -> CudaStatus;
-    fn moonai_gpu_simulation_refresh_reports(state: *mut c_void) -> CudaStatus;
+    fn moonai_gpu_simulation_refresh_reports(state: *mut GpuEvolutionStateHandle) -> CudaStatus;
     fn moonai_gpu_simulation_sensor_snapshot(
-        state: *const c_void,
+        state: *const GpuEvolutionStateHandle,
         population_kind: PopulationKind,
         slot: u32,
         out_snapshot: *mut SensorSnapshotReadback,
     ) -> CudaStatus;
     fn moonai_gpu_simulation_render_snapshot(
-        state: *const c_void,
+        state: *const GpuEvolutionStateHandle,
         max_predators: u32,
         max_prey: u32,
         max_food: u32,
@@ -776,38 +811,38 @@ unsafe extern "C" {
         out_food: *mut RenderFoodReadback,
     ) -> CudaStatus;
     fn moonai_gpu_evolution_compile_population(
-        state: *mut c_void,
+        state: *mut GpuEvolutionStateHandle,
         population_kind: PopulationKind,
         inspected_slot: u32,
         out_header: *mut CompiledNetworkReadbackHeader,
     ) -> CudaStatus;
     fn moonai_gpu_evolution_compile_slot(
-        state: *mut c_void,
+        state: *mut GpuEvolutionStateHandle,
         population_kind: PopulationKind,
         slot: u32,
         out_header: *mut CompiledNetworkReadbackHeader,
     ) -> CudaStatus;
     fn moonai_gpu_evolution_crossover(
-        state: *mut c_void,
+        state: *mut GpuEvolutionStateHandle,
         population_kind: PopulationKind,
         parent_a_slot: u32,
         parent_b_slot: u32,
         offspring_slot: u32,
     ) -> CudaStatus;
     fn moonai_gpu_evolution_mutate_slot(
-        state: *mut c_void,
+        state: *mut GpuEvolutionStateHandle,
         population_kind: PopulationKind,
         slot: u32,
         config: *const GpuMutationConfig,
     ) -> CudaStatus;
     fn moonai_gpu_evolution_selected_agent_network(
-        state: *const c_void,
+        state: *const GpuEvolutionStateHandle,
         population_kind: PopulationKind,
         slot: u32,
         out_network: *mut SelectedAgentNetworkReadback,
     ) -> CudaStatus;
     fn moonai_gpu_evolution_species_summaries(
-        state: *mut c_void,
+        state: *mut GpuEvolutionStateHandle,
         population_kind: PopulationKind,
         max_species: u32,
         out_header: *mut SpeciesBatchReadbackHeader,
@@ -815,20 +850,20 @@ unsafe extern "C" {
         out_representatives: *mut RepresentativeGenomeHeader,
     ) -> CudaStatus;
     fn moonai_gpu_evolution_representative_genome_header(
-        state: *const c_void,
+        state: *const GpuEvolutionStateHandle,
         population_kind: PopulationKind,
         slot: u32,
         out_header: *mut RepresentativeGenomeHeader,
     ) -> CudaStatus;
     fn moonai_gpu_evolution_representative_genome_node_types(
-        state: *const c_void,
+        state: *const GpuEvolutionStateHandle,
         population_kind: PopulationKind,
         slot: u32,
         max_nodes: u32,
         out_node_types: *mut u8,
     ) -> CudaStatus;
     fn moonai_gpu_evolution_representative_genome_connections(
-        state: *const c_void,
+        state: *const GpuEvolutionStateHandle,
         population_kind: PopulationKind,
         slot: u32,
         max_connections: u32,
@@ -844,12 +879,12 @@ unsafe extern "C" {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tick::network::{OUTPUT_COUNT, SENSOR_COUNT};
     use crate::tick::simulation::PopulationKind;
+    use crate::tick::simulation::{OUTPUT_COUNT, SENSOR_COUNT};
 
-    fn smoke_simulation_config(seed: i32) -> SimulationConfig {
+    fn smoke_simulation_config(seed: u64) -> SimulationConfig {
         SimulationConfig {
-            grid_size: 256,
+            grid_size: 256.0,
             predator_count: 8,
             prey_count: 12,
             initial_energy: 0.36,
@@ -864,12 +899,8 @@ mod tests {
         }
     }
 
-    fn seed_manager(seed: i32) -> Result<EvolutionManager> {
-        let config = GpuEvolutionConfig::for_seed_stage(
-            &smoke_simulation_config(seed),
-            SENSOR_COUNT as u32,
-            OUTPUT_COUNT as u32,
-        )?;
+    fn seed_manager(seed: u64) -> Result<EvolutionManager> {
+        let config = GpuEvolutionConfig::for_seed_stage(&smoke_simulation_config(seed), SENSOR_COUNT, OUTPUT_COUNT)?;
         let mut manager = EvolutionManager::create(config)?;
         manager.seed_initial_population()?;
         Ok(manager)

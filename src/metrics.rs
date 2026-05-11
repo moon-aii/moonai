@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use anyhow::Result;
 use serde::Serialize;
 
-use crate::config::SimulationConfig;
+use crate::experiment::SimulationConfig;
 use crate::tick::buffers::MetricsSummaryReadback;
 use crate::tick::simulation::PopulationKind;
 use crate::tick::species::{RepresentativeGenomeReadback, SpeciesSummaryReadback};

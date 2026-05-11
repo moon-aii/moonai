@@ -15,8 +15,8 @@ The platform enables researchers to:
 
 ### Configuration
 
-- **Simulation**: Simulation parameters are defined in the Lua-based `config.lua` experiment file, covering population sizes, mutation rates, NEAT parameters, and energy system settings. Custom experiment sets can be specified at runtime without recompilation.
-- **Visualization**: UI configuration (colors, sizes, panel layout, window settings) is defined in `settings.json`.
+- **Simulation**: Simulation parameters are defined in the Lua-based `experiments.lua` experiment file, covering population sizes, mutation rates, NEAT parameters, and energy system settings. Presets are selected, edited, queued, and run through the application UI.
+- **Visualization**: UI configuration (colors, sizes, panel layout, window settings) is defined in `settings.json` under `ui`.
 
 ### Reproducible Experiments
 

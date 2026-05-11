@@ -16,12 +16,13 @@ mlua = { version = "0.11", features = ["luau"] }
 anyhow = "1.0"
 thiserror = "2.0"
 ctrlc = "3.5"
+bytemuck = { version = "1.25.0", features = ["derive"] }
 eframe = { version = "0.34", default-features = false, features = ["default_fonts", "wayland", "x11", "wgpu"] }
-image = { version = "0.25", default-features = false, features = ["png"] }
 wgpu = { version = "29.0.3", default-features = false, features = ["vulkan"] }
 
 [build-dependencies]
 cc = "1.2"
+cbindgen = "0.29"
 
 [lints.rust]
 elided_lifetimes_in_paths = "deny"
@@ -63,4 +64,4 @@ strip = true
 lto = true
 panic = 'abort'
 incremental = true
-codegen-units = 1
+codegen-units = 16

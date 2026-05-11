@@ -1,15 +1,47 @@
 use serde::{Deserialize, Serialize};
+use std::path::Path;
+use thiserror::Error;
 
-use crate::config::ConfigError;
+#[derive(Debug, Error)]
+pub enum SettingsError {
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("Settings JSON error: {0}")]
+    Json(#[from] serde_json::Error),
+}
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct AppSettings {
+    #[serde(default)]
+    pub ui: UiConfig,
+}
+
+pub fn load_settings(root_dir: &Path) -> Result<AppSettings, SettingsError> {
+    let settings_path = root_dir.join("settings.json");
+    let file = match std::fs::File::open(&settings_path) {
+        Ok(f) => f,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(AppSettings::default()),
+        Err(error) => return Err(SettingsError::Io(error)),
+    };
+    let settings: AppSettings = serde_json::from_reader(file)?;
+    Ok(settings)
+}
+
+pub fn save_settings(root_dir: &Path, settings: &AppSettings) -> Result<(), SettingsError> {
+    let settings_path = root_dir.join("settings.json");
+    let file = std::fs::File::create(settings_path)?;
+    serde_json::to_writer_pretty(std::io::BufWriter::new(file), settings)?;
+    Ok(())
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct UiConfig {
-    #[serde(default = "default_predator_radius")]
-    pub predator_radius: f32,
-    #[serde(default = "default_prey_radius")]
-    pub prey_radius: f32,
-    #[serde(default = "default_food_radius")]
-    pub food_radius: f32,
+    #[serde(default = "default_predator_size")]
+    pub predator_size: f32,
+    #[serde(default = "default_prey_size")]
+    pub prey_size: f32,
+    #[serde(default = "default_food_size")]
+    pub food_size: f32,
     #[serde(default = "default_predator_color")]
     pub predator_color: [f32; 3],
     #[serde(default = "default_prey_color")]
@@ -94,8 +126,12 @@ pub struct UiConfig {
     pub energy_bucket_3: [f32; 3],
     #[serde(default = "default_energy_bucket_4")]
     pub energy_bucket_4: [f32; 3],
-    #[serde(default = "default_ui_side_margin")]
-    pub ui_side_margin: f32,
+    #[serde(default = "default_left_panel_width")]
+    pub left_panel_width: f32,
+    #[serde(default = "default_right_panel_width")]
+    pub right_panel_width: f32,
+    #[serde(default = "default_font_size")]
+    pub font_size: f32,
     #[serde(default = "default_simulation_margin")]
     pub simulation_margin: f32,
     #[serde(default = "default_fps_limit")]
@@ -135,9 +171,9 @@ pub struct UiConfig {
 impl Default for UiConfig {
     fn default() -> Self {
         Self {
-            predator_radius: default_predator_radius(),
-            prey_radius: default_prey_radius(),
-            food_radius: default_food_radius(),
+            predator_size: default_predator_size(),
+            prey_size: default_prey_size(),
+            food_size: default_food_size(),
             predator_color: default_predator_color(),
             prey_color: default_prey_color(),
             food_color: default_food_color(),
@@ -180,7 +216,9 @@ impl Default for UiConfig {
             energy_bucket_2: default_energy_bucket_2(),
             energy_bucket_3: default_energy_bucket_3(),
             energy_bucket_4: default_energy_bucket_4(),
-            ui_side_margin: default_ui_side_margin(),
+            left_panel_width: default_left_panel_width(),
+            right_panel_width: default_right_panel_width(),
+            font_size: default_font_size(),
             simulation_margin: default_simulation_margin(),
             fps_limit: default_fps_limit(),
             window_width: default_window_width(),
@@ -202,41 +240,13 @@ impl Default for UiConfig {
     }
 }
 
-pub fn load_settings(path: Option<&str>) -> Result<UiConfig, ConfigError> {
-    let file = match path {
-        Some(p) => std::fs::File::open(p).map_err(ConfigError::Io)?,
-        None => {
-            let Some(binary_path) = std::env::current_exe().ok() else {
-                return Ok(UiConfig::default());
-            };
-            let Some(binary_dir) = binary_path.parent() else {
-                return Ok(UiConfig::default());
-            };
-            let settings_path = binary_dir.join("config").join("settings.json");
-            match std::fs::File::open(&settings_path) {
-                Ok(f) => f,
-                Err(_) => return Ok(UiConfig::default()),
-            }
-        }
-    };
-    let settings: UiConfig = serde_json::from_reader(file)?;
-    Ok(settings)
-}
-
-pub fn config_path_from_binary() -> Option<std::path::PathBuf> {
-    let binary_path = std::env::current_exe().ok()?;
-    let binary_dir = binary_path.parent()?;
-    let config_path = binary_dir.join("config").join("config.lua");
-    if config_path.exists() { Some(config_path) } else { None }
-}
-
-const fn default_predator_radius() -> f32 {
+const fn default_predator_size() -> f32 {
     1.2
 }
-const fn default_prey_radius() -> f32 {
+const fn default_prey_size() -> f32 {
     1.0
 }
-const fn default_food_radius() -> f32 {
+const fn default_food_size() -> f32 {
     0.6
 }
 const fn default_predator_color() -> [f32; 3] {
@@ -365,8 +375,14 @@ const fn default_energy_bucket_3() -> [f32; 3] {
 const fn default_energy_bucket_4() -> [f32; 3] {
     [0.863, 0.863, 0.863]
 }
-const fn default_ui_side_margin() -> f32 {
+const fn default_left_panel_width() -> f32 {
     300.0
+}
+const fn default_right_panel_width() -> f32 {
+    300.0
+}
+const fn default_font_size() -> f32 {
+    14.0
 }
 const fn default_simulation_margin() -> f32 {
     25.0
