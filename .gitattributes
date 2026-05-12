@@ -1,6 +1,6 @@
 * text=auto eol=lf
 
-papers/* linguist-documentation
+papers/ linguist-documentation
 
 *.pdf binary
 *.png binary
