@@ -19,6 +19,7 @@ enum AppView {
 pub struct App {
     root_dir: PathBuf,
     experiments: ExperimentCatalog,
+    experiment_search: String,
     selected_experiment_index: usize,
     draft_config: SimulationConfig,
     settings: AppSettings,
@@ -69,6 +70,7 @@ impl App {
         Ok(Self {
             root_dir,
             experiments,
+            experiment_search: String::new(),
             selected_experiment_index,
             draft_config,
             settings,
@@ -242,6 +244,11 @@ impl App {
                 } else {
                     ui.label("Active: idle");
                 }
+
+                if self.settings_dirty {
+                    ui.separator();
+                    ui.colored_label(egui::Color32::YELLOW, "Settings unsaved");
+                }
             });
 
             if let Some(message) = &self.status_message {
@@ -274,6 +281,11 @@ impl App {
         egui::Panel::left("moonai_experiment_list").resizable(false).default_size(280.0).show_inside(ui, |ui| {
             ui.heading("Experiments");
             ui.label(format!("Source: {}", self.experiments.path().display()));
+            ui.add(
+                egui::TextEdit::singleline(&mut self.experiment_search)
+                    .hint_text("Search experiments")
+                    .desired_width(f32::INFINITY),
+            );
             ui.separator();
             egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
                 let items: Vec<(usize, String, bool)> = self
@@ -282,7 +294,13 @@ impl App {
                     .iter()
                     .enumerate()
                     .map(|(index, experiment)| (index, experiment.name.clone(), experiment.is_default))
+                    .filter(|(_, name, _)| {
+                        self.experiment_search.is_empty()
+                            || name.to_ascii_lowercase().contains(&self.experiment_search.to_ascii_lowercase())
+                    })
                     .collect();
+                ui.label(format!("Showing {} of {}", items.len(), self.experiments.len()));
+                ui.separator();
                 for (index, name, is_default) in items {
                     let selected = self.selected_experiment_index == index;
                     let label = if is_default { format!("{name} (default)") } else { name };
@@ -298,12 +316,24 @@ impl App {
                 let experiment_name = self.current_experiment().name.clone();
                 let experiment_path = self.current_experiment().path.clone();
                 let preset_config = self.current_experiment().simulation_config;
+                let draft_valid = self.draft_error().is_none();
 
                 ui.heading(&experiment_name);
                 ui.label(format!("Preset file: {}", experiment_path.display()));
                 if preset_config != self.draft_config {
                     ui.label(RichText::new("Draft differs from preset").italics());
                 }
+                ui.horizontal_wrapped(|ui| {
+                    summary_chip(ui, "Seed", self.draft_config.seed.to_string());
+                    summary_chip(ui, "Ticks", self.draft_config.max_ticks.to_string());
+                    summary_chip(
+                        ui,
+                        "Population",
+                        (self.draft_config.predator_count + self.draft_config.prey_count).to_string(),
+                    );
+                    summary_chip(ui, "Food", self.draft_config.food_count.to_string());
+                    summary_chip(ui, "Report", self.draft_config.report_interval_ticks.to_string());
+                });
                 if self.draft_config.max_ticks == 0 {
                     ui.colored_label(
                         egui::Color32::YELLOW,
@@ -316,24 +346,42 @@ impl App {
                     ui.colored_label(egui::Color32::LIGHT_GREEN, "Draft is valid.");
                 }
 
-                ui.horizontal(|ui| {
-                    let run_label = if self.active_session.is_some() { "Replace Current Run" } else { "Start Run" };
-                    if ui.add_enabled(self.draft_error().is_none(), Button::new(run_label)).clicked()
-                        && let Err(error) = self.start_run_now(frame)
-                    {
-                        self.error_message = Some(error.to_string());
-                    }
-                    if ui
-                        .add_enabled(self.draft_error().is_none(), Button::new("Add To Queue"))
-                        .clicked()
-                        && let Err(error) = self.enqueue_current_draft(frame)
-                    {
-                        self.error_message = Some(error.to_string());
-                    }
-                    if ui.button("Reset Draft From Preset").clicked() {
-                        self.draft_config = preset_config;
-                        self.status_message = Some(format!("Reset draft to '{experiment_name}'."));
-                    }
+                section_card(ui, "Run Actions", |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        let run_label = if self.active_session.is_some() { "Replace Current Run" } else { "Start Run" };
+                        if ui.add_enabled(draft_valid, Button::new(run_label)).clicked()
+                            && let Err(error) = self.start_run_now(frame)
+                        {
+                            self.error_message = Some(error.to_string());
+                        }
+                        if ui.add_enabled(draft_valid, Button::new("Add To Queue")).clicked()
+                            && let Err(error) = self.enqueue_current_draft(frame)
+                        {
+                            self.error_message = Some(error.to_string());
+                        }
+                        if ui.button("Reset Draft From Preset").clicked() {
+                            self.draft_config = preset_config;
+                            self.status_message = Some(format!("Reset draft to '{experiment_name}'."));
+                        }
+                        if ui.button("Open Queue").clicked() {
+                            self.active_view = AppView::Queue;
+                        }
+                    });
+                });
+
+                section_card(ui, "Preset Summary", |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        summary_chip(ui, "Grid", format!("{:.0}", self.draft_config.grid_size));
+                        summary_chip(ui, "Predators", self.draft_config.predator_count.to_string());
+                        summary_chip(ui, "Prey", self.draft_config.prey_count.to_string());
+                        summary_chip(ui, "Vision", format!("{:.2}", self.draft_config.vision_range));
+                        summary_chip(ui, "Respawn", format!("{:.3}", self.draft_config.food_respawn_rate));
+                        summary_chip(
+                            ui,
+                            "Species Threshold",
+                            format!("{:.2}", self.draft_config.compatibility_threshold),
+                        );
+                    });
                 });
 
                 ui.separator();
@@ -350,30 +398,56 @@ impl App {
                 ui.heading("Run Queue");
 
                 if let Some(session) = &self.active_session {
-                    ui.separator();
-                    ui.label(format!("Current experiment: {}", session.experiment_name()));
-                    ui.label(format!("Run: {}", session.run_name()));
-                    ui.label(format!("Tick: {}", session.ui_stats().tick));
-                    ui.label(format!("Output: {}", session.output_dir().display()));
-                    if ui.button("Stop Current Run").clicked() {
-                        stop_requested = true;
-                    }
+                    section_card(ui, "Current Run", |ui| {
+                        ui.label(format!("Experiment: {}", session.experiment_name()));
+                        ui.label(format!("Run: {}", session.run_name()));
+                        ui.label(format!("Tick: {}", session.ui_stats().tick));
+                        ui.label(format!("Output: {}", session.output_dir().display()));
+                        ui.horizontal_wrapped(|ui| {
+                            if ui.button("Open Run Tab").clicked() {
+                                self.active_view = AppView::Run;
+                            }
+                            if ui.button("Stop Current Run").clicked() {
+                                stop_requested = true;
+                            }
+                        });
+                    });
                 } else {
-                    ui.separator();
-                    ui.label("No active run.");
+                    section_card(ui, "Current Run", |ui| {
+                        ui.label("No active run.");
+                        if !self.queue.is_empty() {
+                            ui.label("The next queued run will start automatically.");
+                        }
+                    });
                 }
 
                 ui.separator();
-                ui.heading("Pending");
                 let pending_runs: Vec<_> = self.queue.pending().iter().cloned().collect();
-                if pending_runs.is_empty() {
-                    ui.label("Queue is empty.");
-                } else {
+                section_card(ui, "Pending", |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(format!("{} pending run(s)", pending_runs.len()));
+                        if ui.button("Open Experiments").clicked() {
+                            self.active_view = AppView::Experiments;
+                        }
+                    });
+                    if pending_runs.is_empty() {
+                        ui.label("Queue is empty.");
+                        return;
+                    }
                     let mut remove_id = None;
                     for run in pending_runs {
-                        ui.horizontal(|ui| {
-                            ui.label(format!("#{} {}", run.id, run.experiment_name));
-                            ui.label(format!("max_ticks={}", run.simulation_config.max_ticks));
+                        ui.group(|ui| {
+                            ui.horizontal_wrapped(|ui| {
+                                ui.strong(format!("#{} {}", run.id, run.experiment_name));
+                                summary_chip(ui, "Ticks", run.simulation_config.max_ticks.to_string());
+                                summary_chip(ui, "Seed", run.simulation_config.seed.to_string());
+                                summary_chip(
+                                    ui,
+                                    "Population",
+                                    (run.simulation_config.predator_count + run.simulation_config.prey_count)
+                                        .to_string(),
+                                );
+                            });
                             if ui.button("Remove").clicked() {
                                 remove_id = Some(run.id);
                             }
@@ -383,29 +457,34 @@ impl App {
                         let _ = self.queue.remove_pending(id);
                         self.status_message = Some(format!("Removed queue item #{id}"));
                     }
-                }
+                });
 
                 ui.separator();
-                ui.horizontal(|ui| {
-                    ui.heading("History");
-                    if ui.button("Clear History").clicked() {
-                        self.queue.clear_history();
+                section_card(ui, "History", |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(format!("{} recorded run(s)", self.queue.history().len()));
+                        if ui.button("Clear History").clicked() {
+                            self.queue.clear_history();
+                        }
+                    });
+                    if self.queue.history().is_empty() {
+                        ui.label("No completed or failed runs yet.");
+                        return;
                     }
-                });
-                if self.queue.history().is_empty() {
-                    ui.label("No completed or failed runs yet.");
-                } else {
                     for record in self.queue.history() {
-                        ui.separator();
-                        ui.label(format!("#{} {}", record.id, record.experiment_name));
-                        ui.label(format!("Status: {}", record.outcome.label()));
-                        ui.label(format!("Final tick: {}", record.final_tick));
-                        ui.label(format!("Output: {}", record.output_dir.display()));
+                        ui.group(|ui| {
+                            ui.horizontal_wrapped(|ui| {
+                                ui.strong(format!("#{} {}", record.id, record.experiment_name));
+                                summary_chip(ui, "Status", record.outcome.label().to_owned());
+                                summary_chip(ui, "Final Tick", record.final_tick.to_string());
+                            });
+                            ui.label(format!("Output: {}", record.output_dir.display()));
+                        });
                         if let RunOutcome::Failed(message) = &record.outcome {
                             ui.colored_label(egui::Color32::LIGHT_RED, message);
                         }
                     }
-                }
+                });
             });
 
             if stop_requested && let Err(error) = self.stop_active_session(frame) {
@@ -421,24 +500,27 @@ impl App {
             egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
                 ui.heading("Settings");
                 ui.label(format!("File: {}", self.root_dir.join("settings.json").display()));
+                ui.label("Changes apply live. Save persists them for the next launch.");
                 if self.settings_dirty {
                     ui.colored_label(egui::Color32::YELLOW, "Unsaved changes");
                 }
-                ui.horizontal(|ui| {
-                    if ui.button("Save Settings").clicked() {
-                        match save_settings(&self.root_dir, &self.settings) {
-                            Ok(()) => {
-                                self.settings_dirty = false;
-                                self.status_message = Some("Saved settings.json".to_owned());
+                section_card(ui, "Actions", |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        if ui.button("Save Settings").clicked() {
+                            match save_settings(&self.root_dir, &self.settings) {
+                                Ok(()) => {
+                                    self.settings_dirty = false;
+                                    self.status_message = Some("Saved settings.json".to_owned());
+                                }
+                                Err(error) => self.error_message = Some(error.to_string()),
                             }
-                            Err(error) => self.error_message = Some(error.to_string()),
                         }
-                    }
-                    if ui.button("Reset To Defaults").clicked() {
-                        self.settings.ui = UiConfig::default();
-                        self.settings_dirty = true;
-                        changed = true;
-                    }
+                        if ui.button("Reset To Defaults").clicked() {
+                            self.settings.ui = UiConfig::default();
+                            self.settings_dirty = true;
+                            changed = true;
+                        }
+                    });
                 });
 
                 ui.separator();
@@ -627,6 +709,22 @@ fn draw_ui_config_editor(ui: &mut egui::Ui, config: &mut UiConfig) -> bool {
 fn grouped_section(ui: &mut egui::Ui, title: &str, add_contents: impl FnOnce(&mut egui::Ui)) {
     egui::CollapsingHeader::new(title).default_open(true).show(ui, |ui| {
         add_contents(ui);
+    });
+}
+
+fn section_card(ui: &mut egui::Ui, title: &str, add_contents: impl FnOnce(&mut egui::Ui)) {
+    ui.group(|ui| {
+        ui.heading(title);
+        add_contents(ui);
+    });
+}
+
+fn summary_chip(ui: &mut egui::Ui, label: &str, value: String) {
+    ui.group(|ui| {
+        ui.horizontal(|ui| {
+            ui.label(RichText::new(label).small().weak());
+            ui.strong(value);
+        });
     });
 }
 
