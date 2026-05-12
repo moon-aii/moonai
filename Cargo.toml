@@ -64,4 +64,3 @@ strip = true
 lto = true
 panic = 'abort'
 incremental = true
-codegen-units = 16
