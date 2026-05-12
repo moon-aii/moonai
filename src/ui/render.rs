@@ -74,7 +74,7 @@ pub fn paint_network(ui: &mut egui::Ui, rect: Rect, ui_config: &UiConfig, select
     }
 }
 
-fn node_positions(rect: Rect, genome: &crate::tick::species::RepresentativeGenomeReadback) -> HashMap<u32, Pos2> {
+fn node_positions(rect: Rect, genome: &crate::sim::species::RepresentativeGenomeReadback) -> HashMap<u32, Pos2> {
     let mut inputs = Vec::new();
     let mut hidden = Vec::new();
     let mut outputs = Vec::new();

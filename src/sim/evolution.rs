@@ -5,12 +5,12 @@ use std::ptr::{self, NonNull};
 use anyhow::{Context as _, Result, anyhow, bail};
 
 use crate::experiment::SimulationConfig;
-use crate::tick::buffers::{
+use crate::sim::buffers::{
     FreeListStateReadback, MetricsSummaryReadback, RenderAgentReadback, RenderFoodReadback, RenderSnapshotHeader,
     RenderSnapshotReadback, UiStatsReadback,
 };
-use crate::tick::simulation::PopulationKind;
-use crate::tick::simulation::{CompiledNetworkReadbackHeader, SelectedAgentNetworkReadback, SensorSnapshotReadback};
+use crate::sim::simulation::PopulationKind;
+use crate::sim::simulation::{CompiledNetworkReadbackHeader, SelectedAgentNetworkReadback, SensorSnapshotReadback};
 
 #[repr(i32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -32,7 +32,7 @@ impl CudaStatus {
 pub fn check_cuda(status: CudaStatus, context: &str) -> anyhow::Result<()> {
     if status.is_success() { Ok(()) } else { Err(anyhow::anyhow!("{context} failed with status {status:?}")) }
 }
-use crate::tick::species::{
+use crate::sim::species::{
     GenomeConnectionReadback, GenomeNodeReadback, RepresentativeGenomeHeader, RepresentativeGenomeReadback,
     SpeciesBatchReadbackHeader, SpeciesSummaryReadback,
 };
@@ -879,8 +879,8 @@ unsafe extern "C" {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tick::simulation::PopulationKind;
-    use crate::tick::simulation::{OUTPUT_COUNT, SENSOR_COUNT};
+    use crate::sim::simulation::PopulationKind;
+    use crate::sim::simulation::{OUTPUT_COUNT, SENSOR_COUNT};
 
     fn smoke_simulation_config(seed: u64) -> SimulationConfig {
         SimulationConfig {

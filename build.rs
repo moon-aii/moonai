@@ -7,16 +7,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for path in [
         "src/lib.rs",
         "src/config.rs",
-        "src/tick/mod.rs",
-        "src/tick/buffers.rs",
-        "src/tick/evolution.rs",
-        "src/tick/simulation.rs",
-        "src/tick/species.rs",
-        "src/tick/evolution_cuda.cuh",
-        "src/tick/kernel.cu",
-        "src/tick/crossover.cu",
-        "src/tick/mutation.cu",
-        "src/tick/network_compilation.cu",
+        "src/sim/mod.rs",
+        "src/sim/buffers.rs",
+        "src/sim/evolution.rs",
+        "src/sim/simulation.rs",
+        "src/sim/species.rs",
+        "src/sim/evolution_cuda.cuh",
+        "src/sim/kernel.cu",
+        "src/sim/crossover.cu",
+        "src/sim/mutation.cu",
+        "src/sim/network_compilation.cu",
     ] {
         println!("cargo:rerun-if-changed={path}");
     }
@@ -67,10 +67,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .flag("-arch=native")
         .flag("-O2")
         .files(&[
-            "src/tick/kernel.cu",
-            "src/tick/crossover.cu",
-            "src/tick/mutation.cu",
-            "src/tick/network_compilation.cu",
+            "src/sim/kernel.cu",
+            "src/sim/crossover.cu",
+            "src/sim/mutation.cu",
+            "src/sim/network_compilation.cu",
         ])
         .compile("moonai_cuda");
 

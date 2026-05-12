@@ -12,10 +12,10 @@ use crate::profile_scope;
 use crate::profiler::Profiler;
 use crate::profiler::ProfilerSession;
 use crate::settings::UiConfig;
-use crate::tick::buffers::{MetricsSummaryReadback, RenderAgentReadback, RenderSnapshotReadback, UiStatsReadback};
-use crate::tick::simulation::PopulationKind;
-use crate::tick::simulation::SimulationState;
-use crate::tick::species::MAX_SPECIES_SUMMARIES;
+use crate::sim::buffers::{MetricsSummaryReadback, RenderAgentReadback, RenderSnapshotReadback, UiStatsReadback};
+use crate::sim::simulation::PopulationKind;
+use crate::sim::simulation::SimulationState;
+use crate::sim::species::MAX_SPECIES_SUMMARIES;
 use crate::ui::render;
 use crate::ui::run_queue::{QueuedRun, RunOutcome, RunRecord};
 use crate::ui::types::{

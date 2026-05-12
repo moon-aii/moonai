@@ -1,10 +1,10 @@
 use std::collections::VecDeque;
 
-use crate::tick::buffers::{MetricsSummaryReadback, RenderAgentReadback, UiStatsReadback};
-use crate::tick::simulation::PopulationKind;
-use crate::tick::simulation::SelectedAgentNetworkReadback;
-use crate::tick::simulation::SensorSnapshotReadback;
-use crate::tick::species::RepresentativeGenomeReadback;
+use crate::sim::buffers::{MetricsSummaryReadback, RenderAgentReadback, UiStatsReadback};
+use crate::sim::simulation::PopulationKind;
+use crate::sim::simulation::SelectedAgentNetworkReadback;
+use crate::sim::simulation::SensorSnapshotReadback;
+use crate::sim::species::RepresentativeGenomeReadback;
 
 #[derive(Debug, Clone)]
 pub struct UiState {

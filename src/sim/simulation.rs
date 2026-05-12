@@ -2,9 +2,9 @@ use anyhow::Result;
 
 use crate::experiment::SimulationConfig;
 use crate::profile_scope;
-use crate::tick::buffers::{FreeListStateReadback, MetricsSummaryReadback, RenderSnapshotReadback, UiStatsReadback};
-use crate::tick::evolution::{EvolutionManager, GpuEvolutionConfig};
-use crate::tick::species::{
+use crate::sim::buffers::{FreeListStateReadback, MetricsSummaryReadback, RenderSnapshotReadback, UiStatsReadback};
+use crate::sim::evolution::{EvolutionManager, GpuEvolutionConfig};
+use crate::sim::species::{
     RepresentativeGenomeHeader, RepresentativeGenomeReadback, SpeciesBatchReadbackHeader, SpeciesSummaryReadback,
 };
 use serde::{Deserialize, Serialize};

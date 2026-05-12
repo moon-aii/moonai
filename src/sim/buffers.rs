@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::tick::simulation::PopulationKind;
+use crate::sim::simulation::PopulationKind;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
