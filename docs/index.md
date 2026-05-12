@@ -42,6 +42,8 @@ hide:
 
     [:fontawesome-regular-file-lines: Test Plan Report](https://raw.githubusercontent.com/moon-aii/moonai/main/papers/TestPlanReport.pdf)
 
+    [:fontawesome-regular-file-lines: Final Report](https://raw.githubusercontent.com/moon-aii/moonai/main/papers/FinalReport.pdf)
+
 </div>
 
 <div class="grid cards" markdown>
