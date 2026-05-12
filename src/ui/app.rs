@@ -4,6 +4,7 @@ use anyhow::{Context as _, Result};
 use eframe::egui::{self, Button, DragValue, RichText};
 
 use crate::experiment::{Experiment, ExperimentCatalog, SimulationConfig, validate_config};
+use crate::profile_scope;
 use crate::settings::{AppSettings, UiConfig, save_settings};
 use crate::ui::run_queue::{QueuedRun, RunOutcome, RunQueue, RunRecord};
 use crate::ui::session::{RunSession, apply_text_style};
@@ -541,6 +542,8 @@ impl App {
 impl eframe::App for App {
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         self.error_message = None;
+        let _profiler_session = self.active_session.as_ref().map(RunSession::bind_profiler);
+        profile_scope!("frame");
         if let Some(session) = &mut self.active_session
             && self.active_view == AppView::Run
         {
@@ -632,12 +635,6 @@ fn draw_ui_config_editor(ui: &mut egui::Ui, config: &mut UiConfig) -> bool {
         changed |= f32_row(ui, "left_panel_width", &mut config.left_panel_width, 1.0);
         changed |= f32_row(ui, "right_panel_width", &mut config.right_panel_width, 1.0);
         changed |= f32_row(ui, "font_size", &mut config.font_size, 0.5);
-        changed |= f32_row(ui, "simulation_margin", &mut config.simulation_margin, 0.5);
-        changed |= u32_row(ui, "fps_limit", &mut config.fps_limit, 1.0);
-        changed |= f32_row(ui, "nn_panel_margin", &mut config.nn_panel_margin, 0.5);
-        changed |= f32_row(ui, "nn_panel_gap", &mut config.nn_panel_gap, 0.5);
-        changed |= f32_row(ui, "selected_info_panel_height", &mut config.selected_info_panel_height, 0.5);
-        changed |= f32_row(ui, "nn_panel_top_reserve", &mut config.nn_panel_top_reserve, 0.5);
         changed |= f32_row(ui, "nn_panel_min_height", &mut config.nn_panel_min_height, 0.5);
         changed |= f32_row(ui, "nn_panel_min_width", &mut config.nn_panel_min_width, 0.5);
         changed |= f32_row(ui, "nn_panel_max_width", &mut config.nn_panel_max_width, 0.5);
@@ -655,8 +652,6 @@ fn draw_ui_config_editor(ui: &mut egui::Ui, config: &mut UiConfig) -> bool {
         changed |= f32_row(ui, "triangle_tip_factor", &mut config.triangle_tip_factor, 0.05);
         changed |= f32_row(ui, "triangle_base_factor", &mut config.triangle_base_factor, 0.05);
         changed |= f32_row(ui, "triangle_width_factor", &mut config.triangle_width_factor, 0.05);
-        changed |= u32_row(ui, "circle_point_count", &mut config.circle_point_count, 1.0);
-        changed |= u32_row(ui, "vision_point_count", &mut config.vision_point_count, 1.0);
         changed |= f32_row(ui, "selected_outline_thickness", &mut config.selected_outline_thickness, 0.1);
     });
     grouped_section(ui, "World Colors", |ui| {
@@ -671,37 +666,22 @@ fn draw_ui_config_editor(ui: &mut egui::Ui, config: &mut UiConfig) -> bool {
         changed |= rgb_row(ui, "panel_bg_color", &mut config.panel_bg_color);
         changed |= f32_row(ui, "panel_alpha", &mut config.panel_alpha, 1.0);
         changed |= rgb_row(ui, "panel_outline_color", &mut config.panel_outline_color);
-        changed |= rgba_row(ui, "vision_fill_color", &mut config.vision_fill_color);
-        changed |= f32_row(ui, "vision_fill_alpha", &mut config.vision_fill_alpha, 1.0);
+        changed |= rgb_row(ui, "vision_outline_color", &mut config.vision_outline_color);
         changed |= f32_row(ui, "vision_outline_alpha", &mut config.vision_outline_alpha, 1.0);
         changed |= f32_row(ui, "sensor_alpha", &mut config.sensor_alpha, 1.0);
         changed |= f32_row(ui, "food_sensor_alpha", &mut config.food_sensor_alpha, 1.0);
         changed |= f32_row(ui, "food_alpha", &mut config.food_alpha, 1.0);
-        changed |= f32_row(ui, "bar_alpha", &mut config.bar_alpha, 1.0);
     });
-    grouped_section(ui, "Text And Charts", |ui| {
-        changed |= rgb_row(ui, "title_color", &mut config.title_color);
-        changed |= rgb_row(ui, "fitness_color", &mut config.fitness_color);
+    grouped_section(ui, "UI Colors", |ui| {
         changed |= rgb_row(ui, "muted_color", &mut config.muted_color);
         changed |= rgb_row(ui, "pause_color", &mut config.pause_color);
-        changed |= rgb_row(ui, "event_kill_color", &mut config.event_kill_color);
-        changed |= rgb_row(ui, "event_food_color", &mut config.event_food_color);
-        changed |= rgb_row(ui, "event_birth_color", &mut config.event_birth_color);
-        changed |= rgb_row(ui, "event_death_color", &mut config.event_death_color);
-        changed |= rgb_row(ui, "chart_best_color", &mut config.chart_best_color);
-        changed |= rgb_row(ui, "chart_avg_color", &mut config.chart_avg_color);
     });
-    grouped_section(ui, "Network And Energy Colors", |ui| {
+    grouped_section(ui, "Network Colors", |ui| {
         changed |= rgba_row(ui, "nn_node_outline_color", &mut config.nn_node_outline_color);
         changed |= rgb_row(ui, "nn_input_color", &mut config.nn_input_color);
         changed |= rgb_row(ui, "nn_bias_color", &mut config.nn_bias_color);
         changed |= rgb_row(ui, "nn_hidden_color", &mut config.nn_hidden_color);
         changed |= rgb_row(ui, "nn_output_color", &mut config.nn_output_color);
-        changed |= rgb_row(ui, "energy_bucket_0", &mut config.energy_bucket_0);
-        changed |= rgb_row(ui, "energy_bucket_1", &mut config.energy_bucket_1);
-        changed |= rgb_row(ui, "energy_bucket_2", &mut config.energy_bucket_2);
-        changed |= rgb_row(ui, "energy_bucket_3", &mut config.energy_bucket_3);
-        changed |= rgb_row(ui, "energy_bucket_4", &mut config.energy_bucket_4);
     });
     changed
 }

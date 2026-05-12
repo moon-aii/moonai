@@ -18,6 +18,7 @@ MoonAI separates experiment definitions from persisted application settings:
 Both files ship next to the binary. The runtime resolves them from `$(dirname $0)/`.
 
 `settings.json` stores persisted application settings as a top-level object. UI-related values live under `ui`.
+Color settings use hex strings: `#RRGGBB` for RGB and `#RRGGBBAA` for RGBA.
 
 ### `experiments.lua`
 
@@ -55,6 +56,7 @@ Set `seed` to `0` for random seed, or a fixed value for reproducible runs.
 ```json
 {
   "ui": {
+    "predator_color": "#FF6B36",
     "left_panel_width": 360.0,
     "right_panel_width": 360.0,
     "font_size": 12.0

@@ -453,9 +453,9 @@ fn paint_selected_overlay(
         Stroke::new(
             1.0,
             Color32::from_rgba_unmultiplied(
-                unit_to_u8(ui_config.vision_fill_color[0]),
-                unit_to_u8(ui_config.vision_fill_color[1]),
-                unit_to_u8(ui_config.vision_fill_color[2]),
+                unit_to_u8(ui_config.vision_outline_color[0]),
+                unit_to_u8(ui_config.vision_outline_color[1]),
+                unit_to_u8(ui_config.vision_outline_color[2]),
                 alpha_to_u8(ui_config.vision_outline_alpha),
             ),
         ),

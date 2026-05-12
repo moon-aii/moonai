@@ -19,12 +19,11 @@ pub struct AppSettings {
 pub fn load_settings(root_dir: &Path) -> Result<AppSettings, SettingsError> {
     let settings_path = root_dir.join("settings.json");
     let file = match std::fs::File::open(&settings_path) {
-        Ok(f) => f,
+        Ok(file) => file,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(AppSettings::default()),
         Err(error) => return Err(SettingsError::Io(error)),
     };
-    let settings: AppSettings = serde_json::from_reader(file)?;
-    Ok(settings)
+    Ok(serde_json::from_reader(file)?)
 }
 
 pub fn save_settings(root_dir: &Path, settings: &AppSettings) -> Result<(), SettingsError> {
@@ -42,30 +41,28 @@ pub struct UiConfig {
     pub prey_size: f32,
     #[serde(default = "default_food_size")]
     pub food_size: f32,
-    #[serde(default = "default_predator_color")]
+    #[serde(default = "default_predator_color", with = "rgb_hex")]
     pub predator_color: [f32; 3],
-    #[serde(default = "default_prey_color")]
+    #[serde(default = "default_prey_color", with = "rgb_hex")]
     pub prey_color: [f32; 3],
-    #[serde(default = "default_food_color")]
+    #[serde(default = "default_food_color", with = "rgb_hex")]
     pub food_color: [f32; 3],
-    #[serde(default = "default_grid_color")]
+    #[serde(default = "default_grid_color", with = "rgb_hex")]
     pub grid_color: [f32; 3],
-    #[serde(default = "default_border_color")]
+    #[serde(default = "default_border_color", with = "rgb_hex")]
     pub border_color: [f32; 3],
-    #[serde(default = "default_bg_color")]
+    #[serde(default = "default_bg_color", with = "rgb_hex")]
     pub bg_color: [f32; 3],
-    #[serde(default = "default_panel_bg_color")]
+    #[serde(default = "default_panel_bg_color", with = "rgb_hex")]
     pub panel_bg_color: [f32; 3],
     #[serde(default = "default_panel_alpha")]
     pub panel_alpha: f32,
-    #[serde(default = "default_panel_outline_color")]
+    #[serde(default = "default_panel_outline_color", with = "rgb_hex")]
     pub panel_outline_color: [f32; 3],
-    #[serde(default = "default_vision_fill_alpha")]
-    pub vision_fill_alpha: f32,
     #[serde(default = "default_vision_outline_alpha")]
     pub vision_outline_alpha: f32,
-    #[serde(default = "default_vision_fill_color")]
-    pub vision_fill_color: [f32; 4],
+    #[serde(default = "default_vision_outline_color", with = "rgb_hex")]
+    pub vision_outline_color: [f32; 3],
     #[serde(default = "default_sensor_alpha")]
     pub sensor_alpha: f32,
     #[serde(default = "default_food_sensor_alpha")]
@@ -74,80 +71,36 @@ pub struct UiConfig {
     pub food_alpha: f32,
     #[serde(default = "default_selected_outline_thickness")]
     pub selected_outline_thickness: f32,
-    #[serde(default = "default_circle_point_count")]
-    pub circle_point_count: u32,
-    #[serde(default = "default_vision_point_count")]
-    pub vision_point_count: u32,
     #[serde(default = "default_triangle_tip_factor")]
     pub triangle_tip_factor: f32,
     #[serde(default = "default_triangle_base_factor")]
     pub triangle_base_factor: f32,
     #[serde(default = "default_triangle_width_factor")]
     pub triangle_width_factor: f32,
-    #[serde(default = "default_title_color")]
-    pub title_color: [f32; 3],
-    #[serde(default = "default_fitness_color")]
-    pub fitness_color: [f32; 3],
-    #[serde(default = "default_muted_color")]
+    #[serde(default = "default_muted_color", with = "rgb_hex")]
     pub muted_color: [f32; 3],
-    #[serde(default = "default_pause_color")]
+    #[serde(default = "default_pause_color", with = "rgb_hex")]
     pub pause_color: [f32; 3],
-    #[serde(default = "default_bar_alpha")]
-    pub bar_alpha: f32,
-    #[serde(default = "default_event_kill_color")]
-    pub event_kill_color: [f32; 3],
-    #[serde(default = "default_event_food_color")]
-    pub event_food_color: [f32; 3],
-    #[serde(default = "default_event_birth_color")]
-    pub event_birth_color: [f32; 3],
-    #[serde(default = "default_event_death_color")]
-    pub event_death_color: [f32; 3],
-    #[serde(default = "default_chart_best_color")]
-    pub chart_best_color: [f32; 3],
-    #[serde(default = "default_chart_avg_color")]
-    pub chart_avg_color: [f32; 3],
-    #[serde(default = "default_nn_node_outline_color")]
+    #[serde(default = "default_nn_node_outline_color", with = "rgba_hex")]
     pub nn_node_outline_color: [f32; 4],
-    #[serde(default = "default_nn_input_color")]
+    #[serde(default = "default_nn_input_color", with = "rgb_hex")]
     pub nn_input_color: [f32; 3],
-    #[serde(default = "default_nn_bias_color")]
+    #[serde(default = "default_nn_bias_color", with = "rgb_hex")]
     pub nn_bias_color: [f32; 3],
-    #[serde(default = "default_nn_hidden_color")]
+    #[serde(default = "default_nn_hidden_color", with = "rgb_hex")]
     pub nn_hidden_color: [f32; 3],
-    #[serde(default = "default_nn_output_color")]
+    #[serde(default = "default_nn_output_color", with = "rgb_hex")]
     pub nn_output_color: [f32; 3],
-    #[serde(default = "default_energy_bucket_0")]
-    pub energy_bucket_0: [f32; 3],
-    #[serde(default = "default_energy_bucket_1")]
-    pub energy_bucket_1: [f32; 3],
-    #[serde(default = "default_energy_bucket_2")]
-    pub energy_bucket_2: [f32; 3],
-    #[serde(default = "default_energy_bucket_3")]
-    pub energy_bucket_3: [f32; 3],
-    #[serde(default = "default_energy_bucket_4")]
-    pub energy_bucket_4: [f32; 3],
     #[serde(default = "default_left_panel_width")]
     pub left_panel_width: f32,
     #[serde(default = "default_right_panel_width")]
     pub right_panel_width: f32,
     #[serde(default = "default_font_size")]
     pub font_size: f32,
-    #[serde(default = "default_simulation_margin")]
-    pub simulation_margin: f32,
-    #[serde(default = "default_fps_limit")]
-    pub fps_limit: u32,
     #[serde(default = "default_window_width")]
     pub window_width: u32,
     #[serde(default = "default_window_height")]
     pub window_height: u32,
-    #[serde(default = "default_nn_panel_margin")]
-    pub nn_panel_margin: f32,
-    #[serde(default = "default_nn_panel_gap")]
-    pub nn_panel_gap: f32,
-    #[serde(default = "default_selected_info_panel_height")]
-    pub selected_info_panel_height: f32,
-    #[serde(default = "default_nn_panel_top_reserve")]
-    pub nn_panel_top_reserve: f32,
     #[serde(default = "default_nn_panel_min_height")]
     pub nn_panel_min_height: f32,
     #[serde(default = "default_nn_panel_min_width")]
@@ -183,50 +136,27 @@ impl Default for UiConfig {
             panel_bg_color: default_panel_bg_color(),
             panel_alpha: default_panel_alpha(),
             panel_outline_color: default_panel_outline_color(),
-            vision_fill_alpha: default_vision_fill_alpha(),
             vision_outline_alpha: default_vision_outline_alpha(),
-            vision_fill_color: default_vision_fill_color(),
+            vision_outline_color: default_vision_outline_color(),
             sensor_alpha: default_sensor_alpha(),
             food_sensor_alpha: default_food_sensor_alpha(),
             food_alpha: default_food_alpha(),
             selected_outline_thickness: default_selected_outline_thickness(),
-            circle_point_count: default_circle_point_count(),
-            vision_point_count: default_vision_point_count(),
             triangle_tip_factor: default_triangle_tip_factor(),
             triangle_base_factor: default_triangle_base_factor(),
             triangle_width_factor: default_triangle_width_factor(),
-            title_color: default_title_color(),
-            fitness_color: default_fitness_color(),
             muted_color: default_muted_color(),
             pause_color: default_pause_color(),
-            bar_alpha: default_bar_alpha(),
-            event_kill_color: default_event_kill_color(),
-            event_food_color: default_event_food_color(),
-            event_birth_color: default_event_birth_color(),
-            event_death_color: default_event_death_color(),
-            chart_best_color: default_chart_best_color(),
-            chart_avg_color: default_chart_avg_color(),
             nn_node_outline_color: default_nn_node_outline_color(),
             nn_input_color: default_nn_input_color(),
             nn_bias_color: default_nn_bias_color(),
             nn_hidden_color: default_nn_hidden_color(),
             nn_output_color: default_nn_output_color(),
-            energy_bucket_0: default_energy_bucket_0(),
-            energy_bucket_1: default_energy_bucket_1(),
-            energy_bucket_2: default_energy_bucket_2(),
-            energy_bucket_3: default_energy_bucket_3(),
-            energy_bucket_4: default_energy_bucket_4(),
             left_panel_width: default_left_panel_width(),
             right_panel_width: default_right_panel_width(),
             font_size: default_font_size(),
-            simulation_margin: default_simulation_margin(),
-            fps_limit: default_fps_limit(),
             window_width: default_window_width(),
             window_height: default_window_height(),
-            nn_panel_margin: default_nn_panel_margin(),
-            nn_panel_gap: default_nn_panel_gap(),
-            selected_info_panel_height: default_selected_info_panel_height(),
-            nn_panel_top_reserve: default_nn_panel_top_reserve(),
             nn_panel_min_height: default_nn_panel_min_height(),
             nn_panel_min_width: default_nn_panel_min_width(),
             nn_panel_max_width: default_nn_panel_max_width(),
@@ -276,14 +206,11 @@ const fn default_panel_alpha() -> f32 {
 const fn default_panel_outline_color() -> [f32; 3] {
     [0.137, 0.125, 0.153]
 }
-const fn default_vision_fill_alpha() -> f32 {
-    15.0
-}
 const fn default_vision_outline_alpha() -> f32 {
     40.0
 }
-const fn default_vision_fill_color() -> [f32; 4] {
-    [1.0, 1.0, 1.0, 1.0]
+const fn default_vision_outline_color() -> [f32; 3] {
+    [1.0, 1.0, 1.0]
 }
 const fn default_sensor_alpha() -> f32 {
     80.0
@@ -297,12 +224,6 @@ const fn default_food_alpha() -> f32 {
 const fn default_selected_outline_thickness() -> f32 {
     2.0
 }
-const fn default_circle_point_count() -> u32 {
-    20
-}
-const fn default_vision_point_count() -> u32 {
-    60
-}
 const fn default_triangle_tip_factor() -> f32 {
     1.5
 }
@@ -312,38 +233,11 @@ const fn default_triangle_base_factor() -> f32 {
 const fn default_triangle_width_factor() -> f32 {
     0.7
 }
-const fn default_title_color() -> [f32; 3] {
-    [0.784, 0.784, 1.0]
-}
-const fn default_fitness_color() -> [f32; 3] {
-    [1.0, 0.863, 0.392]
-}
 const fn default_muted_color() -> [f32; 3] {
     [0.706, 0.706, 0.706]
 }
 const fn default_pause_color() -> [f32; 3] {
     [1.0, 0.588, 0.392]
-}
-const fn default_bar_alpha() -> f32 {
-    180.0
-}
-const fn default_event_kill_color() -> [f32; 3] {
-    [0.863, 0.392, 0.392]
-}
-const fn default_event_food_color() -> [f32; 3] {
-    [0.392, 0.863, 0.392]
-}
-const fn default_event_birth_color() -> [f32; 3] {
-    [0.392, 0.706, 0.863]
-}
-const fn default_event_death_color() -> [f32; 3] {
-    [0.706, 0.706, 0.706]
-}
-const fn default_chart_best_color() -> [f32; 3] {
-    [0.392, 0.588, 1.0]
-}
-const fn default_chart_avg_color() -> [f32; 3] {
-    [0.392, 0.863, 0.392]
 }
 const fn default_nn_node_outline_color() -> [f32; 4] {
     [0.784, 0.784, 0.784, 0.471]
@@ -360,21 +254,6 @@ const fn default_nn_hidden_color() -> [f32; 3] {
 const fn default_nn_output_color() -> [f32; 3] {
     [0.863, 0.314, 0.314]
 }
-const fn default_energy_bucket_0() -> [f32; 3] {
-    [0.235, 0.235, 0.235]
-}
-const fn default_energy_bucket_1() -> [f32; 3] {
-    [0.392, 0.392, 0.392]
-}
-const fn default_energy_bucket_2() -> [f32; 3] {
-    [0.549, 0.549, 0.549]
-}
-const fn default_energy_bucket_3() -> [f32; 3] {
-    [0.784, 0.784, 0.784]
-}
-const fn default_energy_bucket_4() -> [f32; 3] {
-    [0.863, 0.863, 0.863]
-}
 const fn default_left_panel_width() -> f32 {
     300.0
 }
@@ -384,29 +263,11 @@ const fn default_right_panel_width() -> f32 {
 const fn default_font_size() -> f32 {
     14.0
 }
-const fn default_simulation_margin() -> f32 {
-    25.0
-}
-const fn default_fps_limit() -> u32 {
-    120
-}
 const fn default_window_width() -> u32 {
     1920
 }
 const fn default_window_height() -> u32 {
     1080
-}
-const fn default_nn_panel_margin() -> f32 {
-    25.0
-}
-const fn default_nn_panel_gap() -> f32 {
-    10.0
-}
-const fn default_selected_info_panel_height() -> f32 {
-    100.0
-}
-const fn default_nn_panel_top_reserve() -> f32 {
-    145.0
 }
 const fn default_nn_panel_min_height() -> f32 {
     320.0
@@ -434,4 +295,90 @@ const fn default_speed_min() -> u32 {
 }
 const fn default_speed_max() -> u32 {
     1024
+}
+
+mod rgb_hex {
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S>(color: &[f32; 3], serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&format!(
+            "#{:02X}{:02X}{:02X}",
+            super::unit_to_u8(color[0]),
+            super::unit_to_u8(color[1]),
+            super::unit_to_u8(color[2])
+        ))
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<[f32; 3], D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        super::parse_hex_rgb(&value).map_err(serde::de::Error::custom)
+    }
+}
+
+mod rgba_hex {
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S>(color: &[f32; 4], serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&format!(
+            "#{:02X}{:02X}{:02X}{:02X}",
+            super::unit_to_u8(color[0]),
+            super::unit_to_u8(color[1]),
+            super::unit_to_u8(color[2]),
+            super::unit_to_u8(color[3])
+        ))
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<[f32; 4], D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        super::parse_hex_rgba(&value).map_err(serde::de::Error::custom)
+    }
+}
+
+fn parse_hex_rgb(value: &str) -> Result<[f32; 3], String> {
+    let hex = value.trim().strip_prefix('#').unwrap_or(value.trim());
+    if hex.len() != 6 {
+        return Err(format!("expected 6 hex digits for RGB color, got '{value}'"));
+    }
+    Ok([
+        u8_to_unit(parse_hex_byte(&hex[0..2], value)?),
+        u8_to_unit(parse_hex_byte(&hex[2..4], value)?),
+        u8_to_unit(parse_hex_byte(&hex[4..6], value)?),
+    ])
+}
+
+fn parse_hex_rgba(value: &str) -> Result<[f32; 4], String> {
+    let hex = value.trim().strip_prefix('#').unwrap_or(value.trim());
+    if hex.len() != 8 {
+        return Err(format!("expected 8 hex digits for RGBA color, got '{value}'"));
+    }
+    Ok([
+        u8_to_unit(parse_hex_byte(&hex[0..2], value)?),
+        u8_to_unit(parse_hex_byte(&hex[2..4], value)?),
+        u8_to_unit(parse_hex_byte(&hex[4..6], value)?),
+        u8_to_unit(parse_hex_byte(&hex[6..8], value)?),
+    ])
+}
+
+fn parse_hex_byte(value: &str, full: &str) -> Result<u8, String> {
+    u8::from_str_radix(value, 16).map_err(|_| format!("invalid hex color '{full}'"))
+}
+
+fn unit_to_u8(value: f32) -> u8 {
+    (value.clamp(0.0, 1.0) * 255.0).round() as u8
+}
+
+fn u8_to_unit(value: u8) -> f32 {
+    f32::from(value) / 255.0
 }
