@@ -1,0 +1,170 @@
+@startuml evolution_classes
+skinparam classAttributeIconSize 0
+skinparam classBorderColor #2255AA
+skinparam classBackgroundColor #EEF4FF
+skinparam ArrowColor #444444
+skinparam shadowing false
+skinparam defaultFontSize 10
+
+class NodeGene <<struct>> {
+  + id : uint32_t
+  + type : NodeType
+}
+
+class ConnectionGene <<struct>> {
+  + in_node : uint32_t
+  + out_node : uint32_t
+  + weight : float
+  + enabled : bool
+  + innovation : uint32_t
+}
+
+enum NodeType {
+  Input
+  Hidden
+  Output
+  Bias
+}
+
+class Genome {
+  - nodes_ : vector<NodeGene>
+  - connections_ : vector<ConnectionGene>
+  - num_inputs_ : int
+  - num_outputs_ : int
+  - fitness_ : float
+  - adjusted_fitness_ : float
+  --
+  + Genome(num_inputs, num_outputs)
+  + add_node(node: NodeGene) : void
+  + add_connection(conn: ConnectionGene) : void
+  + has_connection(from, to: uint32_t) : bool
+  + nodes() : const vector<NodeGene>&
+  + connections() : const vector<ConnectionGene>&
+  + fitness() : float
+  + set_fitness(f: float) : void
+  + adjusted_fitness() : float
+  + set_adjusted_fitness(f: float) : void
+  + complexity() : int
+  + {static} compatibility_distance(a,b,c1,c2,c3) : float
+  + to_json() : string
+  + {static} from_json(str) : Genome
+}
+
+class NeuralNetwork {
+  - nodes_ : vector<Node>
+  - connections_ : vector<Connection>
+  - evaluation_order_ : vector<uint32_t>
+  - node_index_ : unordered_map<uint32_t,int>
+  - incoming_ : vector<vector<pair<int,float>>>
+  - values_ : vector<float>
+  - num_inputs_ : int
+  - num_outputs_ : int
+  - activation_fn_ : ActivationFn
+  --
+  + NeuralNetwork(genome, activation_fn)
+  + activate(inputs: vector<float>) : vector<float>
+  + num_nodes() : int
+  + num_inputs() : int
+  + num_outputs() : int
+  + eval_order() : const vector<uint32_t>&
+  + incoming() : const vector<...>&
+  + node_index_map() : const unordered_map<...>&
+  + last_activations() : const vector<float>&
+}
+
+enum ActivationFn {
+  Sigmoid
+  Tanh
+  ReLU
+}
+
+class Species {
+  - id_ : int
+  - representative_ : Genome
+  - members_ : vector<Genome*>
+  - average_fitness_ : float
+  - total_adjusted_fitness_ : float
+  - best_fitness_ever_ : float
+  - generations_without_improvement_ : int
+  - fitness_history_ : deque<float>
+  --
+  + Species(representative: Genome)
+  + is_compatible(genome, threshold, c1,c2,c3) : bool
+  + add_member(genome: Genome*) : void
+  + clear_members() : void
+  + adjust_fitness() : void
+  + sort_by_fitness() : void
+  + update_representative() : void
+  + update_best_fitness() : void
+  + is_stagnant(limit: int) : bool
+  + members() : const vector<Genome*>&
+  + average_fitness() : float
+  + best_fitness_ever() : float
+  + {static} next_species_id() : int
+}
+
+class InnovationTracker {
+  - innovation_counter_ : uint32_t
+  - node_counter_ : uint32_t
+  - generation_innovations_ : map<pair<uint32_t,uint32_t>, uint32_t>
+  --
+  + init_from_population(pop) : void
+  + get_innovation(in, out: uint32_t) : uint32_t
+  + next_node_id() : uint32_t
+  + reset_generation() : void
+  + innovation_count() : uint32_t
+  + node_count() : uint32_t
+  + set_counters(innov, node) : void
+}
+
+class Mutation <<static>> {
+  + {static} mutate_weights(genome, rng, power) : void
+  + {static} add_connection(genome, rng, tracker) : void
+  + {static} add_node(genome, rng, tracker, max_hidden) : void
+  + {static} toggle_connection(genome, rng) : void
+  + {static} mutate(genome, rng, config, tracker) : void
+}
+
+class Crossover <<static>> {
+  + {static} crossover(a, b: Genome, rng) : Genome
+}
+
+class EvolutionManager {
+  - config_ : SimulationConfig
+  - rng_ : Random&
+  - tracker_ : InnovationTracker
+  - population_ : vector<Genome>
+  - species_ : vector<Species>
+  - networks_ : vector<unique_ptr<NeuralNetwork>>
+  - generation_ : int
+  - use_gpu_ : bool
+  - gpu_batch_ : unique_ptr<GpuBatch>
+  - tick_callback_ : TickCallback
+  --
+  + EvolutionManager(config, rng)
+  + initialize(num_inputs, num_outputs) : void
+  + evaluate_generation(sim) : void
+  + evolve() : void
+  + compute_fitness(sim) : void
+  + population() : const vector<Genome>&
+  + generation() : int
+  + species() : const vector<Species>&
+  + networks() : const vector<unique_ptr<NeuralNetwork>>&
+  + set_tick_callback(cb: TickCallback) : void
+  + enable_gpu(flag: bool) : void
+  + gpu_enabled() : bool
+  + save_checkpoint(path, rng) : void
+  + load_checkpoint(path, rng) : bool
+}
+
+Genome *-- NodeGene
+Genome *-- ConnectionGene
+NodeGene -- NodeType
+NeuralNetwork -- ActivationFn
+EvolutionManager *-- "N" Genome
+EvolutionManager *-- "N" Species
+EvolutionManager *-- "N" NeuralNetwork
+EvolutionManager *-- InnovationTracker
+Species o-- Genome : members_
+
+@enduml

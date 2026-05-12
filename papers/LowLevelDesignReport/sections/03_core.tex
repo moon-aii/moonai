@@ -1,0 +1,244 @@
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Core Package (\texttt{src/core/})}
+\label{sec:core}
+% ─────────────────────────────────────────────────────────────────────────────
+
+The core package provides shared primitive types, configuration loading, CLI argument
+parsing, and the seeded random-number generator used throughout the simulation.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.78\textwidth]{core_classes}
+  \caption{Core package class diagram.}
+  \label{fig:core}
+\end{figure}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsection{\texttt{Vec2} (struct)}
+\label{sec:vec2}
+
+Plain aggregate for 2-D floating-point coordinates.  Chosen as a struct (no encapsulation
+overhead) because it appears in tight physics loops.
+
+\begin{table}[H]
+\centering\small
+\caption{\texttt{Vec2} interface}
+\begin{tabularx}{\textwidth}{@{}llX@{}}
+\toprule
+\textbf{Member} & \textbf{Type} & \textbf{Description} \\
+\midrule
+\texttt{x} & \texttt{float} & Horizontal coordinate (default 0.0) \\
+\texttt{y} & \texttt{float} & Vertical coordinate (default 0.0) \\
+\midrule
+\texttt{operator+(other)} & \texttt{Vec2} & Component-wise addition \\
+\texttt{operator-(other)} & \texttt{Vec2} & Component-wise subtraction \\
+\texttt{operator*(scalar)} & \texttt{Vec2} & Scalar multiplication \\
+\texttt{length()} & \texttt{float} & Euclidean length $\sqrt{x^2+y^2}$ \\
+\texttt{normalized()} & \texttt{Vec2} & Unit vector (zero-safe) \\
+\texttt{distance\_to(other)} & \texttt{float} & Euclidean distance to another \texttt{Vec2} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\texttt{AgentId} is a type alias: \texttt{using AgentId = std::uint32\_t}.  It uniquely
+identifies each agent within a generation.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsection{\texttt{BoundaryMode} (enum class)}
+
+\begin{lstlisting}
+enum class BoundaryMode { Clamp, Wrap };
+\end{lstlisting}
+
+\texttt{Clamp} constrains positions to $[0,w]\times[0,h]$.
+\texttt{Wrap} applies toroidal topology via \texttt{std::fmod}.
+Controlled by the \texttt{"boundary\_mode"} field in \texttt{default\_config.json}.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsection{\texttt{SimulationConfig} (struct)}
+
+Central parameter object.  Loaded from JSON; passed by value throughout the system.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{\texttt{SimulationConfig} fields — Environment and Simulation (28 fields)}
+\label{tab:config1}
+\begin{tabularx}{\textwidth}{@{}>{\ttfamily\scriptsize}p{4.4cm}>{\ttfamily\scriptsize}p{2.2cm}>{\scriptsize}p{0.8cm}>{\scriptsize}p{1.0cm}>{\scriptsize\RaggedRight}X@{}}
+\toprule
+\textbf{Field} & \textbf{Type} & \textbf{Def.} & \textbf{Range} & \textbf{Description} \\
+\midrule
+\multicolumn{5}{@{}l}{\textit{Environment}} \\
+grid\_width            & int    & 800    & $>0$    & World width in pixels \\
+grid\_height           & int    & 600    & $>0$    & World height in pixels \\
+boundary\_mode         & BoundaryMode & Wrap & —   & Clamp or Wrap \\
+\midrule
+\multicolumn{5}{@{}l}{\textit{Population}} \\
+predator\_count        & int    & 50     & $\ge 1$ & Number of predator agents \\
+prey\_count            & int    & 150    & $\ge 1$ & Number of prey agents \\
+\midrule
+\multicolumn{5}{@{}l}{\textit{Agent}} \\
+predator\_speed        & float  & 3.0    & $>0$    & Max predator speed (px/tick) \\
+prey\_speed            & float  & 3.5    & $>0$    & Max prey speed (px/tick) \\
+vision\_range          & float  & 100.0  & $>0$    & Sensor vision radius (px) \\
+attack\_range          & float  & 15.0   & $>0$    & Predator kill radius (px) \\
+initial\_energy        & float  & 100.0  & $>0$    & Starting energy per agent \\
+energy\_drain\_per\_tick& float  & 0.1    & $\ge 0$ & Energy lost each tick \\
+energy\_gain\_from\_kill& float  & 50.0   & $\ge 0$ & Energy gained on kill \\
+energy\_gain\_from\_food& float  & 30.0   & $\ge 0$ & Energy gained from food \\
+food\_pickup\_range    & float  & 10.0   & $>0$    & Food collection radius (px) \\
+\midrule
+\multicolumn{5}{@{}l}{\textit{Food}} \\
+food\_count            & int    & 200    & $\ge 0$ & Maximum food items on map \\
+food\_respawn\_rate    & float  & 0.05   & $[0,1]$ & Probability each depleted food respawns per tick \\
+\midrule
+\multicolumn{5}{@{}l}{\textit{Simulation loop}} \\
+generation\_ticks      & int    & 500    & $>0$    & Ticks per generation \\
+max\_generations       & int    & 0      & $\ge 0$ & Stop after N gens (0 = unlimited) \\
+\midrule
+\multicolumn{5}{@{}l}{\textit{Data}} \\
+output\_dir            & string & output & —     & Root directory for run output \\
+log\_interval          & int    & 1      & $\ge 1$ & Generations between CSV rows \\
+checkpoint\_interval   & int    & 0      & $\ge 0$ & Checkpoint every N gens (0=off) \\
+\midrule
+\multicolumn{5}{@{}l}{\textit{Misc}} \\
+target\_fps            & int    & 60     & $>0$    & SFML render target FPS \\
+seed                   & uint64\_t & 0    & —     & RNG seed (0 = random) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{\texttt{SimulationConfig} fields — NEAT Evolution (14 fields)}
+\label{tab:config2}
+\begin{tabularx}{\textwidth}{@{}>{\ttfamily\scriptsize}p{6.3cm}>{\ttfamily\scriptsize}p{1.3cm}>{\scriptsize}p{1.0cm}>{\scriptsize}p{1.0cm}>{\scriptsize\RaggedRight}X@{}}
+\toprule
+\textbf{Field} & \textbf{Type} & \textbf{Def.} & \textbf{Range} & \textbf{Description} \\
+\midrule
+\multicolumn{5}{@{}l}{\textit{Mutation rates}} \\
+mutation\_rate         & float  & 0.3    & $[0,1]$ & Probability to apply weight mutation \\
+crossover\_rate        & float  & 0.75   & $[0,1]$ & Fraction of offspring produced by crossover \\
+weight\_mutation\_power& float  & 0.5    & $>0$    & Std-dev of Gaussian weight perturbation \\
+add\_node\_rate        & float  & 0.03   & $[0,1]$ & Probability of add-node structural mutation \\
+add\_connection\_rate  & float  & 0.05   & $[0,1]$ & Probability of add-connection mutation \\
+max\_hidden\_nodes     & int    & 50     & $\ge 0$ & Cap on hidden node additions \\
+\midrule
+\multicolumn{5}{@{}l}{\textit{Speciation}} \\
+compatibility\_threshold& float & 3.0   & $>0$    & $\delta$ threshold for species assignment \\
+c1\_excess             & float  & 1.0    & $\ge 0$ & Excess gene coefficient ($c_1$) \\
+c2\_disjoint           & float  & 1.0    & $\ge 0$ & Disjoint gene coefficient ($c_2$) \\
+c3\_weight             & float  & 0.4    & $\ge 0$ & Weight difference coefficient ($c_3$) \\
+stagnation\_limit      & int    & 15     & $>0$    & Generations without improvement before species removal \\
+\midrule
+\multicolumn{5}{@{}l}{\textit{Fitness weights}} \\
+fitness\_survival\_weight  & float & 1.0 & $\ge 0$ & Survival time coefficient \\
+fitness\_kill\_weight      & float & 5.0 & $\ge 0$ & Kill count coefficient \\
+fitness\_energy\_weight    & float & 0.5 & $\ge 0$ & Energy efficiency coefficient \\
+fitness\_distance\_weight  & float & 0.1 & $\ge 0$ & Distance traveled coefficient \\
+complexity\_penalty\_weight& float & 0.01& $\ge 0$ & Genome complexity penalty \\
+\midrule
+\multicolumn{5}{@{}l}{\textit{Neural network}} \\
+activation\_function   & string & sigmoid & —   & NN activation: sigmoid/tanh/relu \\
+\midrule
+\multicolumn{5}{@{}l}{\textit{Tick logging}} \\
+tick\_log\_enabled     & bool   & false  & —     & Write per-tick agent state CSV \\
+tick\_log\_interval    & int    & 10     & $\ge 1$ & Log every N ticks (when enabled) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsection{\texttt{ConfigError} (struct)}
+
+\begin{lstlisting}
+struct ConfigError {
+    std::string field;    // config key that failed validation
+    std::string message;  // human-readable error description
+};
+\end{lstlisting}
+
+Returned by \texttt{validate\_config()} to report all validation failures in one pass.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsection{\texttt{CLIArgs} (struct)}
+
+\begin{table}[H]
+\centering\small
+\caption{\texttt{CLIArgs} fields}
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+\toprule
+\textbf{Field} & \textbf{CLI flag / meaning} \\
+\midrule
+\texttt{config\_path}               & \texttt{--config <path>} \\
+\texttt{seed\_override}             & \texttt{--seed <n>} (overrides config) \\
+\texttt{headless}                   & \texttt{--headless} — suppress SFML window \\
+\texttt{verbose}                    & \texttt{--verbose} — debug-level spdlog output \\
+\texttt{help}                       & \texttt{--help} \\
+\texttt{no\_gpu}                    & \texttt{--no-gpu} — force CPU inference \\
+\texttt{max\_generations\_override} & \texttt{--generations <n>} \\
+\texttt{resume\_path}               & \texttt{--resume <dir>} — load checkpoint \\
+\texttt{checkpoint\_interval}       & \texttt{--checkpoint <n>} \\
+\texttt{compare\_a}                 & \texttt{--compare-a <dir>} (future use) \\
+\texttt{compare\_b}                 & \texttt{--compare-b <dir>} (future use) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsection{Free Functions}
+
+\begin{table}[H]
+\centering\small
+\caption{Core free functions (\texttt{config.hpp})}
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+\toprule
+\textbf{Signature} & \textbf{Description} \\
+\midrule
+\texttt{load\_config(path: string) → SimulationConfig}
+  & Parse JSON file; throw on missing required fields. \\
+\texttt{save\_config(config, path: string) → void}
+  & Serialise config to JSON. Used by \texttt{Logger} at run start. \\
+\texttt{validate\_config(config) → vector<ConfigError>}
+  & Check all fields against valid ranges; return all errors found. \\
+\texttt{parse\_args(argc, argv) → CLIArgs}
+  & Parse POSIX-style command-line arguments. \\
+\texttt{print\_usage(program\_name) → void}
+  & Print help text to stdout. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsection{\texttt{Random} (class)}
+
+Single 64-bit Mersenne Twister instance shared by simulation, evolution, and data layers.
+A single instance per simulation ensures reproducible runs from any given seed.
+
+\begin{table}[H]
+\centering\small
+\caption{\texttt{Random} interface}
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+\toprule
+\textbf{Method} & \textbf{Description} \\
+\midrule
+\texttt{Random(seed: uint64\_t)} & Construct; seed the MT19937-64 engine \\
+\texttt{next\_int(min, max)} & Uniform integer in $[\mathit{min}, \mathit{max}]$ \\
+\texttt{next\_float(min, max)} & Uniform float in $[\mathit{min}, \mathit{max}]$ \\
+\texttt{next\_gaussian(mean, stddev)} & Normal distribution sample \\
+\texttt{next\_bool(probability)} & True with given probability $p\in[0,1]$ \\
+\texttt{weighted\_select(weights)} & Index proportional to weight values \\
+\texttt{shuffle<T>(vec)} & Fisher-Yates in-place shuffle \\
+\texttt{sample\_indices(total, count)} & Sample \emph{count} distinct indices from $[0,\mathit{total})$ \\
+\texttt{seed()} \texttt{const} & Return the construction seed \\
+\texttt{engine()} & Direct access for seeding from checkpoints \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\textbf{Private members:}
+\begin{itemize}[nosep]
+  \item \texttt{seed\_: uint64\_t} — stored to support checkpoint save/restore.
+  \item \texttt{engine\_: std::mt19937\_64} — the underlying generator.
+\end{itemize}

@@ -1,0 +1,219 @@
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Visualization Package (\texttt{src/visualization/})}
+\label{sec:visualization}
+% ─────────────────────────────────────────────────────────────────────────────
+
+The visualization package renders the live simulation using SFML.  It is always compiled
+in; when the binary is run with \texttt{--headless} the window is simply not created.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.82\textwidth]{visualization_classes}
+  \caption{Visualization package class diagram.}
+  \label{fig:viz}
+\end{figure}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsection{\texttt{Renderer} (class)}
+
+Stateless drawing primitives for the world view.  Reuses pre-allocated SFML shapes
+(\texttt{circle\_}, \texttt{triangle\_}, \texttt{rect\_}) to avoid per-frame allocation.
+
+\begin{table}[H]
+\centering\small
+\caption{\texttt{Renderer} public interface}
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+\toprule
+\textbf{Method} & \textbf{Description} \\
+\midrule
+\texttt{draw\_background(target, width, height)} & Fill background with dark color \\
+\texttt{draw\_grid(target, width, height, cell\_size)} & Draw spatial-grid overlay (when \texttt{show\_grid}) \\
+\texttt{draw\_boundaries(target, width, height)} & Draw world-edge rectangle \\
+\texttt{draw\_food(target, food)} & Small green circles for active food \\
+\texttt{draw\_agent(target, agent, selected)} & Triangle (predator) or circle (prey) \\
+\texttt{draw\_vision\_range(target, agent)} & Dashed circle at \texttt{vision\_range} \\
+\texttt{draw\_sensor\_lines(target, agent, agents, food)} & Lines to nearest predator/prey/food \\
+\texttt{species\_color(species\_id)} & Deterministic hue (see below); static \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\textbf{Public flags:} \texttt{show\_grid}, \texttt{show\_vision}, \texttt{show\_sensors}
+(\texttt{bool}); \texttt{dead\_fade\_alpha} (\texttt{float}).
+
+\subsubsection{Species Color Algorithm}
+
+Hue for species $n$:
+\[
+  H = (n \times 137.508^\circ) \bmod 360^\circ
+\]
+The golden angle ($137.508^\circ$) ensures adjacent species IDs produce maximally
+dissimilar hues.  Saturation = 1.0, Value = 0.9 (HSV).  Converted to RGB via standard
+HSV-to-RGB formula.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsection{\texttt{OverlayStats} (struct)}
+
+All data needed by \texttt{UIOverlay::draw()}.
+
+\begin{table}[H]
+\centering\small
+\caption{\texttt{OverlayStats} fields}
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+\toprule
+\textbf{Field} & \textbf{Description} \\
+\midrule
+\texttt{generation}          & Current generation index \\
+\texttt{tick}                & Tick within current generation \\
+\texttt{alive\_predators}    & Live predator count \\
+\texttt{alive\_prey}         & Live prey count \\
+\texttt{best\_fitness}       & Best fitness in current generation \\
+\texttt{avg\_fitness}        & Mean fitness in current generation \\
+\texttt{num\_species}        & Number of active species \\
+\texttt{fps}                 & Measured frames per second \\
+\texttt{speed\_multiplier}   & Simulation speed multiplier (1–16) \\
+\texttt{paused}              & Simulation is paused \\
+\texttt{fast\_forward}       & \texttt{[FF]} HUD label when true \\
+\texttt{selected\_agent}     & Index of selected agent ($-1$ = none) \\
+\texttt{selected\_energy}    & Energy of selected agent \\
+\texttt{selected\_age}       & Age of selected agent \\
+\texttt{selected\_kills}     & Kill count of selected agent \\
+\texttt{selected\_food\_eaten}& Food eaten by selected agent \\
+\texttt{selected\_fitness}   & Fitness of selected agent \\
+\texttt{selected\_genome\_complexity} & Node + connection count of selected genome \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsection{\texttt{UIOverlay} (class)}
+
+Renders HUD panels, fitness chart, and neural network visualization.
+
+\begin{table}[H]
+\centering\small
+\caption{\texttt{UIOverlay} public interface}
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+\toprule
+\textbf{Method} & \textbf{Description} \\
+\midrule
+\texttt{initialize(font\_path)} & Load font from path (or fallback); return success \\
+\texttt{draw(target, stats, genome*)} & Render all overlay elements \\
+\texttt{has\_font()} & Whether font loaded successfully \\
+\texttt{push\_fitness(best, avg)} & Append to rolling history deques \\
+\texttt{set\_activations(vals)} & Store \{node\_id → activation\} for NN panel \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\textbf{Private members:}
+\texttt{best\_history\_} and \texttt{avg\_history\_}: \texttt{deque<float>} capped at
+\texttt{CHART\_MAX\_POINTS = 150}.
+\texttt{node\_activations\_}: \texttt{unordered\_map<uint32\_t, float>}.
+\texttt{font\_}: \texttt{sf::Font}; \texttt{font\_loaded\_}: \texttt{bool}.
+
+\subsubsection{\texttt{draw\_nn\_panel()} Algorithm}
+
+Layout:
+\begin{enumerate}[nosep]
+  \item Arrange input nodes on the left column, output nodes on the right, hidden nodes
+    in intermediate columns ordered by their position in \texttt{eval\_order}.
+  \item For each node, draw a circle coloured by activation value:
+    \[
+      \begin{aligned}
+        v \le -1 &\Rightarrow \text{blue}(30,30,200); \\
+        v = 0   &\Rightarrow \text{gray}(180,180,180); \\
+        v \ge 1 &\Rightarrow \text{orange}(220,120,20)
+      \end{aligned}
+    \]
+    Intermediate values interpolated via \texttt{std::clamp}.
+  \item Draw enabled connections as lines; weight modulates line thickness.
+\end{enumerate}
+
+\subsubsection{\texttt{draw\_fitness\_chart()} Algorithm}
+
+Renders two polylines over the rightmost panel area: \texttt{best\_history\_} in orange
+and \texttt{avg\_history\_} in yellow.  Y-axis auto-scales to
+$[\min(\mathit{history}), \max(\mathit{history})]$.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsection{\texttt{VisualizationManager} (class)}
+
+Owns the SFML window, camera, input handling, and coordinates rendering.
+
+\begin{table}[H]
+\centering\small
+\caption{\texttt{VisualizationManager} private members}
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+\toprule
+\textbf{Member} & \textbf{Description} \\
+\midrule
+\texttt{config\_}           & Run parameters \\
+\texttt{window\_}           & SFML window (null in headless) \\
+\texttt{camera\_view\_}     & Zoomable/pannable world camera \\
+\texttt{renderer\_}         & World drawing primitives \\
+\texttt{overlay\_}          & HUD overlay \\
+\texttt{overlay\_stats\_}   & Updated each \texttt{render()} call \\
+\texttt{paused\_}           & Simulation pause state \\
+\texttt{fast\_forward\_}    & FF mode (skip rendering) \\
+\texttt{speed\_multiplier\_}& Ticks per rendered frame (1–16) \\
+\texttt{selected\_agent\_}  & Index of clicked agent ($-1$) \\
+\texttt{zoom\_level\_}      & Camera zoom $\in [0.1, 10.0]$ \\
+\texttt{dragging\_}         & Right-click pan active \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{table}[H]
+\centering\small
+\caption{\texttt{VisualizationManager} public interface}
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+\toprule
+\textbf{Method} & \textbf{Description} \\
+\midrule
+\texttt{initialize()} & Create SFML window; load font \\
+\texttt{render(sim, evolution)} & Full frame: clear → draw world → draw HUD → display \\
+\texttt{should\_close()} & Window closed or Escape pressed \\
+\texttt{handle\_events()} & Process SFML event queue \\
+\texttt{is\_paused(), speed\_multiplier()} & Input state queries \\
+\texttt{should\_reset() / clear\_reset()} & Reset-requested flag \\
+\texttt{should\_step() / clear\_step()} & Single-step flag \\
+\texttt{is\_fast\_forward() / clear\_fast\_forward()} & FF flag \\
+\texttt{selected\_agent()} & Selected agent index \\
+\texttt{set\_selected\_activations(vals, idx\_map)} & Invert \texttt{node\_index\_map} → \{id→activation\}; forward to overlay \\
+\texttt{push\_fitness(best, avg)} & Delegate to \texttt{overlay\_.push\_fitness()} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsubsection{Key Bindings}
+
+\begin{table}[H]
+\centering\small
+\caption{Keyboard/mouse event map}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Input} & \textbf{Action} & \textbf{Flag set} \\
+\midrule
+\texttt{Space}        & Toggle pause                        & \texttt{paused\_} \\
+\texttt{R}            & Request simulation reset            & \texttt{reset\_requested\_} \\
+\texttt{N} (step)     & Advance one tick while paused       & \texttt{step\_requested\_} \\
+\texttt{H}            & Toggle fast-forward mode            & \texttt{fast\_forward\_} \\
+\texttt{+} / \texttt{-}& Increase/decrease speed multiplier & \texttt{speed\_multiplier\_} \\
+\texttt{G}            & Toggle spatial-grid overlay         & \texttt{renderer\_.show\_grid} \\
+\texttt{V}            & Toggle vision-range circles         & \texttt{renderer\_.show\_vision} \\
+\texttt{S}            & Toggle sensor lines                 & \texttt{renderer\_.show\_sensors} \\
+Mouse wheel           & Zoom camera                         & \texttt{zoom\_level\_} \\
+Right-click drag      & Pan camera                          & \texttt{dragging\_} \\
+Left-click            & Select nearest agent                & \texttt{selected\_agent\_} \\
+\texttt{Escape}       & Close window                        & \texttt{running\_} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{Camera Model}
+
+\texttt{zoom\_level\_} is clamped to $[0.1, 10.0]$.  The \texttt{sf::View} is scaled
+reciprocally: a zoom of 2.0 halves the viewport area.  Right-click drag stores the
+cursor position at button-press (\texttt{drag\_start\_}) and updates the view center by
+the delta each \texttt{MouseMoved} event.

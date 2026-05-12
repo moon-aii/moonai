@@ -1,0 +1,8 @@
+[default]
+build:
+  mkdir -p out
+  xelatex -interaction=nonstopmode -output-directory=out main.tex
+  xelatex -interaction=nonstopmode -output-directory=out main.tex
+
+clean:
+    rm -rf out

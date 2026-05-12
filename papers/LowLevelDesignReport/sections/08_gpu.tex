@@ -1,0 +1,232 @@
+% ─────────────────────────────────────────────────────────────────────────────
+\section{GPU Package (\texttt{src/gpu/})}
+\label{sec:gpu}
+% ─────────────────────────────────────────────────────────────────────────────
+
+The GPU package accelerates neural network inference and fitness evaluation on NVIDIA
+hardware.  It is compiled only when \texttt{nvcc} is detected at CMake configuration
+time; if unavailable (or if \texttt{--no-gpu} is passed), \texttt{EvolutionManager}
+falls back to the CPU path transparently.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.60\textwidth]{gpu_classes}
+  \caption{GPU package class diagram.}
+  \label{fig:gpu}
+\end{figure}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsection{\texttt{GpuNetDesc} (struct)}
+
+Per-agent descriptor into the flat CSR arrays.  Eight integer offsets into globally
+packed device arrays.
+
+\begin{table}[H]
+\centering\small
+\caption{\texttt{GpuNetDesc} fields}
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+\toprule
+\textbf{Field} & \textbf{Description} \\
+\midrule
+\texttt{num\_nodes}  & Total node count for this agent \\
+\texttt{num\_eval}   & Length of the evaluation-order slice \\
+\texttt{num\_inputs} & Number of input nodes \\
+\texttt{num\_outputs}& Number of output nodes \\
+\texttt{node\_off}   & Start index in \texttt{d\_node\_types[]} \\
+\texttt{eval\_off}   & Start index in \texttt{d\_eval\_order[]} \\
+\texttt{conn\_off}   & Start index in \texttt{d\_conn\_ptr[]} / \texttt{d\_conn\_w[]} \\
+\texttt{out\_off}    & Start index in \texttt{d\_out\_indices[]} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{CSR Layout Diagram}
+
+Each agent $i$ is packed contiguously.  Figure~\ref{fig:csr} illustrates the layout.
+
+\begin{figure}[H]
+\centering
+\scriptsize
+\scalebox{0.98}{%
+\begin{tabular}{|c|c|c|c|c|c|c|}
+\hline
+\multicolumn{3}{|c|}{Agent 0} & \multicolumn{4}{c|}{Agent 1} \\
+\hline
+$n_0, n_1, \ldots$ & $e_0, e_1, \ldots$ & $w_0, w_1, \ldots$
+& $n_0', n_1', \ldots$ & $e_0', e_1', \ldots$ & $w_0', w_1', \ldots$ & $\ldots$ \\
+\hline
+\texttt{node\_types} & \texttt{eval\_order} & \texttt{conn\_w}
+& \texttt{node\_types} & \texttt{eval\_order} & \texttt{conn\_w} & \\
+\hline
+\end{tabular}%
+}
+\caption{CSR flat layout: agents packed consecutively, offsets stored in
+\texttt{GpuNetDesc}.}
+\label{fig:csr}
+\end{figure}
+
+The advantage over a padded layout: with the typical NEAT topology of 15 inputs, 2
+outputs, and 0–5 hidden nodes in early generations, a padded
+$\texttt{MAX\_NODES}^2$ weight matrix would waste up to 10× VRAM compared with CSR.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsection{\texttt{GpuAgentStats} and \texttt{GpuFitnessWeights} (structs)}
+
+\begin{table}[H]
+\centering\small
+\caption{\texttt{GpuAgentStats} fields (per-agent stats for fitness evaluation on device)}
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+\toprule
+\textbf{Field} & \textbf{Description} \\
+\midrule
+\texttt{age\_ratio}      & \texttt{age / generation\_ticks} \\
+\texttt{kills\_or\_food} & Kill count (predator) or food eaten (prey) \\
+\texttt{energy\_ratio}   & \texttt{energy / initial\_energy} \\
+\texttt{alive\_bonus}    & 1.0 if still alive at generation end, else 0.0 \\
+\texttt{dist\_ratio}     & \texttt{distance\_traveled / max\_possible\_dist} \\
+\texttt{complexity}      & \texttt{Genome::complexity()} as float \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{table}[H]
+\centering\small
+\caption{\texttt{GpuFitnessWeights} fields}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Field} & \textbf{Type} & \textbf{Source in config} \\
+\midrule
+\texttt{survival\_w}  & \texttt{float} & \texttt{fitness\_survival\_weight} \\
+\texttt{kill\_w}      & \texttt{float} & \texttt{fitness\_kill\_weight} \\
+\texttt{energy\_w}    & \texttt{float} & \texttt{fitness\_energy\_weight} \\
+\texttt{dist\_w}      & \texttt{float} & \texttt{fitness\_distance\_weight} \\
+\texttt{complexity\_w}& \texttt{float} & \texttt{complexity\_penalty\_weight} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsection{\texttt{GpuNetworkData} (struct)}
+
+Host-side staging buffer assembled by \texttt{EvolutionManager} before
+\texttt{GpuBatch::upload\_network\_data()}.
+
+\begin{table}[H]
+\centering\small
+\caption{\texttt{GpuNetworkData} fields}
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+\toprule
+\textbf{Field} & \textbf{Description} \\
+\midrule
+\texttt{descs}           & One descriptor per agent \\
+\texttt{node\_types}     & Packed node type bytes (all agents) \\
+\texttt{eval\_order}     & Topological order indices (all agents) \\
+\texttt{conn\_ptr}       & CSR row pointer (start of each node's connections) \\
+\texttt{in\_count}       & Number of incoming connections per node \\
+\texttt{conn\_from}      & Source local-index for each connection \\
+\texttt{conn\_w}         & Weight for each connection \\
+\texttt{out\_indices}    & Local indices of output nodes \\
+\texttt{activation\_fn\_id} & 0=Sigmoid, 1=Tanh, 2=ReLU \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsection{\texttt{GpuBatch} (class, RAII)}
+
+RAII wrapper for all CUDA device memory required for one generation.  Copy constructor
+and copy assignment are \texttt{= delete}; move semantics could be added if needed.
+
+\begin{lstlisting}
+GpuBatch(int num_agents, int num_inputs, int num_outputs);
+~GpuBatch();  // cudaFree all device pointers
+\end{lstlisting}
+
+\begin{table}[H]
+\centering\small
+\caption{\texttt{GpuBatch} public interface}
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+\toprule
+\textbf{Method} & \textbf{Description} \\
+\midrule
+\texttt{upload\_network\_data(data)} &
+  \texttt{cudaMemcpy} all fields of \texttt{GpuNetworkData} to device arrays.
+  Called once per generation (topology changes with \texttt{evolve()}). \\
+\texttt{pack\_inputs(flat\_inputs)} &
+  Copy flat $N_{\mathit{agents}} \times N_{\mathit{inputs}}$ input matrix to
+  \texttt{d\_inputs\_}. \\
+\texttt{unpack\_outputs(flat\_out)} &
+  Copy $N_{\mathit{agents}} \times N_{\mathit{outputs}}$ result from
+  \texttt{d\_outputs\_} to host. \\
+\texttt{pack\_agent\_stats(stats)} &
+  Upload \texttt{vector<GpuAgentStats>} to \texttt{d\_stats\_}. \\
+\texttt{unpack\_fitness(fitness\_out)} &
+  Download fitness results from \texttt{d\_fitness\_}. \\
+\texttt{d\_descs(), d\_node\_vals(), \ldots} & Raw device pointer accessors (passed to kernel launch) \\
+\texttt{num\_agents(), num\_inputs(), num\_outputs()} & Dimension queries \\
+\texttt{activation\_fn\_id()} & Activation function id for kernel \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\textbf{Private device pointers:}
+\texttt{d\_descs\_: GpuNetDesc*}, \texttt{d\_inputs\_: float*},
+\texttt{d\_outputs\_: float*}, \texttt{d\_stats\_: GpuAgentStats*},
+\texttt{d\_fitness\_: float*}, \texttt{d\_node\_vals\_: float*},
+\texttt{d\_node\_types\_: uint8\_t*}, \texttt{d\_eval\_order\_: int*},
+\texttt{d\_conn\_ptr\_: int*}, \texttt{d\_in\_count\_: int*},
+\texttt{d\_conn\_from\_: int*}, \texttt{d\_conn\_w\_: float*},
+\texttt{d\_out\_indices\_: int*}.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsection{CUDA Kernel Algorithms}
+
+\subsubsection{\texttt{neural\_forward\_kernel}}
+
+Launch configuration: \texttt{(num\_agents, 1)} blocks × \texttt{(1, 1)} threads —
+one CUDA thread per agent.
+
+\begin{enumerate}[nosep]
+  \item Read \texttt{GpuNetDesc d = d\_descs[agent\_id]}.
+  \item Initialize \texttt{d\_node\_vals[d.node\_off..]} from \texttt{d\_inputs[agent\_id * num\_inputs..]}.
+  \item Set bias node value to 1.0.
+  \item Iterate \texttt{eval\_order[d.eval\_off..d.eval\_off+d.num\_eval]}:
+    for each node index $n$, compute
+    \[
+      v[n] = f\!\left(\sum_{k=0}^{\mathit{in\_count}[n]-1}
+             d\_conn\_w[\mathit{conn\_ptr}[n]+k] \cdot v[d\_conn\_from[\mathit{conn\_ptr}[n]+k]]\right)
+    \]
+  \item Write output values from \texttt{d\_out\_indices} to
+    \texttt{d\_outputs[agent\_id * num\_outputs..]}.
+\end{enumerate}
+
+Activation function dispatched via \texttt{activation\_fn\_id}: 0=sigmoid, 1=tanh,
+2=ReLU — evaluated with a device-side switch to avoid function-pointer overhead.
+
+\subsubsection{\texttt{fitness\_eval\_kernel}}
+
+Launch configuration: one thread per agent.
+
+\begin{enumerate}[nosep]
+  \item Read \texttt{GpuAgentStats s = d\_agent\_stats[agent\_id]}.
+  \item Compute:
+    \[
+      \begin{aligned}
+        f &= w_s \cdot s.\mathit{age\_ratio} + w_k \cdot s.\mathit{kills\_or\_food} \\
+          &\quad + w_e \cdot s.\mathit{energy\_ratio} + w_d \cdot s.\mathit{dist\_ratio} - w_c \cdot s.\mathit{complexity}
+      \end{aligned}
+    \]
+  \item Write to \texttt{d\_fitness\_out[agent\_id]}.
+\end{enumerate}
+
+\subsubsection{Host Launch Functions}
+
+\begin{lstlisting}
+namespace moonai::gpu {
+    void batch_neural_inference(GpuBatch& batch);
+    void batch_fitness_eval(GpuBatch& batch, GpuFitnessWeights weights);
+}
+\end{lstlisting}
+
+These functions select grid/block dimensions, launch the corresponding kernels, and call
+\texttt{cudaDeviceSynchronize()} before returning.

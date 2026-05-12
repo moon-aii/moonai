@@ -1,0 +1,53 @@
+@startuml data_classes
+skinparam classAttributeIconSize 0
+skinparam classBorderColor #2255AA
+skinparam classBackgroundColor #EEF4FF
+skinparam ArrowColor #444444
+skinparam shadowing false
+skinparam defaultFontSize 12
+
+class GenerationMetrics <<struct>> {
+  + generation : int
+  + predator_count : int
+  + prey_count : int
+  + best_fitness : float
+  + avg_fitness : float
+  + num_species : int
+  + avg_genome_complexity : float
+}
+
+class MetricsCollector {
+  - history_ : vector<GenerationMetrics>
+  --
+  + collect(generation, population, pred_count, prey_count) : GenerationMetrics
+  + history() : const vector<GenerationMetrics>&
+}
+
+class Logger {
+  - base_dir_ : string
+  - run_dir_ : string
+  - seed_ : uint64_t
+  - stats_file_ : ofstream
+  - genomes_file_ : ofstream
+  - species_file_ : ofstream
+  - ticks_file_ : ofstream
+  - ticks_buffer_ : string
+  - ticks_buffered_ : int
+  - genomes_first_entry_ : bool
+  - {static} TICK_FLUSH_EVERY : int = 500
+  --
+  + Logger(output_dir: string, seed: uint64_t)
+  + ~Logger()
+  + initialize(config: SimulationConfig) : bool
+  + log_generation(gen, pred_cnt, prey_cnt, best_f, avg_f, n_sp, avg_cplx) : void
+  + log_best_genome(generation: int, genome: Genome) : void
+  + log_species(generation: int, species: vector<Species>) : void
+  + log_tick(gen, tick: int, agents: vector<unique_ptr<Agent>>) : void
+  + flush_ticks() : void
+  + flush() : void
+  + run_dir() : const string&
+}
+
+MetricsCollector *-- GenerationMetrics
+
+@enduml
