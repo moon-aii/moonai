@@ -10,6 +10,7 @@ use crate::experiment::SimulationConfig;
 use crate::metrics::Logger;
 use crate::profile_scope;
 use crate::profiler::Profiler;
+use crate::profiler::ProfilerSession;
 use crate::settings::UiConfig;
 use crate::tick::buffers::{MetricsSummaryReadback, RenderAgentReadback, RenderSnapshotReadback, UiStatsReadback};
 use crate::tick::simulation::PopulationKind;
@@ -130,6 +131,10 @@ impl RunSession {
         }
     }
 
+    pub fn bind_profiler(&self) -> ProfilerSession {
+        self.profiler.bind()
+    }
+
     pub fn apply_ui_config(&mut self, render_state: &egui_wgpu::RenderState, ui_config: UiConfig) -> Result<()> {
         if self.ui_config == ui_config {
             return Ok(());
@@ -219,8 +224,6 @@ impl RunSession {
     }
 
     pub fn render(&mut self, ui: &mut egui::Ui) {
-        let _profiler_session = self.profiler.bind();
-        profile_scope!("frame");
         self.draw_render(ui);
     }
 
