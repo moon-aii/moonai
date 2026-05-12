@@ -28,19 +28,19 @@ hide:
 
 -   ### Reports
 
-    [:fontawesome-regular-file-lines: Project Proposal](_assets/reports/ProjectProposal.pdf)
+    [:fontawesome-regular-file-lines: Project Proposal](https://raw.githubusercontent.com/moon-aii/moonai/main/papers/ProjectProposal.pdf)
 
-    [:fontawesome-regular-file-lines: Project Specification](_assets/reports/ProjectSpecification.pdf)
+    [:fontawesome-regular-file-lines: Project Specification](https://raw.githubusercontent.com/moon-aii/moonai/main/papers/ProjectSpecification.pdf)
 
-    [:fontawesome-regular-file-lines: Analysis Report](_assets/reports/AnalysisReport.pdf)
+    [:fontawesome-regular-file-lines: Analysis Report](https://raw.githubusercontent.com/moon-aii/moonai/main/papers/AnalysisReport.pdf)
 
-    [:fontawesome-regular-file-lines: High-Level Design Report](_assets/reports/HighLevelDesignReport.pdf)
+    [:fontawesome-regular-file-lines: High-Level Design Report](https://raw.githubusercontent.com/moon-aii/moonai/main/papers/HighLevelDesignReport.pdf)
 
-    [:fontawesome-regular-file-lines: Poster](_assets/reports/Poster.pdf)
+    [:fontawesome-regular-file-lines: Poster](https://raw.githubusercontent.com/moon-aii/moonai/main/papers/Poster.pdf)
 
-    [:fontawesome-regular-file-lines: Low-Level Design Report](_assets/reports/LowLevelDesignReport.pdf)
+    [:fontawesome-regular-file-lines: Low-Level Design Report](https://raw.githubusercontent.com/moon-aii/moonai/main/papers/LowLevelDesignReport.pdf)
 
-    [:fontawesome-regular-file-lines: Test Plan Report](_assets/reports/TestPlanReport.pdf)
+    [:fontawesome-regular-file-lines: Test Plan Report](https://raw.githubusercontent.com/moon-aii/moonai/main/papers/TestPlanReport.pdf)
 
 </div>
 
