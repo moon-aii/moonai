@@ -1,4 +1,4 @@
-#include "evolution_cuda.cuh"
+#include "sim.cuh"
 
 #include <new>
 #include <tuple>
@@ -1355,7 +1355,7 @@ __global__ void accumulate_metrics_kernel(DevicePopulationBuffers population, Me
     atomicAdd(&scratch->predator_generation_sum, static_cast<float>(generation));
     atomicMax(&scratch->max_predator_generation, generation);
     if (species_id < moonai_gpu::kSpeciesBucketCount) {
-      atomicOr(&scratch->predator_species_mask, 1ULL << species_id);
+      atomicOr((unsigned long long*)&scratch->predator_species_mask, 1ULL << species_id);
     }
   } else {
     atomicAdd(&scratch->prey_count, 1U);
@@ -1364,7 +1364,7 @@ __global__ void accumulate_metrics_kernel(DevicePopulationBuffers population, Me
     atomicAdd(&scratch->prey_generation_sum, static_cast<float>(generation));
     atomicMax(&scratch->max_prey_generation, generation);
     if (species_id < moonai_gpu::kSpeciesBucketCount) {
-      atomicOr(&scratch->prey_species_mask, 1ULL << species_id);
+      atomicOr((unsigned long long*)&scratch->prey_species_mask, 1ULL << species_id);
     }
   }
 }

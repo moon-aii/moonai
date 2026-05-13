@@ -1,4 +1,4 @@
-#include "evolution_cuda.cuh"
+#include "sim.cuh"
 
 using moonai_gpu::CompiledNetworkReadbackHeader;
 using moonai_gpu::CudaStatus;

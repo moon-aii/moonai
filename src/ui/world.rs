@@ -8,7 +8,7 @@ use eframe::wgpu;
 use eframe::wgpu::util::DeviceExt as _;
 
 use crate::settings::UiConfig;
-use crate::sim::buffers::RenderSnapshotReadback;
+use crate::sim::RenderSnapshotReadback;
 use crate::ui::render;
 use crate::ui::types::{CameraState, SelectedAgentData};
 
@@ -719,7 +719,7 @@ fn flat_fragment(input: VertexOutput) -> @location(0) vec4<f32> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sim::buffers::{RenderFoodReadback, RenderSnapshotHeader};
+    use crate::sim::{RenderFoodReadback, RenderSnapshotHeader};
 
     #[test]
     fn triangle_vertices_normalize_longest_dimension_to_one() {

@@ -1,12 +1,11 @@
 #pragma once
 
 #include <cuda_runtime.h>
+#include "moonai_gpu_ffi.hpp"
 
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
-
-#include "moonai_gpu_ffi.hpp"
 
 namespace moonai_gpu {
 
@@ -34,153 +33,6 @@ constexpr std::uint32_t kWallXInputIndex = kSelfEnergyInputIndex + kSelfStateSen
 constexpr std::uint32_t kWallYInputIndex = kWallXInputIndex + 1U;
 constexpr std::uint32_t kUnclaimedMate = 0xFFFF'FFFFU;
 
-struct DeviceGenomeBuffers {
-  std::int32_t *connection_from;
-  std::int32_t *connection_to;
-  float *connection_weight;
-  std::uint32_t *connection_innovation;
-  std::uint8_t *connection_enabled;
-  std::uint8_t *node_types;
-  std::uint16_t *num_connections;
-  std::uint16_t *num_nodes;
-  std::uint32_t connection_stride;
-  std::uint32_t node_stride;
-};
-
-struct DeviceCompiledNetworkBuffers {
-  std::uint16_t *eval_order;
-  std::uint32_t *connection_offsets;
-  std::uint16_t *output_indices;
-  std::uint16_t *connection_sources;
-  float *connection_weights;
-  std::uint16_t *node_counts;
-  std::uint16_t *eval_counts;
-  std::uint16_t *connection_counts;
-  std::uint32_t node_stride;
-  std::uint32_t connection_stride;
-  std::uint32_t output_stride;
-};
-
-struct DevicePopulationBuffers {
-  float *pos_x;
-  float *pos_y;
-  float *vel_x;
-  float *vel_y;
-  float *energy;
-  float *age;
-  std::uint8_t *alive;
-  std::uint32_t *species_id;
-  std::uint32_t *entity_id;
-  std::uint32_t *generation;
-  std::uint64_t *rng_state;
-  float *sensor_inputs;
-  DeviceGenomeBuffers genome;
-  DeviceCompiledNetworkBuffers compiled;
-  std::uint32_t capacity;
-};
-
-struct FoodBuffer {
-  float *pos_x;
-  float *pos_y;
-  std::uint8_t *active;
-  std::uint32_t capacity;
-};
-
-struct DeviceInnovationState {
-  std::uint32_t next_innovation;
-  std::uint32_t next_node_id;
-};
-
-struct SimulationCounters {
-  std::uint32_t tick;
-  std::uint32_t predator_births;
-  std::uint32_t prey_births;
-  std::uint32_t predator_deaths;
-  std::uint32_t prey_deaths;
-  std::uint32_t kills;
-  std::uint32_t food_eaten;
-};
-
-struct PopulationGridEntry {
-  std::uint32_t slot;
-  float pos_x;
-  float pos_y;
-};
-
-struct FoodGridEntry {
-  std::uint32_t slot;
-  float pos_x;
-  float pos_y;
-};
-
-struct MetricsReduceScratch {
-  float predator_energy_sum;
-  float prey_energy_sum;
-  float predator_complexity_sum;
-  float prey_complexity_sum;
-  float predator_generation_sum;
-  float prey_generation_sum;
-  std::uint32_t predator_count;
-  std::uint32_t prey_count;
-  std::uint32_t max_predator_generation;
-  std::uint32_t max_prey_generation;
-  unsigned long long predator_species_mask;
-  unsigned long long prey_species_mask;
-};
-
-struct GpuEvolutionState {
-  GpuEvolutionConfig config;
-  SimulationConfig simulation;
-  DevicePopulationBuffers predator;
-  DevicePopulationBuffers prey;
-  FoodBuffer food;
-  DeviceInnovationState *innovation;
-  std::uint32_t *next_entity_id;
-  SimulationCounters *counters;
-  std::uint32_t *predator_free_list;
-  std::uint32_t *prey_free_list;
-  std::uint32_t *predator_free_len;
-  std::uint32_t *prey_free_len;
-  std::uint32_t *predator_mate_claims;
-  std::uint32_t *prey_mate_claims;
-  ReproductionPairReadback *predator_reproduction_pairs;
-  ReproductionPairReadback *prey_reproduction_pairs;
-  std::uint32_t *predator_pair_count;
-  std::uint32_t *prey_pair_count;
-  std::uint32_t *population_live_count_scratch;
-  UiStatsReadback *ui_stats_scratch;
-  FreeListStateReadback *free_list_state_scratch;
-  SensorSnapshotReadback *sensor_snapshot_scratch;
-  CompiledNetworkReadbackHeader *compiled_header_scratch;
-  SelectedAgentNetworkReadback *selected_network_scratch;
-  MetricsSummaryReadback *metrics_summary;
-  MetricsReduceScratch *metrics_reduce_scratch;
-  SpeciesSummaryReadback *species_summaries_scratch;
-  RepresentativeGenomeHeader *representative_headers_scratch;
-  std::uint32_t *species_count_scratch;
-  RenderSnapshotHeader *render_header_scratch;
-  RenderAgentReadback *render_predators_scratch;
-  RenderAgentReadback *render_prey_scratch;
-  RenderFoodReadback *render_food_scratch;
-  std::uint32_t *predator_cell_counts;
-  std::uint32_t *predator_cell_offsets;
-  std::uint32_t *predator_cell_write_offsets;
-  PopulationGridEntry *predator_grid_entries;
-  std::uint32_t *prey_cell_counts;
-  std::uint32_t *prey_cell_offsets;
-  std::uint32_t *prey_cell_write_offsets;
-  PopulationGridEntry *prey_grid_entries;
-  std::uint32_t *food_cell_counts;
-  std::uint32_t *food_cell_offsets;
-  std::uint32_t *food_cell_write_offsets;
-  FoodGridEntry *food_grid_entries;
-  std::uint32_t *food_claimed_by;
-  std::uint32_t *prey_claimed_by;
-  std::uint32_t grid_cols;
-  std::uint32_t grid_rows;
-  std::uint32_t grid_cell_capacity;
-  float grid_cell_size;
-};
 
 inline bool is_runtime_unavailable_error(cudaError_t error) {
   return error == cudaErrorInsufficientDriver || error == cudaErrorInitializationError || error == cudaErrorNoDevice;

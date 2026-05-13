@@ -7,16 +7,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for path in [
         "src/lib.rs",
         "src/config.rs",
-        "src/sim/mod.rs",
-        "src/sim/buffers.rs",
-        "src/sim/evolution.rs",
-        "src/sim/simulation.rs",
-        "src/sim/species.rs",
-        "src/sim/evolution_cuda.cuh",
-        "src/sim/kernel.cu",
-        "src/sim/crossover.cu",
-        "src/sim/mutation.cu",
-        "src/sim/network_compilation.cu",
+        "src/sim",
     ] {
         println!("cargo:rerun-if-changed={path}");
     }
@@ -51,6 +42,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "GenomeNodeReadback".to_owned(),
                 "GenomeConnectionReadback".to_owned(),
                 "SpeciesBatchReadbackHeader".to_owned(),
+                "FoodBuffer".to_owned(),
+                "DeviceGenomeBufffers".to_owned(),
+                "DeviceCompiledNetworkBuffers".to_owned(),
+                "DevicePopulationBuffers".to_owned(),
+                "DeviceInnovationState".to_owned(),
+                "SimulationCounters".to_owned(),
+                "PopulationGridEntry".to_owned(),
+                "FoodGridEntry".to_owned(),
+                "MetricsReduceScratch".to_owned(),
+                "GpuEvolutionState".to_owned(),
             ],
             exclude: vec!["GpuEvolutionStateHandle".to_owned()],
             item_types: vec![cbindgen::ItemType::Enums, cbindgen::ItemType::Structs],
@@ -66,12 +67,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .include(&out_dir)
         .flag("-arch=native")
         .flag("-O2")
-        .files(&[
-            "src/sim/kernel.cu",
-            "src/sim/crossover.cu",
-            "src/sim/mutation.cu",
-            "src/sim/network_compilation.cu",
-        ])
+        .files(&["src/sim/kernel.cu", "src/sim/crossover.cu", "src/sim/mutation.cu", "src/sim/network_compilation.cu"])
         .compile("moonai_cuda");
 
     Ok(())

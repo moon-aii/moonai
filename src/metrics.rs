@@ -6,9 +6,7 @@ use anyhow::Result;
 use serde::Serialize;
 
 use crate::experiment::SimulationConfig;
-use crate::sim::buffers::MetricsSummaryReadback;
-use crate::sim::simulation::PopulationKind;
-use crate::sim::species::{RepresentativeGenomeReadback, SpeciesSummaryReadback};
+use crate::sim::{MetricsSummaryReadback, PopulationKind, RepresentativeGenomeReadback, SpeciesSummaryReadback};
 
 pub struct Logger {
     run_dir: PathBuf,
@@ -190,7 +188,7 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::*;
-    use crate::sim::species::{
+    use crate::sim::{
         GenomeConnectionReadback, GenomeNodeReadback, RepresentativeGenomeHeader, RepresentativeGenomeReadback,
     };
 

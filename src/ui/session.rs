@@ -12,10 +12,10 @@ use crate::profile_scope;
 use crate::profiler::Profiler;
 use crate::profiler::ProfilerSession;
 use crate::settings::UiConfig;
-use crate::sim::buffers::{MetricsSummaryReadback, RenderAgentReadback, RenderSnapshotReadback, UiStatsReadback};
-use crate::sim::simulation::PopulationKind;
-use crate::sim::simulation::SimulationState;
-use crate::sim::species::MAX_SPECIES_SUMMARIES;
+use crate::sim::{
+    MAX_SPECIES_SUMMARIES, MetricsSummaryReadback, PopulationKind, RenderAgentReadback, RenderSnapshotReadback,
+    Simulation, UiStatsReadback,
+};
 use crate::ui::render;
 use crate::ui::run_queue::{QueuedRun, RunOutcome, RunRecord};
 use crate::ui::types::{
@@ -31,7 +31,7 @@ pub struct RunSession {
     output_dir: PathBuf,
     config: SimulationConfig,
     ui_config: UiConfig,
-    state: SimulationState,
+    state: Simulation,
     logger: Logger,
     last_logged_tick: u32,
     ui_state: UiState,
@@ -57,7 +57,7 @@ impl RunSession {
 
         let run_name = run_name(&queued_run.experiment_name, queued_run.simulation_config.seed);
         let output_dir = Path::new("output/experiments").join(&run_name);
-        let mut state = SimulationState::init_from_config(&queued_run.simulation_config)?;
+        let mut state = Simulation::init(&queued_run.simulation_config)?;
         let logger = Logger::new(&output_dir, &queued_run.simulation_config)?;
         let camera = render::default_camera(queued_run.simulation_config.grid_size);
         let initial_ui_stats = state.ui_stats()?;
@@ -673,7 +673,7 @@ fn run_name(experiment_name: &str, seed: u64) -> String {
 }
 
 fn log_population_report(
-    state: &mut SimulationState,
+    state: &mut Simulation,
     logger: &mut Logger,
     tick: u32,
     population_kind: PopulationKind,
@@ -689,7 +689,7 @@ fn log_population_report(
     Ok(())
 }
 
-fn log_report_snapshot(state: &mut SimulationState, logger: &mut Logger) -> Result<u32> {
+fn log_report_snapshot(state: &mut Simulation, logger: &mut Logger) -> Result<u32> {
     state.refresh_reports()?;
     let summary = state.metrics_summary()?;
     logger.log_stats(&summary)?;
@@ -700,7 +700,7 @@ fn log_report_snapshot(state: &mut SimulationState, logger: &mut Logger) -> Resu
 }
 
 fn load_world_frame(
-    state: &mut SimulationState,
+    state: &mut Simulation,
     ui_stats: UiStatsReadback,
     ui_config: &UiConfig,
 ) -> Result<(UiStatsReadback, MetricsSummaryReadback, Arc<WorldFrame>)> {

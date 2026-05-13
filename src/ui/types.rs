@@ -1,10 +1,9 @@
 use std::collections::VecDeque;
 
-use crate::sim::buffers::{MetricsSummaryReadback, RenderAgentReadback, UiStatsReadback};
-use crate::sim::simulation::PopulationKind;
-use crate::sim::simulation::SelectedAgentNetworkReadback;
-use crate::sim::simulation::SensorSnapshotReadback;
-use crate::sim::species::RepresentativeGenomeReadback;
+use crate::sim::{
+    MetricsSummaryReadback, PopulationKind, RenderAgentReadback, RepresentativeGenomeReadback,
+    SelectedAgentNetworkReadback, SensorSnapshotReadback, UiStatsReadback,
+};
 
 #[derive(Debug, Clone)]
 pub struct UiState {

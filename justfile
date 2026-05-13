@@ -24,12 +24,12 @@ build:
 # Run the release build with bundled runtime files
 [default]
 [group('run')]
-run:
+run: build
   target/release/moonai
 
 # Run the debug build with bundled runtime files
 [group('run')]
-run-debug:
+run-debug: build-debug
   target/build/moonai
 
 # Generate the self-contained HTML analysis report from output/
