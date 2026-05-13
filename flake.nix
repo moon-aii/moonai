@@ -1,5 +1,5 @@
 {
-  description = "moonai flake environment";
+  description = "moonai flake";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -9,13 +9,29 @@
   let
     name = "moonai-flake";
 
-    libs = with pkgs; [
+    packages = with pkgs; [
+      clang-tools
       wayland
       libxkbcommon
       vulkan-loader
       libGL
       cudatoolkit
+
+      mermaid-cli
+      texliveFull
+      bun
+      uv
+      rustup
+      pkg-config
     ];
+
+    env = {
+      CUDA_PATH = "${pkgs.cudatoolkit}";
+    };
+
+    shellHook = ''
+      echo "- ${name} shell activated."
+    '';
 
     system = "x86_64-linux";
     pkgs = import nixpkgs {
@@ -28,28 +44,10 @@
   in {
     devShells.${system}.default = pkgs.mkShell {
       inherit name;
-      strictDeps = true;
-      buildInputs = libs;
-      LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath libs;
-
-      packages = with pkgs; [
-        clang-tools
-        cudatoolkit
-        mermaid-cli
-        texliveFull
-        bun
-        uv
-        rustup
-        pkg-config
-      ];
-
-      env = {
-        CUDA_PATH = "${pkgs.cudatoolkit}";
-      };
-
-      shellHook = ''
-        echo "- ${name} dev shell activated."
-      '';
+      inherit packages;
+      inherit env;
+      inherit shellHook;
+      LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath packages;
     };
   };
 }
