@@ -1,10 +1,9 @@
 #include "sim.cuh"
 
-using moonai_gpu::CudaStatus;
 using moonai_gpu::DeviceInnovationState;
 using moonai_gpu::DevicePopulationBuffers;
 using moonai_gpu::GpuEvolutionConfig;
-using moonai_gpu::GpuEvolutionState;
+using moonai_gpu::DeviceState;
 using moonai_gpu::GpuMutationConfig;
 using moonai_gpu::PopulationKind;
 
@@ -164,8 +163,7 @@ __device__ void mutate_single_agent(DevicePopulationBuffers population, std::uin
   population.compiled.connection_counts[idx] = 0U;
 }
 
-__global__ void mutate_single_slot_kernel(DevicePopulationBuffers population, DeviceInnovationState *innovation,
-                                          GpuMutationConfig config, std::uint32_t slot) {
+__global__ void mutate_single_slot_kernel(DevicePopulationBuffers population, DeviceInnovationState *innovation, GpuMutationConfig config, std::uint32_t slot) {
   if (blockIdx.x != 0U || threadIdx.x != 0U || slot >= population.capacity || population.alive[slot] == 0U) {
     return;
   }
@@ -175,18 +173,9 @@ __global__ void mutate_single_slot_kernel(DevicePopulationBuffers population, De
 
 } // namespace
 
-extern "C" std::int32_t moonai_gpu_evolution_mutate_slot(void *state_ptr, PopulationKind population_kind,
-                                                           std::uint32_t slot, const GpuMutationConfig *config) {
-  auto *state = static_cast<GpuEvolutionState *>(state_ptr);
-  if (state == nullptr || config == nullptr || config->max_connection_attempts == 0U) {
-    return static_cast<std::int32_t>(CudaStatus::InvalidArgument);
-  }
-
+extern "C" std::int32_t dev_mutate_slot(DeviceState *state, PopulationKind population_kind, uint32_t slot, const GpuMutationConfig *config) {
   auto &population = moonai_gpu::population_for_kind(*state, population_kind);
-  if (slot >= population.capacity) {
-    return static_cast<std::int32_t>(CudaStatus::InvalidArgument);
-  }
 
   mutate_single_slot_kernel<<<1U, 1U>>>(population, state->innovation, *config, slot);
-  return static_cast<std::int32_t>(moonai_gpu::synchronize_kernels());
+  return moonai_gpu::synchronize_kernels();
 }

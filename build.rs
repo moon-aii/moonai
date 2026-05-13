@@ -4,11 +4,7 @@ use std::path::PathBuf;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("cargo:rustc-link-lib=dylib=cudart");
 
-    for path in [
-        "src/lib.rs",
-        "src/config.rs",
-        "src/sim",
-    ] {
+    for path in ["src/lib.rs", "src/config.rs", "src/sim"] {
         println!("cargo:rerun-if-changed={path}");
     }
 
@@ -51,9 +47,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "PopulationGridEntry".to_owned(),
                 "FoodGridEntry".to_owned(),
                 "MetricsReduceScratch".to_owned(),
-                "GpuEvolutionState".to_owned(),
             ],
-            exclude: vec!["GpuEvolutionStateHandle".to_owned()],
             item_types: vec![cbindgen::ItemType::Enums, cbindgen::ItemType::Structs],
             ..cbindgen::ExportConfig::default()
         },

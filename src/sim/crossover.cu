@@ -1,8 +1,7 @@
 #include "sim.cuh"
 
-using moonai_gpu::CudaStatus;
 using moonai_gpu::DevicePopulationBuffers;
-using moonai_gpu::GpuEvolutionState;
+using moonai_gpu::DeviceState;
 using moonai_gpu::PopulationKind;
 
 namespace {
@@ -187,22 +186,9 @@ __global__ void crossover_kernel(DevicePopulationBuffers population, const std::
 
 } // namespace
 
-extern "C" std::int32_t moonai_gpu_evolution_crossover(void *state_ptr, PopulationKind population_kind,
-                                                         std::uint32_t parent_a_slot, std::uint32_t parent_b_slot,
-                                                         std::uint32_t offspring_slot) {
-  auto *state = static_cast<GpuEvolutionState *>(state_ptr);
-  if (state == nullptr) {
-    return static_cast<std::int32_t>(CudaStatus::InvalidArgument);
-  }
-
+extern "C" std::int32_t dev_crossover(DeviceState *state, PopulationKind population_kind, std::uint32_t parent_a_slot, std::uint32_t parent_b_slot, std::uint32_t offspring_slot) {
   auto &population = moonai_gpu::population_for_kind(*state, population_kind);
-  if (parent_a_slot >= population.capacity || parent_b_slot >= population.capacity || offspring_slot >= population.capacity) {
-    return static_cast<std::int32_t>(CudaStatus::InvalidArgument);
-  }
-
-  const auto offspring_energy =
-      state->simulation.offspring_initial_energy > 0.0F ? state->simulation.offspring_initial_energy : state->config.initial_energy;
-  crossover_kernel<<<1U, 1U>>>(population, state->next_entity_id, population_kind, parent_a_slot, parent_b_slot,
-                                offspring_slot, offspring_energy);
-  return static_cast<std::int32_t>(moonai_gpu::synchronize_kernels());
+  const auto offspring_energy = state->simulation.offspring_initial_energy > 0.0F ? state->simulation.offspring_initial_energy : state->config.initial_energy;
+  crossover_kernel<<<1U, 1U>>>(population, state->next_entity_id, population_kind, parent_a_slot, parent_b_slot, offspring_slot, offspring_energy);
+  return moonai_gpu::synchronize_kernels();
 }

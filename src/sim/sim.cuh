@@ -9,8 +9,6 @@
 
 namespace moonai_gpu {
 
-extern std::int32_t g_last_cuda_error_code;
-
 constexpr std::uint8_t kInputNodeType = 0;
 constexpr std::uint8_t kHiddenNodeType = 1;
 constexpr std::uint8_t kOutputNodeType = 2;
@@ -33,33 +31,13 @@ constexpr std::uint32_t kWallXInputIndex = kSelfEnergyInputIndex + kSelfStateSen
 constexpr std::uint32_t kWallYInputIndex = kWallXInputIndex + 1U;
 constexpr std::uint32_t kUnclaimedMate = 0xFFFF'FFFFU;
 
-
-inline bool is_runtime_unavailable_error(cudaError_t error) {
-  return error == cudaErrorInsufficientDriver || error == cudaErrorInitializationError || error == cudaErrorNoDevice;
-}
-
-inline CudaStatus map_cuda_runtime_error(cudaError_t error, CudaStatus failure_status) {
-  g_last_cuda_error_code = static_cast<std::int32_t>(error);
-  if (is_runtime_unavailable_error(error)) {
-    return CudaStatus::RuntimeUnavailable;
-  }
-  return error == cudaSuccess ? CudaStatus::Success : failure_status;
-}
-
-template <typename T> inline CudaStatus alloc_array(T **ptr, std::size_t count) {
+template <typename T> inline uint32_t alloc_array(T **ptr, std::size_t count) {
   if (count == 0U) {
     *ptr = nullptr;
-    return CudaStatus::Success;
+    return 0;
   }
 
-  void *raw = nullptr;
-  const auto error = cudaMalloc(&raw, count * sizeof(T));
-  const auto status = map_cuda_runtime_error(error, CudaStatus::AllocationFailed);
-  if (status != CudaStatus::Success) {
-    return status;
-  }
-  *ptr = static_cast<T *>(raw);
-  return CudaStatus::Success;
+  return cudaMalloc(ptr, count * sizeof(T));
 }
 
 template <typename T> inline void free_array(T *&ptr) {
@@ -69,25 +47,27 @@ template <typename T> inline void free_array(T *&ptr) {
   }
 }
 
-inline CudaStatus zero_device_memory(void *ptr, std::size_t size) {
-  return map_cuda_runtime_error(cudaMemset(ptr, 0, size), CudaStatus::DeviceCopyFailed);
+inline uint32_t zero_device_memory(void *ptr, std::size_t size) {
+  return cudaMemset(ptr, 0, size);
 }
 
-inline CudaStatus copy_compact_device_readback(const void *device_ptr, void *host_ptr, std::size_t size) {
-  return map_cuda_runtime_error(cudaMemcpy(host_ptr, device_ptr, size, cudaMemcpyDeviceToHost), CudaStatus::DeviceCopyFailed);
+inline uint32_t copy_compact_device_readback(const void *device_ptr, void *host_ptr, std::size_t size) {
+  return cudaMemcpy(host_ptr, device_ptr, size, cudaMemcpyDeviceToHost);
 }
 
-inline CudaStatus copy_host_data_to_device(void *device_ptr, const void *host_ptr, std::size_t size) {
-  return map_cuda_runtime_error(cudaMemcpy(device_ptr, host_ptr, size, cudaMemcpyHostToDevice), CudaStatus::DeviceCopyFailed);
+inline uint32_t copy_host_data_to_device(void *device_ptr, const void *host_ptr, std::size_t size) {
+  return cudaMemcpy(device_ptr, host_ptr, size, cudaMemcpyHostToDevice);
 }
 
-inline CudaStatus synchronize_kernels() { return map_cuda_runtime_error(cudaDeviceSynchronize(), CudaStatus::KernelLaunchFailed); }
+inline uint32_t synchronize_kernels() { 
+  return cudaDeviceSynchronize();
+}
 
-inline const DevicePopulationBuffers &population_for_kind(const GpuEvolutionState &state, PopulationKind population_kind) {
+inline const DevicePopulationBuffers &population_for_kind(const DeviceState &state, PopulationKind population_kind) {
   return population_kind == PopulationKind::Predator ? state.predator : state.prey;
 }
 
-inline DevicePopulationBuffers &population_for_kind(GpuEvolutionState &state, PopulationKind population_kind) {
+inline DevicePopulationBuffers &population_for_kind(DeviceState &state, PopulationKind population_kind) {
   return population_kind == PopulationKind::Predator ? state.predator : state.prey;
 }
 

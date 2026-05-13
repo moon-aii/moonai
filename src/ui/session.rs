@@ -707,7 +707,7 @@ fn load_world_frame(
     profile_scope!("world_frame");
 
     let metrics_summary = state.metrics_summary()?;
-    let snapshot = state.render_snapshot(ui_stats.predator_count, ui_stats.prey_count, state.config().food_count)?;
+    let snapshot = state.render_snapshot(ui_stats.predator_count, ui_stats.prey_count, state.config.food_count)?;
     let world_frame = Arc::new(WorldFrame::from_snapshot(snapshot, ui_config));
     Ok((ui_stats, metrics_summary, world_frame))
 }
