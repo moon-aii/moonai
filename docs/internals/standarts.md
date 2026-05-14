@@ -66,9 +66,9 @@ description: Conventions, rules and policies for MoonAI development.
 
 - The Rust rewrite uses a single root package declared in `Cargo.toml`
 - Core modules live directly under `src/` as flat files
-- Only `src/ui/` and `src/tick/` may be subdirectories
+- Only `src/ui/` and `src/sim/` may be subdirectories
 - `src/ui/` owns UI/runtime rendering code
-- `src/tick/` owns merged simulation, evolution, and CUDA-facing code
+- `src/sim/` owns merged simulation, evolution, and CUDA-facing code
 
 ### Dependencies
 

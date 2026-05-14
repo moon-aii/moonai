@@ -8,6 +8,20 @@ just run
 
 The application always launches the UI. Experiment selection, queueing, run replacement, and settings changes all happen inside the application.
 
+MoonAI's main deliverable is the simulation environment itself. The runtime, queueing model,
+exports, and analysis tooling are designed to help study evolutionary machine learning behavior,
+not to present one fixed model checkpoint as the final outcome.
+
+## Typical Workflow
+
+1. Build and launch the application with `just run`.
+2. Select a preset from `experiments.lua` in the Experiments tab.
+3. Edit the draft configuration if needed.
+4. Start the draft immediately or queue it for later execution.
+5. Observe the live run in the Run tab and inspect individual agents if needed.
+6. Review exported artifacts under `output/experiments/` after the run.
+7. Generate a cross-run HTML report with `just analyse`.
+
 ## Runtime Files
 
 MoonAI separates experiment definitions from persisted application settings:
@@ -22,7 +36,9 @@ Color settings use hex strings: `#RRGGBB` for RGB and `#RRGGBBAA` for RGBA.
 
 ### `experiments.lua`
 
-`experiments.lua` returns a named table of experiments. Each entry resolves to one full `SimulationConfig` preset. The runtime injects `moonai_defaults`, so the file only needs to override the parameters that differ from defaults.
+`experiments.lua` returns a named table of experiments. Each entry resolves to one full
+`SimulationConfig` preset. The runtime injects `moonai_defaults`, so the file only needs to
+override the parameters that differ from defaults.
 
 ```lua
 -- moonai_defaults is injected by the runtime
@@ -45,7 +61,10 @@ experiments["default"] = moonai_defaults
 return experiments
 ```
 
-The application loads `experiments.lua` once at startup. Presets can be selected, edited, queued, and run from the UI, but the Lua file itself is not hot-reloaded during the session.
+The shipped file currently defines a broad experiment matrix rather than a single baseline only.
+It includes 55 named condition groups with 5 fixed seeds each, plus a `default` entry for ad hoc
+use. Presets can be selected, edited, queued, and run from the UI, but the Lua file itself is not
+hot-reloaded during the session.
 
 Set `seed` to `0` for random seed, or a fixed value for reproducible runs.
 
@@ -165,10 +184,6 @@ output/
 │       ├── stats.csv
 │       ├── species.csv
 │       └── genomes.json
-├── profiler/              # Profiler outputs
-│   ├── profiles/          # C++ profiler JSON data
-│   │   └── YYYY-MM-DD_HH-MM-SS_*.json
-│   └── profile.html       # Profiler HTML report
 └── analysis/              # Analysis HTML reports
     └── report_*.html
 ```

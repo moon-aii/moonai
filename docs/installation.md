@@ -2,20 +2,21 @@
 
 ## Pre-compiled binaries
 
-To be added.
+Pre-compiled binaries are not currently published. Build from source for now.
 
 ## Build from source
 
 ### Prerequisites
 
-| Tool         | Version                                       | Required          |
-| ------------ | --------------------------------------------- | ----------------- |
-| C++ Compiler | C++17 support (GCC 9+, Clang 10+, MSVC 2019+) | Yes               |
-| CMake        | 3.21+                                         | Yes               |
-| vcpkg        | latest                                        | Yes               |
-| CUDA Toolkit | 11.0+                                         | Yes               |
-| just         | any                                           | Recommended       |
-| uv           | 0.11+                                         | For analysis only |
+| Tool                | Version / Requirement                   | Required                  |
+| ------------------- | --------------------------------------- | ------------------------- |
+| Rust toolchain      | 1.95.0                                  | Yes                       |
+| Cargo               | matching Rust toolchain                 | Yes                       |
+| C++ compiler        | usable by `nvcc` as host compiler       | Yes                       |
+| CUDA Toolkit        | recent toolkit with `nvcc` and `cudart` | Yes                       |
+| just                | any                                     | Recommended               |
+| uv                  | 0.11+                                   | For analysis and docs     |
+| Python              | 3.14+                                   | For analysis and docs     |
 
 #### Just
 
@@ -26,11 +27,11 @@ All of the commands needed for this project can be found and used from `justfile
 ```bash
 # these are same
 just clean
-rm -rf build/
+cargo clean
 
 # clean recipe looks like this at the justfile
 clean:
-  rm -rf build/
+  cargo clean
 ```
 
 ### Clone the project
@@ -42,37 +43,79 @@ cd moonai
 
 ### Simulation
 
-#### 1. Configure
+#### 1. Build
 
 ```bash
-just configure
-cmake --preset linux-debug # manually
+just build-debug
+
+# manual equivalent
+cargo build
+cp -r runtime/* target/debug
 ```
 
-#### 2. Build
+Release build:
 
 ```bash
 just build
-cmake --build build/linux-debug --parallel # manually
+
+# manual equivalent
+cargo build --release
+cp -r runtime/* target/release
 ```
 
 | Command        | Description             |
 | -------------- | ----------------------- |
-| `just build`   | Debug build             |
-| `just release` | Optimized release build |
+| `just build-debug` | Debug build with runtime assets   |
+| `just build`       | Release build with runtime assets |
 
-##### CMake Options
+The project uses `build.rs` to generate the shared Rust/CUDA ABI header and compile the CUDA
+sources under `src/sim/`. There is no CMake or vcpkg step in the current implementation.
 
-| Option               | Default | Description      |
-| -------------------- | ------- | ---------------- |
-| `MOONAI_BUILD_TESTS` | `ON`    | Build unit tests |
-
-#### 3. Run
+#### 2. Run
 
 ```bash
 just run
+
+# manual equivalent after a release build
+target/release/moonai
 ```
 
 Both `experiments.lua` and `settings.json` ship with the binary and are resolved from the binary directory.
 
 ### Analysis
+
+Install the Python environment:
+
+```bash
+just sync
+```
+
+Generate the self-contained analysis report from `output/`:
+
+```bash
+just analyse
+```
+
+### Verification
+
+Run the current automated tests:
+
+```bash
+just test
+```
+
+Run the full quality gate used before integration work:
+
+```bash
+just ci
+```
+
+### Documentation Site
+
+Serve the documentation site locally:
+
+```bash
+just docs
+```
+
+This runs Zensical through `uv` and serves the generated site locally.

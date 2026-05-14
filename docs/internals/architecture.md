@@ -11,7 +11,7 @@ MoonAI follows a **GPU-first execution model**.
 - **GPU owns all simulation state** — positions, velocities, energy, age, alive flags, genomes, compiled networks, innovation counters, and species metadata live in GPU memory.
 - **CPU is orchestrator only** — it loads experiments and settings, allocates buffers, launches kernels, and writes files from compact readbacks. It does not maintain or execute a population-wide simulation, evolution, or verification path.
 - **Tick-based cadence** — GPU runs initialization, simulation, evolution, report-window reduction, and on-demand inspection kernels. CPU only sequences those launches.
-- **GPU-native evolution** — seeding, crossover, mutation, network compilation, and species classification happen entirely on GPU via the evolution portion of `src/tick/`.
+- **GPU-native evolution** — seeding, crossover, mutation, network compilation, and species classification happen entirely on GPU via `src/sim/`.
 - **Cadence separation** — `report_interval_ticks` controls CSV/JSON/species/genome export cadence, while UI `speed_multiplier` controls visualization refresh cadence. They are independent.
 - **Readback/interop is minimal** — only the current UI-frame render snapshot, selected-agent inspection buffers, and report/export structs are transferred out of the simulation buffers.
 - **No duplication** — there is no separate CPU algorithmic path for evolution, inference, speciation, or verification. Host Rust may define FFI layouts and export structs only.
@@ -66,14 +66,22 @@ MoonAI follows a **GPU-first execution model**.
 
 ## Verification Strategy
 
-Verification stays GPU-only as well.
+MoonAI does not maintain a separate CPU reference implementation for the simulation or evolution
+path. Verification therefore combines host-side tests with runtime-level validation of exported
+artifacts and readback behavior.
 
-- Kernel smoke tests validate launch, memory layout, and readback contracts.
-- Device-side invariant checks validate genome bounds, node counts, connection counts, and compiled-network ranges.
-- Fixed-seed determinism tests compare compact GPU readbacks across repeated runs on the same machine.
-- End-to-end runtime tests validate output schema and artifact generation.
+Current automated coverage is strongest in the following areas:
 
-There is no separate CPU reference implementation used to confirm algorithm correctness.
+- artifact writing and schema expectations in `metrics.rs`
+- profiler tree construction and formatting in `profiler.rs`
+- render projection math in `ui/render.rs`
+- world geometry and selection sizing in `ui/world.rs`
+
+Manual and system-level validation remains important for the full GPU tick path, experiment
+workflow, and analysis output. Additional GPU invariant and determinism coverage is a natural
+future extension, but it is not yet as broad as the host-side checks.
+
+There is no separate CPU algorithmic path used to confirm simulation correctness.
 
 ## Readback Rules
 
