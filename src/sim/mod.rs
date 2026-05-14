@@ -13,6 +13,10 @@ pub const SENSOR_COUNT: u32 = 35;
 pub const OUTPUT_COUNT: u32 = 2;
 const PHASE3_CONNECTION_GROWTH_BUDGET_CAP: u32 = 16;
 
+fn checked_usize_product(lhs: usize, rhs: usize, context: &'static str) -> Result<usize> {
+    lhs.checked_mul(rhs).context(context)
+}
+
 #[repr(C)]
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub struct DeviceGenomeBuffers {
@@ -65,6 +69,196 @@ pub struct DevicePopulationBuffers {
 }
 
 impl DevicePopulationBuffers {
+    fn allocate(
+        &mut self,
+        capacity: u32,
+        num_inputs: u32,
+        node_stride: u32,
+        connection_stride: u32,
+        output_stride: u32,
+    ) -> Result<()> {
+        self.capacity = capacity;
+        self.genome.connection_stride = connection_stride;
+        self.genome.node_stride = node_stride;
+        self.compiled.node_stride = node_stride;
+        self.compiled.connection_stride = connection_stride;
+        self.compiled.output_stride = output_stride;
+
+        let result = (|| -> Result<()> {
+            let capacity = capacity as usize;
+            let num_inputs = num_inputs as usize;
+            let node_stride = node_stride as usize;
+            let connection_stride = connection_stride as usize;
+            let output_stride = output_stride as usize;
+            let offset_stride = node_stride.checked_add(1).context("population compiled offset stride overflowed")?;
+            let sensor_entries =
+                checked_usize_product(capacity, num_inputs, "population sensor buffer size overflowed")?;
+            let connection_entries =
+                checked_usize_product(capacity, connection_stride, "population connection buffer size overflowed")?;
+            let node_entries = checked_usize_product(capacity, node_stride, "population node buffer size overflowed")?;
+            let offset_entries =
+                checked_usize_product(capacity, offset_stride, "population compiled offset buffer size overflowed")?;
+            let output_entries =
+                checked_usize_product(capacity, output_stride, "population output buffer size overflowed")?;
+
+            cuda_malloc(&mut self.pos_x, capacity)?;
+            cuda_malloc(&mut self.pos_y, capacity)?;
+            cuda_malloc(&mut self.vel_x, capacity)?;
+            cuda_malloc(&mut self.vel_y, capacity)?;
+            cuda_malloc(&mut self.energy, capacity)?;
+            cuda_malloc(&mut self.age, capacity)?;
+            cuda_malloc(&mut self.alive, capacity)?;
+            cuda_malloc(&mut self.species_id, capacity)?;
+            cuda_malloc(&mut self.entity_id, capacity)?;
+            cuda_malloc(&mut self.generation, capacity)?;
+            cuda_malloc(&mut self.rng_state, capacity)?;
+            cuda_malloc(&mut self.sensor_inputs, sensor_entries)?;
+            cuda_malloc(&mut self.genome.connection_from, connection_entries)?;
+            cuda_malloc(&mut self.genome.connection_to, connection_entries)?;
+            cuda_malloc(&mut self.genome.connection_weight, connection_entries)?;
+            cuda_malloc(&mut self.genome.connection_innovation, connection_entries)?;
+            cuda_malloc(&mut self.genome.connection_enabled, connection_entries)?;
+            cuda_malloc(&mut self.genome.node_types, node_entries)?;
+            cuda_malloc(&mut self.genome.num_connections, capacity)?;
+            cuda_malloc(&mut self.genome.num_nodes, capacity)?;
+            cuda_malloc(&mut self.compiled.eval_order, node_entries)?;
+            cuda_malloc(&mut self.compiled.connection_offsets, offset_entries)?;
+            cuda_malloc(&mut self.compiled.output_indices, output_entries)?;
+            cuda_malloc(&mut self.compiled.connection_sources, connection_entries)?;
+            cuda_malloc(&mut self.compiled.connection_weights, connection_entries)?;
+            cuda_malloc(&mut self.compiled.node_counts, capacity)?;
+            cuda_malloc(&mut self.compiled.eval_counts, capacity)?;
+            cuda_malloc(&mut self.compiled.connection_counts, capacity)?;
+            Ok(())
+        })();
+
+        if result.is_err() {
+            let _ = self.clean_buffers();
+        }
+
+        result
+    }
+
+    fn copy_from(&mut self, src: &Self, num_inputs: u32) -> Result<()> {
+        if self.genome.connection_stride != src.genome.connection_stride
+            || self.genome.node_stride != src.genome.node_stride
+            || self.compiled.node_stride != src.compiled.node_stride
+            || self.compiled.connection_stride != src.compiled.connection_stride
+            || self.compiled.output_stride != src.compiled.output_stride
+        {
+            bail!("population buffer layout mismatch during device copy")
+        }
+
+        if src.capacity > self.capacity {
+            bail!("population copy source capacity {} exceeds destination capacity {}", src.capacity, self.capacity)
+        }
+
+        let copy_cap = src.capacity as usize;
+        let num_inputs = num_inputs as usize;
+        let connection_stride = src.genome.connection_stride as usize;
+        let node_stride = src.genome.node_stride as usize;
+        let output_stride = src.compiled.output_stride as usize;
+        let offset_stride = node_stride.checked_add(1).context("population compiled offset stride overflowed")?;
+        let sensor_entries = checked_usize_product(copy_cap, num_inputs, "population sensor copy size overflowed")?;
+        let connection_entries =
+            checked_usize_product(copy_cap, connection_stride, "population connection copy size overflowed")?;
+        let node_entries = checked_usize_product(copy_cap, node_stride, "population node copy size overflowed")?;
+        let offset_entries =
+            checked_usize_product(copy_cap, offset_stride, "population compiled offset copy size overflowed")?;
+        let output_entries = checked_usize_product(copy_cap, output_stride, "population output copy size overflowed")?;
+
+        cuda_dev_to_dev(self.pos_x, src.pos_x, copy_cap)?;
+        cuda_dev_to_dev(self.pos_y, src.pos_y, copy_cap)?;
+        cuda_dev_to_dev(self.vel_x, src.vel_x, copy_cap)?;
+        cuda_dev_to_dev(self.vel_y, src.vel_y, copy_cap)?;
+        cuda_dev_to_dev(self.energy, src.energy, copy_cap)?;
+        cuda_dev_to_dev(self.age, src.age, copy_cap)?;
+        cuda_dev_to_dev(self.alive, src.alive, copy_cap)?;
+        cuda_dev_to_dev(self.species_id, src.species_id, copy_cap)?;
+        cuda_dev_to_dev(self.entity_id, src.entity_id, copy_cap)?;
+        cuda_dev_to_dev(self.generation, src.generation, copy_cap)?;
+        cuda_dev_to_dev(self.rng_state, src.rng_state, copy_cap)?;
+        cuda_dev_to_dev(self.sensor_inputs, src.sensor_inputs, sensor_entries)?;
+        cuda_dev_to_dev(self.genome.connection_from, src.genome.connection_from, connection_entries)?;
+        cuda_dev_to_dev(self.genome.connection_to, src.genome.connection_to, connection_entries)?;
+        cuda_dev_to_dev(self.genome.connection_weight, src.genome.connection_weight, connection_entries)?;
+        cuda_dev_to_dev(self.genome.connection_innovation, src.genome.connection_innovation, connection_entries)?;
+        cuda_dev_to_dev(self.genome.connection_enabled, src.genome.connection_enabled, connection_entries)?;
+        cuda_dev_to_dev(self.genome.node_types, src.genome.node_types, node_entries)?;
+        cuda_dev_to_dev(self.genome.num_connections, src.genome.num_connections, copy_cap)?;
+        cuda_dev_to_dev(self.genome.num_nodes, src.genome.num_nodes, copy_cap)?;
+        cuda_dev_to_dev(self.compiled.eval_order, src.compiled.eval_order, node_entries)?;
+        cuda_dev_to_dev(self.compiled.connection_offsets, src.compiled.connection_offsets, offset_entries)?;
+        cuda_dev_to_dev(self.compiled.output_indices, src.compiled.output_indices, output_entries)?;
+        cuda_dev_to_dev(self.compiled.connection_sources, src.compiled.connection_sources, connection_entries)?;
+        cuda_dev_to_dev(self.compiled.connection_weights, src.compiled.connection_weights, connection_entries)?;
+        cuda_dev_to_dev(self.compiled.node_counts, src.compiled.node_counts, copy_cap)?;
+        cuda_dev_to_dev(self.compiled.eval_counts, src.compiled.eval_counts, copy_cap)?;
+        cuda_dev_to_dev(self.compiled.connection_counts, src.compiled.connection_counts, copy_cap)?;
+
+        Ok(())
+    }
+
+    fn zero_tail(&mut self, from_capacity: u32, num_inputs: u32) -> Result<()> {
+        if from_capacity >= self.capacity {
+            return Ok(());
+        }
+
+        let tail = (self.capacity - from_capacity) as usize;
+        let from_capacity = from_capacity as usize;
+        let num_inputs = num_inputs as usize;
+        let connection_stride = self.genome.connection_stride as usize;
+        let node_stride = self.genome.node_stride as usize;
+        let output_stride = self.compiled.output_stride as usize;
+        let offset_stride = node_stride.checked_add(1).context("population compiled offset stride overflowed")?;
+        let sensor_base = checked_usize_product(from_capacity, num_inputs, "population sensor tail offset overflowed")?;
+        let sensor_entries = checked_usize_product(tail, num_inputs, "population sensor tail size overflowed")?;
+        let connection_base =
+            checked_usize_product(from_capacity, connection_stride, "population connection tail offset overflowed")?;
+        let connection_entries =
+            checked_usize_product(tail, connection_stride, "population connection tail size overflowed")?;
+        let node_base = checked_usize_product(from_capacity, node_stride, "population node tail offset overflowed")?;
+        let node_entries = checked_usize_product(tail, node_stride, "population node tail size overflowed")?;
+        let offset_base =
+            checked_usize_product(from_capacity, offset_stride, "population compiled offset tail offset overflowed")?;
+        let offset_entries =
+            checked_usize_product(tail, offset_stride, "population compiled offset tail size overflowed")?;
+        let output_base =
+            checked_usize_product(from_capacity, output_stride, "population output tail offset overflowed")?;
+        let output_entries = checked_usize_product(tail, output_stride, "population output tail size overflowed")?;
+
+        cuda_memset_zero(self.pos_x.wrapping_add(from_capacity), tail)?;
+        cuda_memset_zero(self.pos_y.wrapping_add(from_capacity), tail)?;
+        cuda_memset_zero(self.vel_x.wrapping_add(from_capacity), tail)?;
+        cuda_memset_zero(self.vel_y.wrapping_add(from_capacity), tail)?;
+        cuda_memset_zero(self.energy.wrapping_add(from_capacity), tail)?;
+        cuda_memset_zero(self.age.wrapping_add(from_capacity), tail)?;
+        cuda_memset_zero(self.alive.wrapping_add(from_capacity), tail)?;
+        cuda_memset_zero(self.species_id.wrapping_add(from_capacity), tail)?;
+        cuda_memset_zero(self.entity_id.wrapping_add(from_capacity), tail)?;
+        cuda_memset_zero(self.generation.wrapping_add(from_capacity), tail)?;
+        cuda_memset_zero(self.rng_state.wrapping_add(from_capacity), tail)?;
+        cuda_memset_zero(self.sensor_inputs.wrapping_add(sensor_base), sensor_entries)?;
+        cuda_memset_zero(self.genome.connection_from.wrapping_add(connection_base), connection_entries)?;
+        cuda_memset_zero(self.genome.connection_to.wrapping_add(connection_base), connection_entries)?;
+        cuda_memset_zero(self.genome.connection_weight.wrapping_add(connection_base), connection_entries)?;
+        cuda_memset_zero(self.genome.connection_innovation.wrapping_add(connection_base), connection_entries)?;
+        cuda_memset_zero(self.genome.connection_enabled.wrapping_add(connection_base), connection_entries)?;
+        cuda_memset_zero(self.genome.node_types.wrapping_add(node_base), node_entries)?;
+        cuda_memset_zero(self.genome.num_connections.wrapping_add(from_capacity), tail)?;
+        cuda_memset_zero(self.genome.num_nodes.wrapping_add(from_capacity), tail)?;
+        cuda_memset_zero(self.compiled.eval_order.wrapping_add(node_base), node_entries)?;
+        cuda_memset_zero(self.compiled.connection_offsets.wrapping_add(offset_base), offset_entries)?;
+        cuda_memset_zero(self.compiled.output_indices.wrapping_add(output_base), output_entries)?;
+        cuda_memset_zero(self.compiled.connection_sources.wrapping_add(connection_base), connection_entries)?;
+        cuda_memset_zero(self.compiled.connection_weights.wrapping_add(connection_base), connection_entries)?;
+        cuda_memset_zero(self.compiled.node_counts.wrapping_add(from_capacity), tail)?;
+        cuda_memset_zero(self.compiled.eval_counts.wrapping_add(from_capacity), tail)?;
+        cuda_memset_zero(self.compiled.connection_counts.wrapping_add(from_capacity), tail)?;
+
+        Ok(())
+    }
+
     fn clean_buffers(&mut self) -> Result<()> {
         cuda_free(&mut self.pos_x)?;
         cuda_free(&mut self.pos_y)?;
@@ -159,6 +353,35 @@ pub struct FoodBuffer {
     pos_y: *mut f32,
     active: *mut u8,
     capacity: u32,
+}
+
+impl FoodBuffer {
+    fn allocate(&mut self, capacity: u32) -> Result<()> {
+        self.capacity = capacity;
+
+        let result = (|| -> Result<()> {
+            let capacity = capacity as usize;
+            cuda_malloc(&mut self.pos_x, capacity)?;
+            cuda_malloc(&mut self.pos_y, capacity)?;
+            cuda_malloc(&mut self.active, capacity)?;
+            Ok(())
+        })();
+
+        if result.is_err() {
+            let _ = self.clean_buffers();
+        }
+
+        result
+    }
+
+    fn clean_buffers(&mut self) -> Result<()> {
+        cuda_free(&mut self.pos_x)?;
+        cuda_free(&mut self.pos_y)?;
+        cuda_free(&mut self.active)?;
+        self.capacity = 0;
+
+        Ok(())
+    }
 }
 
 #[repr(C)]
@@ -457,6 +680,183 @@ impl Simulation {
         Ok(simulation)
     }
 
+    fn allocate_core_state_buffers(&mut self) -> Result<()> {
+        self.device_state.predator.allocate(
+            self.config.predator_count,
+            self.device_state.num_inputs,
+            self.device_state.node_stride,
+            self.device_state.connection_stride,
+            self.device_state.num_outputs,
+        )?;
+        self.device_state.prey.allocate(
+            self.config.prey_count,
+            self.device_state.num_inputs,
+            self.device_state.node_stride,
+            self.device_state.connection_stride,
+            self.device_state.num_outputs,
+        )?;
+        cuda_malloc(&mut self.device_state.innovation, 1)?;
+        cuda_malloc(&mut self.device_state.next_entity_id, 1)?;
+        cuda_malloc(&mut self.device_state.population_live_count_scratch, 1)?;
+        cuda_malloc(&mut self.device_state.ui_stats_scratch, 1)?;
+        cuda_malloc(&mut self.device_state.free_list_state_scratch, 1)?;
+        cuda_malloc(&mut self.device_state.sensor_snapshot_scratch, 1)?;
+        cuda_malloc(&mut self.device_state.compiled_header_scratch, 1)?;
+        cuda_malloc(&mut self.device_state.selected_network_scratch, 1)?;
+        cuda_malloc(&mut self.device_state.metrics_summary, 1)?;
+        cuda_malloc(&mut self.device_state.metrics_reduce_scratch, 1)?;
+        cuda_malloc(&mut self.device_state.species_summaries_scratch, MAX_SPECIES_SUMMARIES as usize)?;
+        cuda_malloc(&mut self.device_state.representative_headers_scratch, MAX_SPECIES_SUMMARIES as usize)?;
+        cuda_malloc(&mut self.device_state.species_count_scratch, 1)?;
+        cuda_malloc(&mut self.device_state.render_header_scratch, 1)?;
+
+        Ok(())
+    }
+
+    fn allocate_population_render_buffers(&mut self) -> Result<()> {
+        let result = (|| -> Result<()> {
+            cuda_malloc(&mut self.device_state.render_predators_scratch, self.device_state.predator.capacity as usize)?;
+            cuda_malloc(&mut self.device_state.render_prey_scratch, self.device_state.prey.capacity as usize)?;
+            Ok(())
+        })();
+
+        if result.is_err() {
+            let _ = cuda_free(&mut self.device_state.render_predators_scratch);
+            let _ = cuda_free(&mut self.device_state.render_prey_scratch);
+        }
+
+        result
+    }
+
+    fn allocate_food_state_buffers(&mut self) -> Result<()> {
+        let result = (|| -> Result<()> {
+            self.device_state.food.allocate(self.config.food_count)?;
+            cuda_malloc(&mut self.device_state.render_food_scratch, self.device_state.food.capacity as usize)?;
+            cuda_malloc(&mut self.device_state.food_claimed_by, self.device_state.food.capacity as usize)?;
+            Ok(())
+        })();
+
+        if result.is_err() {
+            let _ = self.device_state.food.clean_buffers();
+            let _ = cuda_free(&mut self.device_state.render_food_scratch);
+            let _ = cuda_free(&mut self.device_state.food_claimed_by);
+        }
+
+        result
+    }
+
+    fn allocate_counter_buffer(&mut self) -> Result<()> {
+        cuda_malloc(&mut self.device_state.counters, 1)
+    }
+
+    fn free_free_list_buffers(&mut self) -> Result<()> {
+        cuda_free(&mut self.device_state.predator_free_list)?;
+        cuda_free(&mut self.device_state.prey_free_list)?;
+        cuda_free(&mut self.device_state.predator_free_len)?;
+        cuda_free(&mut self.device_state.prey_free_len)?;
+        cuda_free(&mut self.device_state.prey_claimed_by)?;
+
+        Ok(())
+    }
+
+    fn allocate_free_list_buffers(&mut self) -> Result<()> {
+        let result = (|| -> Result<()> {
+            cuda_malloc(&mut self.device_state.predator_free_list, self.device_state.predator.capacity as usize)?;
+            cuda_malloc(&mut self.device_state.prey_free_list, self.device_state.prey.capacity as usize)?;
+            cuda_malloc(&mut self.device_state.predator_free_len, 1)?;
+            cuda_malloc(&mut self.device_state.prey_free_len, 1)?;
+            cuda_malloc(&mut self.device_state.prey_claimed_by, self.device_state.prey.capacity as usize)?;
+            Ok(())
+        })();
+
+        if result.is_err() {
+            let _ = self.free_free_list_buffers();
+        }
+
+        result
+    }
+
+    fn allocate_reproduction_buffers(&mut self) -> Result<()> {
+        let result = (|| -> Result<()> {
+            cuda_malloc(&mut self.device_state.predator_mate_claims, self.device_state.predator.capacity as usize)?;
+            cuda_malloc(&mut self.device_state.prey_mate_claims, self.device_state.prey.capacity as usize)?;
+            cuda_malloc(
+                &mut self.device_state.predator_reproduction_pairs,
+                self.device_state.predator.capacity as usize,
+            )?;
+            cuda_malloc(&mut self.device_state.prey_reproduction_pairs, self.device_state.prey.capacity as usize)?;
+            cuda_malloc(&mut self.device_state.predator_pair_count, 1)?;
+            cuda_malloc(&mut self.device_state.prey_pair_count, 1)?;
+            Ok(())
+        })();
+
+        if result.is_err() {
+            let _ = self.free_reproduction_buffers();
+        }
+
+        result
+    }
+
+    fn allocate_spatial_grid_buffers(&mut self) -> Result<()> {
+        let grid_cols = self.device_state.grid_cols;
+        let grid_rows = self.device_state.grid_rows;
+        let grid_cell_size = self.device_state.grid_cell_size;
+        let cell_count = grid_cols.checked_mul(grid_rows).context("spatial grid cell count overflowed")?;
+        let offset_count = cell_count.checked_add(1).context("spatial grid offset count overflowed")?;
+
+        let result = (|| -> Result<()> {
+            cuda_malloc(&mut self.device_state.predator_cell_counts, cell_count as usize)?;
+            cuda_malloc(&mut self.device_state.predator_cell_offsets, offset_count as usize)?;
+            cuda_malloc(&mut self.device_state.predator_cell_write_offsets, cell_count as usize)?;
+            cuda_malloc(&mut self.device_state.predator_grid_entries, self.device_state.predator.capacity as usize)?;
+            cuda_malloc(&mut self.device_state.prey_cell_counts, cell_count as usize)?;
+            cuda_malloc(&mut self.device_state.prey_cell_offsets, offset_count as usize)?;
+            cuda_malloc(&mut self.device_state.prey_cell_write_offsets, cell_count as usize)?;
+            cuda_malloc(&mut self.device_state.prey_grid_entries, self.device_state.prey.capacity as usize)?;
+            cuda_malloc(&mut self.device_state.food_cell_counts, cell_count as usize)?;
+            cuda_malloc(&mut self.device_state.food_cell_offsets, offset_count as usize)?;
+            cuda_malloc(&mut self.device_state.food_cell_write_offsets, cell_count as usize)?;
+            cuda_malloc(&mut self.device_state.food_grid_entries, self.device_state.food.capacity as usize)?;
+            Ok(())
+        })();
+
+        if result.is_err() {
+            let _ = self.clean_spatial_grid_buffers();
+            self.device_state.grid_cols = grid_cols;
+            self.device_state.grid_rows = grid_rows;
+            self.device_state.grid_cell_size = grid_cell_size;
+        } else {
+            self.device_state.grid_cell_capacity = cell_count;
+        }
+
+        result
+    }
+
+    fn initialize_device_scalars(&mut self) -> Result<()> {
+        let next_innovation = self
+            .device_state
+            .num_inputs
+            .checked_add(1)
+            .and_then(|value| value.checked_mul(self.device_state.num_outputs))
+            .context("innovation counter initialization overflowed")?;
+        let next_node_id = self
+            .device_state
+            .num_inputs
+            .checked_add(self.device_state.num_outputs)
+            .and_then(|value| value.checked_add(1))
+            .context("node id initialization overflowed")?;
+        let innovation_state = DeviceInnovationState { next_innovation, next_node_id };
+        let next_entity_id = self
+            .config
+            .predator_count
+            .checked_add(self.config.prey_count)
+            .and_then(|value| value.checked_add(1))
+            .context("next entity id initialization overflowed")?;
+
+        cuda_host_to_dev(self.device_state.innovation, ptr::from_ref(&innovation_state), 1)?;
+        cuda_host_to_dev(self.device_state.next_entity_id, ptr::from_ref(&next_entity_id), 1)
+    }
+
     fn init_dev(&mut self) -> Result<()> {
         self.device_state.simulation = self.config;
         self.device_state.grid_cell_size = self.config.vision_range.max(1.0);
@@ -485,20 +885,15 @@ impl Simulation {
         self.device_state.node_stride = node_stride;
         self.device_state.connection_stride = connection_stride;
 
-        check_cuda_status(unsafe { dev_create(self.get_dev_state()) }, "dev_evolution_create")?;
+        self.allocate_core_state_buffers()?;
+        self.allocate_population_render_buffers()?;
+        self.allocate_food_state_buffers()?;
+        self.allocate_counter_buffer()?;
+        self.allocate_free_list_buffers()?;
+        self.allocate_reproduction_buffers()?;
+        self.allocate_spatial_grid_buffers()?;
         check_cuda_status(unsafe { dev_seed_initial_population(self.get_dev_state()) }, "dev_seed_initial_population")?;
-        check_cuda_status(unsafe { dev_ensure_food_buffer(self.get_dev_state()) }, "dev_ensure_food_buffer")?;
-        check_cuda_status(unsafe { dev_ensure_counter_buffer(self.get_dev_state()) }, "dev_ensure_counter_buffer")?;
-        check_cuda_status(unsafe { dev_ensure_free_lists(self.get_dev_state()) }, "dev_ensure_free_lists")?;
-        check_cuda_status(
-            unsafe { dev_ensure_reproduction_buffers(self.get_dev_state()) },
-            "dev_ensure_reproduction_buffers",
-        )?;
-        check_cuda_status(unsafe { dev_ensure_metrics_buffer(self.get_dev_state()) }, "dev_ensure_metrics_buffer")?;
-        check_cuda_status(
-            unsafe { dev_ensure_spatial_grid_buffers(self.get_dev_state()) },
-            "dev_ensure_spatial_grid_buffers",
-        )?;
+        self.initialize_device_scalars()?;
         check_cuda_status(unsafe { dev_reset_counters(self.get_dev_state()) }, "dev_reset_counters")?;
         check_cuda_status(unsafe { dev_initialize_free_lists(self.get_dev_state()) }, "dev_initialize_free_lists")?;
         check_cuda_status(unsafe { dev_seed_food(self.get_dev_state()) }, "dev_seed_food")?;
@@ -863,8 +1258,63 @@ impl Simulation {
     }
 
     fn expand_population(&mut self, population_kind: PopulationKind, new_capacity: u32) -> Result<()> {
-        let status = unsafe { dev_expand_population(self.get_dev_state(), population_kind, new_capacity) };
-        check_cuda_status(status, "moonai_gpu_simulation_expand_population")
+        let source_population = match population_kind {
+            PopulationKind::Predator => self.device_state.predator,
+            PopulationKind::Prey => self.device_state.prey,
+        };
+        if new_capacity <= source_population.capacity {
+            return Ok(());
+        }
+
+        let mut replacement = DevicePopulationBuffers::default();
+        let replacement_result = (|| -> Result<()> {
+            replacement.allocate(
+                new_capacity,
+                self.device_state.num_inputs,
+                source_population.genome.node_stride,
+                source_population.genome.connection_stride,
+                source_population.compiled.output_stride,
+            )?;
+            replacement.zero_tail(0, self.device_state.num_inputs)?;
+            replacement.copy_from(&source_population, self.device_state.num_inputs)
+        })();
+        if let Err(err) = replacement_result {
+            let _ = replacement.clean_buffers();
+            return Err(err);
+        }
+
+        match population_kind {
+            PopulationKind::Predator => {
+                self.device_state.predator.clean_buffers()?;
+                self.device_state.predator = replacement;
+            }
+            PopulationKind::Prey => {
+                self.device_state.prey.clean_buffers()?;
+                self.device_state.prey = replacement;
+            }
+        }
+
+        let grid_cols = self.device_state.grid_cols;
+        let grid_rows = self.device_state.grid_rows;
+        let grid_cell_size = self.device_state.grid_cell_size;
+
+        cuda_free(&mut self.device_state.render_predators_scratch)?;
+        cuda_free(&mut self.device_state.render_prey_scratch)?;
+        self.allocate_population_render_buffers()?;
+        self.free_free_list_buffers()?;
+        self.allocate_free_list_buffers()?;
+        self.free_reproduction_buffers()?;
+        self.allocate_reproduction_buffers()?;
+        self.clean_spatial_grid_buffers()?;
+        self.device_state.grid_cols = grid_cols;
+        self.device_state.grid_rows = grid_rows;
+        self.device_state.grid_cell_size = grid_cell_size;
+        self.allocate_spatial_grid_buffers()?;
+
+        check_cuda_status(
+            unsafe { dev_initialize_free_lists(self.get_dev_state()) },
+            "moonai_gpu_simulation_initialize_free_lists",
+        )
     }
 
     fn run_reproduction(&mut self, population_kind: PopulationKind) -> Result<()> {
@@ -1053,23 +1503,16 @@ impl Simulation {
     }
 
     fn clean_buffers(&mut self) -> Result<()> {
-        cuda_free(&mut self.device_state.food.pos_x)?;
-        cuda_free(&mut self.device_state.food.pos_y)?;
-        cuda_free(&mut self.device_state.food.active)?;
-        self.device_state.food.capacity = 0;
+        self.device_state.food.clean_buffers()?;
 
         self.device_state.predator.clean_buffers()?;
         self.device_state.prey.clean_buffers()?;
         cuda_free(&mut self.device_state.innovation)?;
         cuda_free(&mut self.device_state.next_entity_id)?;
         cuda_free(&mut self.device_state.counters)?;
-        cuda_free(&mut self.device_state.predator_free_list)?;
-        cuda_free(&mut self.device_state.prey_free_list)?;
-        cuda_free(&mut self.device_state.predator_free_len)?;
-        cuda_free(&mut self.device_state.prey_free_len)?;
+        self.free_free_list_buffers()?;
         self.free_reproduction_buffers()?;
         cuda_free(&mut self.device_state.food_claimed_by)?;
-        cuda_free(&mut self.device_state.prey_claimed_by)?;
         cuda_free(&mut self.device_state.population_live_count_scratch)?;
         cuda_free(&mut self.device_state.ui_stats_scratch)?;
         cuda_free(&mut self.device_state.free_list_state_scratch)?;
@@ -1092,19 +1535,12 @@ impl Simulation {
 }
 
 unsafe extern "C" {
-    fn dev_create(out_state: *mut DeviceState) -> i32;
     fn dev_seed_initial_population(state: *mut DeviceState) -> i32;
     fn dev_population_live_count(
         state: *mut DeviceState,
         population_kind: PopulationKind,
         out_live_count: *mut u32,
     ) -> i32;
-    fn dev_ensure_food_buffer(state: *mut DeviceState) -> i32;
-    fn dev_ensure_counter_buffer(state: *mut DeviceState) -> i32;
-    fn dev_ensure_free_lists(state: *mut DeviceState) -> i32;
-    fn dev_ensure_reproduction_buffers(state: *mut DeviceState) -> i32;
-    fn dev_ensure_metrics_buffer(state: *mut DeviceState) -> i32;
-    fn dev_ensure_spatial_grid_buffers(state: *mut DeviceState) -> i32;
     fn dev_reset_counters(state: *mut DeviceState) -> i32;
     fn dev_initialize_free_lists(state: *mut DeviceState) -> i32;
     fn dev_seed_food(state: *mut DeviceState) -> i32;
@@ -1140,7 +1576,6 @@ unsafe extern "C" {
         population_kind: PopulationKind,
         births_applied: u32,
     ) -> i32;
-    fn dev_expand_population(state: *mut DeviceState, population_kind: PopulationKind, new_capacity: u32) -> i32;
     fn dev_advance_tick(state: *mut DeviceState) -> i32;
     fn dev_ui_stats(state: *mut DeviceState, out_stats: *mut UiStatsReadback) -> i32;
     fn dev_free_list_state(state: *mut DeviceState, out_state: *mut FreeListStateReadback) -> i32;
