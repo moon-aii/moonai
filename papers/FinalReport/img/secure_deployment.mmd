@@ -1,0 +1,14 @@
+flowchart LR
+    subgraph LAN[Closed Local Network / Air-Gapped LAN]
+        A[UAV Thermal Camera\nRTSP Source] --> P[Edge Processing Unit]
+        C[Optional RGB Source] --> P
+        subgraph EDGE[On-Device Processing]
+            D[YOLOv8 Detector] --> E[ROI Cropper]
+            E --> F[Qwen2-VL Reasoner]
+            F --> G[JSON and Alert Output]
+        end
+        P --> D
+        G --> H[Operator Dashboard]
+        G --> I[Local Storage]
+    end
+    LAN -. No external connectivity .-> X[(Internet)]

@@ -1,6 +1,9 @@
+mod helpers;
+use crate::sim::helpers::*;
+
 use crate::experiment::SimulationConfig;
 use crate::profile_scope;
-use anyhow::{Context as _, Result, anyhow, bail};
+use anyhow::{Context as _, Result, bail};
 use serde::{Deserialize, Serialize};
 use std::mem::MaybeUninit;
 use std::ptr::{self};
@@ -414,13 +417,6 @@ fn readback<T>(context: &str, mut call: impl FnMut(*mut T) -> i32) -> Result<T> 
     Ok(unsafe { out.assume_init() })
 }
 
-fn check_cuda_status(status: i32, context: &str) -> Result<()> {
-    match status {
-        0 => Ok(()),
-        _ => Err(anyhow!("{context} failed (raw CUDA error code {status})")),
-    }
-}
-
 pub struct Simulation {
     pub config: SimulationConfig,
     device_state: DeviceState,
@@ -430,8 +426,10 @@ pub struct Simulation {
 
 impl Drop for Simulation {
     fn drop(&mut self) {
-        // SAFETY: `self.raw` was allocated by the matching create entrypoint and is dropped exactly once here.
-        unsafe { dev_destroy(self.get_dev_state()) };
+        match self.clean_buffers() {
+            Ok(()) => (),
+            _ => (),
+        }
     }
 }
 
@@ -1011,11 +1009,40 @@ impl Simulation {
     const unsafe fn get_dev_state(&mut self) -> *mut DeviceState {
         &mut self.device_state as *mut DeviceState
     }
+
+    fn clean_buffers(&mut self) -> Result<()> {
+        cuda_free(&mut self.device_state.food.pos_x)?;
+        cuda_free(&mut self.device_state.food.pos_y)?;
+        cuda_free(&mut self.device_state.food.active)?;
+        self.device_state.food.capacity = 0;
+
+        cuda_free(&mut self.device_state.innovation)?;
+        cuda_free(&mut self.device_state.next_entity_id)?;
+        cuda_free(&mut self.device_state.counters)?;
+        cuda_free(&mut self.device_state.predator_free_list)?;
+        cuda_free(&mut self.device_state.prey_free_list)?;
+        cuda_free(&mut self.device_state.predator_free_len)?;
+        cuda_free(&mut self.device_state.prey_free_len)?;
+
+        cuda_free(&mut self.device_state.population_live_count_scratch)?;
+        cuda_free(&mut self.device_state.ui_stats_scratch)?;
+        cuda_free(&mut self.device_state.free_list_state_scratch)?;
+        cuda_free(&mut self.device_state.sensor_snapshot_scratch)?;
+        cuda_free(&mut self.device_state.compiled_header_scratch)?;
+        cuda_free(&mut self.device_state.selected_network_scratch)?;
+        cuda_free(&mut self.device_state.metrics_summary)?;
+        cuda_free(&mut self.device_state.metrics_reduce_scratch)?;
+        cuda_free(&mut self.device_state.species_summaries_scratch)?;
+        cuda_free(&mut self.device_state.representative_headers_scratch)?;
+        cuda_free(&mut self.device_state.species_count_scratch)?;
+        cuda_free(&mut self.device_state.render_header_scratch)?;
+
+        Ok(())
+    }
 }
 
 unsafe extern "C" {
     fn dev_create(out_state: *mut DeviceState) -> i32;
-    fn dev_destroy(state: *mut DeviceState);
     fn dev_seed_initial_population(state: *mut DeviceState) -> i32;
     fn dev_population_live_count( state: *mut DeviceState, population_kind: PopulationKind, out_live_count: *mut u32,) -> i32;
     fn dev_ensure_food_buffer(state: *mut DeviceState) -> i32;

@@ -120,13 +120,6 @@ uint32_t allocate_food_buffers(FoodBuffer &food, std::uint32_t capacity) {
   return 0;
 }
 
-void free_food_buffers(FoodBuffer &food) {
-  moonai_gpu::free_array(food.pos_x);
-  moonai_gpu::free_array(food.pos_y);
-  moonai_gpu::free_array(food.active);
-  food.capacity = 0U;
-}
-
 void free_interaction_buffers(DeviceState &state) {
   moonai_gpu::free_array(state.food_claimed_by);
   moonai_gpu::free_array(state.prey_claimed_by);
@@ -241,7 +234,12 @@ void destroy_state(DeviceState *state) {
   if (state == nullptr) {
     return;
   }
-  free_food_buffers(state->food);
+
+  moonai_gpu::free_array(food.pos_x);
+  moonai_gpu::free_array(food.pos_y);
+  moonai_gpu::free_array(food.active);
+  food.capacity = 0U;
+
   free_population_buffers(state->predator);
   free_population_buffers(state->prey);
   moonai_gpu::free_array(state->innovation);
@@ -1353,17 +1351,7 @@ __global__ void pack_render_agents_kernel(DevicePopulationBuffers population, st
   atomicAdd(total_ptr, 1U);
   const auto write_index = atomicAdd(returned_ptr, 1U);
   if (write_index < max_count) {
-    out_agents[write_index] = RenderAgentReadback{Kind,
-                                                  idx,
-                                                  population.entity_id[idx],
-                                                  population.species_id[idx],
-                                                  population.generation[idx],
-                                                  population.age[idx],
-                                                  population.pos_x[idx],
-                                                  population.pos_y[idx],
-                                                  population.vel_x[idx],
-                                                  population.vel_y[idx],
-                                                  population.energy[idx]};
+    out_agents[write_index] = RenderAgentReadback{Kind, idx, population.entity_id[idx], population.species_id[idx], population.generation[idx], population.age[idx], population.pos_x[idx], population.pos_y[idx], population.vel_x[idx], population.vel_y[idx], population.energy[idx]};
   }
 }
 
@@ -1425,16 +1413,12 @@ extern "C" std::int32_t dev_create(DeviceState *state) {
            moonai_gpu::alloc_array(&state->render_prey_scratch, state->config.prey_capacity),
         }) {
     if (status) {
-      destroy_state(state);
+      // destroy_state(state);
       return status;
     }
   }
 
   return 0;
-}
-
-extern "C" void dev_destroy(DeviceState *state) {
-  destroy_state(state);
 }
 
 extern "C" std::int32_t dev_seed_initial_population(DeviceState *state) {
@@ -1466,11 +1450,6 @@ extern "C" std::int32_t dev_population_live_count(const DeviceState *state, Popu
 }
 
 extern "C" std::int32_t dev_ensure_food_buffer(DeviceState *state) {
-  if (state->food.capacity != state->simulation.food_count) {
-    free_food_buffers(state->food);
-    moonai_gpu::free_array(state->render_food_scratch);
-    moonai_gpu::free_array(state->food_claimed_by);
-  }
   if (state->simulation.food_count > 0U && state->food.capacity == 0U) {
     auto status = allocate_food_buffers(state->food, state->simulation.food_count);
     if (status) return status;

@@ -1,290 +1,196 @@
 % ─────────────────────────────────────────────────────────────────────────────
-\section{Simulation Package (\texttt{src/simulation/})}
-\label{sec:simulation}
+\section{Final System Architecture and Design}
+\label{sec:architecture}
 % ─────────────────────────────────────────────────────────────────────────────
 
-The simulation package models the physical world: agents, environment, food, spatial
-acceleration, sensor building, and attack processing.  It is intentionally unaware of
-NEAT or neural networks.
+The final system architecture is a two-stage hybrid pipeline designed to combine the speed of
+a specialized thermal detector with the reasoning depth of an open vision-language model.
+This design was chosen because a single general-purpose model could not simultaneously
+deliver reliable thermal target localization, low-latency scanning, and semantically useful
+interpretation.
+
+\subsection{Architecture Overview}
 
 \begin{figure}[H]
   \centering
-  \includegraphics[width=\textwidth]{simulation_classes}
-  \caption{Simulation package class diagram.}
-  \label{fig:sim}
+  \includegraphics[width=0.98\textwidth]{system_pipeline.png}
+  \caption{High-level system pipeline used in the final prototype.}
 \end{figure}
 
-% ─────────────────────────────────────────────────────────────────────────────
-\subsection{\texttt{AgentType} (enum class)}
+The architecture begins with a thermal frame, applies full-frame detection, isolates each
+candidate region, performs target-focused reasoning, and then fuses the results into
+structured output. This decomposition reflects the key engineering principle of the project:
+\emph{detect first, interpret second}.
 
-\begin{lstlisting}
-enum class AgentType { Predator, Prey };
-\end{lstlisting}
+\subsection{Two-Stage ``Gözcü + Analist'' Pipeline}
 
-% ─────────────────────────────────────────────────────────────────────────────
-\subsection{\texttt{Agent} (abstract class)}
-
-Base class for all simulated organisms.  Stores kinematic state, energy, and fitness
-accounting.
+The two main stages are:
 
 \begin{table}[H]
-\centering\small
-\caption{\texttt{Agent} protected members}
-\begin{tabularx}{\textwidth}{@{}llX@{}}
-\toprule
-\textbf{Member} & \textbf{Type} & \textbf{Description} \\
-\midrule
-\texttt{id\_}                & \texttt{AgentId}   & Unique identifier within generation \\
-\texttt{type\_}              & \texttt{AgentType} & \texttt{Predator} or \texttt{Prey} \\
-\texttt{position\_}          & \texttt{Vec2}      & Current world position \\
-\texttt{velocity\_}          & \texttt{Vec2}      & Current velocity vector (default \{0,0\}) \\
-\texttt{speed\_}             & \texttt{float}     & Maximum speed (px/tick) \\
-\texttt{vision\_range\_}     & \texttt{float}     & Sensor detection radius \\
-\texttt{energy\_}            & \texttt{float}     & Current energy level \\
-\texttt{age\_}               & \texttt{int}       & Ticks survived (incremented by \texttt{increment\_age()}) \\
-\texttt{alive\_}             & \texttt{bool}      & False when energy reaches 0 or killed \\
-\texttt{fitness\_}           & \texttt{float}     & Accumulated raw fitness value \\
-\texttt{kills\_}             & \texttt{int}       & Prey eliminated (predators only) \\
-\texttt{food\_eaten\_}       & \texttt{int}       & Food items consumed (prey only) \\
-\texttt{distance\_traveled\_}& \texttt{float}     & Total distance moved; accumulated in \texttt{apply\_movement()} \\
-\bottomrule
-\end{tabularx}
+  \centering
+  \caption{Primary roles of the two-stage pipeline}
+  \begin{tabularx}{\textwidth}{@{}p{3cm}p{3.2cm}X@{}}
+    \toprule
+    Stage & Component & Responsibility \\
+    \midrule
+    Stage 1 & Gözcü (Scout) & Scan the full scene quickly, detect objects of interest,
+    and return bounding boxes, class labels, and confidence values. \\
+    Stage 2 & Analist (Analyst) & Receive cropped target regions and infer deeper semantic
+    meaning such as likely object type, possible engine activity, carried-object clues, or
+    qualitative threat relevance. \\
+    \bottomrule
+  \end{tabularx}
 \end{table}
 
-\begin{table}[H]
-\centering\small
-\caption{\texttt{Agent} public interface}
-\begin{tabularx}{\textwidth}{@{}lX@{}}
-\toprule
-\textbf{Method} & \textbf{Description} \\
-\midrule
-\texttt{Agent(id,type,position,speed,vision,energy)} & Construct with initial state \\
-\texttt{virtual update(dt: float)} & Per-tick update hook (implemented by subclass) \\
-\texttt{apply\_movement(direction: Vec2, dt: float)} & Move by \texttt{direction * speed * dt}; accumulate \texttt{distance\_traveled\_} \\
-\midrule
-\texttt{id(), type(), position(), velocity()} & State accessors (const) \\
-\texttt{speed(), vision\_range(), energy()} & Parameter accessors (const) \\
-\texttt{age(), alive(), fitness()} & Lifecycle accessors (const) \\
-\texttt{kills(), food\_eaten(), distance\_traveled()} & Fitness-input accessors (const) \\
-\texttt{is\_dead()} & \texttt{true} when not alive (const) \\
-\midrule
-\texttt{set\_position(pos: Vec2)} & Teleport (used by boundary enforcement) \\
-\texttt{set\_alive(alive: bool)} & Mark dead on kill or starvation \\
-\texttt{add\_fitness(amount: float)} & Accumulate fitness \\
-\texttt{add\_energy(amount: float)} & Add energy (food, kill) \\
-\texttt{drain\_energy(amount: float)} & Subtract energy (per-tick drain) \\
-\texttt{increment\_age()} & Called once per tick by \texttt{SimulationManager} \\
-\texttt{add\_kill()} & Increment kill counter \\
-\texttt{add\_food()} & Increment food counter \\
-\bottomrule
-\end{tabularx}
-\end{table}
+This role separation is important. The detector answers ``where is the object?'' and ``what
+is the coarse class?'' The reasoner answers ``what does this object likely mean in context?''
 
-% ─────────────────────────────────────────────────────────────────────────────
-\subsection{\texttt{Predator} : \texttt{Agent}}
+\subsection{Subsystem Decomposition}
 
-\begin{lstlisting}
-class Predator : public Agent {
-public:
-    Predator(AgentId id, Vec2 position, float speed,
-             float vision_range, float energy, float attack_range);
-    void update(float dt) override;
-    float attack_range() const;
-private:
-    float attack_range_;
-};
-\end{lstlisting}
+The final architecture can be understood as five subsystems.
 
-\texttt{update()} is a no-op stub; direction is set externally via
-\texttt{SimulationManager::apply\_action()}.  \texttt{attack\_range\_} is the kill radius
-checked by \texttt{Physics::process\_attacks()}.
+\begin{itemize}[nosep]
+  \item \textbf{Data acquisition:} Accept local thermal or RGB streams, static images, or
+    frame sequences without requiring external network services.
+  \item \textbf{Detection:} Run a thermal-adapted YOLOv8 model on the full frame and
+    generate detections suitable for downstream processing.
+  \item \textbf{ROI processing:} Crop and optionally enhance the detected object region so
+    the second stage focuses on the target instead of the whole scene.
+  \item \textbf{Semantic reasoning:} Use Qwen2-VL with a prompt-driven analysis workflow
+    to produce richer descriptions and infer status-oriented details.
+  \item \textbf{Fusion and presentation:} Merge detector and reasoner outputs into JSON,
+    logs, and local interface elements for operator review.
+\end{itemize}
 
-% ─────────────────────────────────────────────────────────────────────────────
-\subsection{\texttt{Prey} : \texttt{Agent}}
+\subsection{Low-Level Deployment Packages}
 
-\begin{lstlisting}
-class Prey : public Agent {
-public:
-    Prey(AgentId id, Vec2 position, float speed, float vision_range, float energy);
-    void update(float dt) override;
-};
-\end{lstlisting}
+Beyond the logical architecture, the implementation protocol was organized into deployment-
+oriented packages so that hardware-specific concerns could be isolated from application-level
+reasoning logic.
 
-No additional members.  Food eating is handled by \texttt{Environment::try\_eat\_food()}.
+\begin{itemize}[nosep]
+  \item \textbf{Containerization package:} Encapsulates the runtime environment, model
+    dependencies, and platform-specific libraries inside a reproducible Docker image for
+    Jetson-class deployment.
+  \item \textbf{Optimization package:} Applies runtime acceleration techniques such as
+    TensorRT or Torch-TensorRT compilation, layer fusion where applicable, and reduced-
+    precision execution paths for edge hardware.
+  \item \textbf{Inference pipeline package:} Coordinates frame ingestion, detector
+    execution, region cropping, reasoning invocation, and result fusion under one bounded
+    runtime flow.
+  \item \textbf{Logging and presentation package:} Stores structured JSON outputs locally
+    and exposes operator-facing summaries, alerts, or dashboard elements without external
+    services.
+\end{itemize}
 
-% ─────────────────────────────────────────────────────────────────────────────
-\subsection{\texttt{Food} (struct)}
+This decomposition is valuable because it separates \emph{what} the system does from
+\emph{how} it is deployed. The detector and reasoner remain conceptual building blocks, but
+the deployment packages define how those blocks are actually started, optimized, and
+operated on edge devices.
 
-\begin{lstlisting}
-struct Food {
-    Vec2 position;
-    bool active = true;  // false = consumed, awaiting respawn
-};
-\end{lstlisting}
+\subsection{Secure Deployment in a Closed Network}
 
-% ─────────────────────────────────────────────────────────────────────────────
-\subsection{\texttt{Environment} (class)}
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.98\textwidth]{secure_deployment.png}
+  \caption{Closed-network deployment concept with local processing and no external
+  connectivity.}
+\end{figure}
 
-Owns the world boundaries and the food array.  All geometry is expressed in pixels.
+The deployment concept keeps image ingestion, model inference, result fusion, and storage
+within the same local environment. This provides three advantages:
 
-\begin{table}[H]
-\centering\small
-\caption{\texttt{Environment} interface}
-\begin{tabularx}{\textwidth}{@{}lX@{}}
-\toprule
-\textbf{Method} & \textbf{Description} \\
-\midrule
-\texttt{Environment(config: const SimulationConfig\&)} & Store dimensions and mode \\
-\texttt{width() → int} & World size in pixels \\
-\texttt{height() → int} & World size in pixels \\
-\texttt{boundary\_mode() → BoundaryMode} & Clamp or Wrap \\
-\texttt{apply\_boundary(pos: Vec2) → Vec2} &
-  Clamp: $x \leftarrow \text{clamp}(x, 0, w)$;
-  Wrap: $x \leftarrow \text{fmod}(x+w, w)$ \\
-\texttt{initialize\_food(rng: Random\&, count: int)} & Scatter \emph{count} food items uniformly \\
-\texttt{tick\_food(rng: Random\&, rate: float)} & Each inactive food respawns with probability \emph{rate} \\
-\texttt{try\_eat\_food(position: Vec2, range: float) → bool} & Find nearest active food within \emph{range}; deactivate and return \texttt{true} \\
-\texttt{food() → const vector<Food>\&} & Immutable food list for rendering/sensors \\
-\bottomrule
-\end{tabularx}
-\end{table}
+\begin{itemize}[nosep]
+  \item sensitive data does not leave the operational network,
+  \item latency is reduced because inference is local,
+  \item the system remains usable in environments where internet access is unavailable or
+    intentionally disabled.
+\end{itemize}
 
-\textbf{Private members:} \texttt{width\_, height\_: int}, \texttt{boundary\_mode\_: BoundaryMode},
-\texttt{food\_: vector<Food>}, \texttt{max\_food\_: int}.
+At low level, this also affects device integration. Video ingress must be available from a local
+camera or local network stream, model binaries must reside on the target device or an
+authorized internal store, and local visualization inside a containerized runtime may require
+explicit device and display mapping between host and container.
 
-% ─────────────────────────────────────────────────────────────────────────────
-\subsection{\texttt{SensorInput} (struct)}
+\subsection{Control Flow}
 
-The 15-element observation vector produced by \texttt{Physics::build\_sensors()} and fed
-as input to each agent's neural network.
+The internal software flow of one processed frame is summarized below.
 
-\begin{table}[H]
-\centering\small
-\caption{\texttt{SensorInput} fields}
-\begin{tabularx}{\textwidth}{@{}lX@{}}
-\toprule
-\textbf{Field} & \textbf{Description} \\
-\midrule
-\texttt{nearest\_predator\_dist}    & $[-1, 1]$; $-1$ = not visible; else $1 - d/\mathit{range}$ \\
-\texttt{nearest\_predator\_angle}   & $[-1, 1]$; $\mathit{atan2}(\Delta y, \Delta x)/\pi$ \\
-\texttt{nearest\_prey\_dist}        & $[-1, 1]$; same encoding as predator dist \\
-\texttt{nearest\_prey\_angle}       & $[-1, 1]$; same encoding as predator angle \\
-\texttt{nearest\_food\_dist}        & $[-1, 1]$; for prey agents; $-1$ if none visible \\
-\texttt{nearest\_food\_angle}       & $[-1, 1]$; direction to nearest food \\
-\texttt{energy\_level}              & $[0, 1]$; \texttt{energy / initial\_energy} \\
-\texttt{speed\_x}                   & $[-1, 1]$; current velocity x / max speed \\
-\texttt{speed\_y}                   & $[-1, 1]$; current velocity y / max speed \\
-\texttt{local\_predator\_density}   & $[0, 1]$; fraction of cells in vision range containing predators \\
-\texttt{local\_prey\_density}       & $[0, 1]$; fraction of cells in vision range containing prey \\
-\texttt{wall\_left}                 & $[0, 1]$; distance to left boundary / world width (Clamp mode) \\
-\texttt{wall\_right}                & $[0, 1]$; distance to right boundary / world width \\
-\texttt{wall\_top}                  & $[0, 1]$; distance to top boundary / world height \\
-\texttt{wall\_bottom}               & $[0, 1]$; distance to bottom boundary / world height \\
-\bottomrule
-\end{tabularx}
-\end{table}
-
-\texttt{static constexpr int SIZE = 15;} — must match the number of NN input nodes.\\
-\texttt{to\_vector() → vector<float>} — returns all fields in declaration order.
-
-% ─────────────────────────────────────────────────────────────────────────────
-\subsection{\texttt{Physics} (static class)}
-
-All methods are \texttt{static}.  No instance state.
-
-\subsubsection{\texttt{build\_sensors()}}
-
-Queries the \texttt{SpatialGrid} and \texttt{food\_grid} for neighbors within
-\texttt{vision\_range}.  Algorithm:
 \begin{enumerate}[nosep]
-  \item Query agent's cell and 8 neighboring cells in \texttt{SpatialGrid}.
-  \item For each visible agent of opposite type, compute
-    $d = \text{distance\_to}$, $\theta = \text{atan2}(\Delta y,\Delta x)/\pi$.
-  \item Encode: $\mathit{dist\_enc} = 1 - d/\mathit{vision\_range}$, clamped to $[-1,1]$.
-  \item Repeat for food using \texttt{food\_grid}.
-  \item Fill wall sensors from \texttt{BoundaryMode} and agent position.
+  \item Acquire a frame from a local thermal source.
+  \item Run the detector and obtain a list of candidate objects.
+  \item For each detection, crop the relevant region of interest.
+  \item Send the cropped region and an analysis prompt to the VLM.
+  \item Receive qualitative reasoning output.
+  \item Merge detector data and reasoner data into a structured record.
+  \item Display and/or store the final result locally.
 \end{enumerate}
 
-\subsubsection{\texttt{process\_attacks()}}
+\subsection{Interface Contracts}
 
-For each alive \texttt{Predator}, queries \texttt{SpatialGrid} with radius
-\texttt{attack\_range}.  Marks any overlapping alive \texttt{Prey} as dead;
-increments predator kill counter; adds \texttt{energy\_gain\_from\_kill}.
-Returns vector of killed \texttt{AgentId} values.
+The system is easier to maintain when each stage exposes a narrow and typed interface. The
+final implementation protocol therefore treated component boundaries as explicit contracts,
+even when the internal implementations evolved.
 
-% ─────────────────────────────────────────────────────────────────────────────
-\subsection{\texttt{SpatialGrid} (class)}
+\begin{itemize}[nosep]
+  \item \textbf{\texttt{ingest\_frame(source)}}: Returns a raw frame buffer from a local
+    stream, file, or camera source.
+  \item \textbf{\texttt{detect\_objects(frame)}}: Accepts a preprocessed frame and returns
+    bounding boxes, class labels, and confidence values.
+  \item \textbf{\texttt{crop\_regions(frame, detections)}}: Converts detector outputs into
+    isolated regions of interest suitable for second-stage analysis.
+  \item \textbf{\texttt{analyze\_region(region, prompt)}}: Produces a structured semantic
+    description for one target crop.
+  \item \textbf{\texttt{fuse\_results(detections, analyses)}}: Merges low-level detector
+    data and higher-level reasoning output into a final JSON record.
+\end{itemize}
 
-Hash-grid for O(1) amortized spatial queries.
+The exact tensor dimensions are implementation-dependent, but the important engineering
+rule is that each boundary must preserve shape, data type, and memory ownership clearly
+enough to avoid runtime mismatch between preprocessing, inference, and fusion layers.
 
-\begin{lstlisting}
-SpatialGrid(int world_width, int world_height, float cell_size);
+\subsection{Structured Output Format}
+
+The final output is intentionally machine-readable so that it can be consumed by dashboards,
+logs, or future command-and-control integrations.
+
+\begin{lstlisting}[language={},caption={Illustrative structured output produced by the fusion layer}]
+{
+  "objects": [
+    {
+      "type": "armed_person",
+      "bounding_box": [x1, y1, x2, y2],
+      "confidence": 0.92,
+      "analysis": {
+        "weapon_type": "rifle",
+        "risk_level": "high",
+        "explanation": "Thermal silhouette suggests a long object consistent with a rifle."
+      }
+    },
+    {
+      "type": "vehicle",
+      "bounding_box": [x3, y3, x4, y4],
+      "confidence": 0.85,
+      "analysis": {
+        "vehicle_category": "pickup_truck",
+        "engine_status": "hot",
+        "explanation": "Front thermal concentration suggests recent engine activity."
+      }
+    }
+  ]
+}
 \end{lstlisting}
 
-\texttt{cell\_size} is set to \texttt{vision\_range / 2} in \texttt{SimulationManager},
-ensuring a query of radius \texttt{vision\_range} covers at most a 5×5 patch of cells.
+\subsection{Design Rationale}
 
-\begin{table}[H]
-\centering\small
-\caption{\texttt{SpatialGrid} public interface}
-\begin{tabularx}{\textwidth}{@{}lX@{}}
-\toprule
-\textbf{Method} & \textbf{Description} \\
-\midrule
-\texttt{clear()} & Erase all entries (called each tick before rebuild) \\
-\texttt{insert(id, position)} & Place agent in appropriate cell \\
-\texttt{query(position) → vector<AgentId>} & Return all agents in the cell containing \emph{position} plus 8 neighbors \\
-\texttt{query\_radius(position, radius) → vector<AgentId>} & Filter \texttt{query()} results by Euclidean distance \\
-\bottomrule
-\end{tabularx}
-\end{table}
+The final design was selected because it balances feasibility and ambition.
 
-\textbf{Private:} \texttt{cells\_: vector<vector<Entry>>} where
-\texttt{Entry = \{AgentId id; Vec2 pos;\}}.
-Index computed as $\mathit{cell\_y}(y) \times \mathit{cols} + \mathit{cell\_x}(x)$.
+\begin{itemize}[nosep]
+  \item A standalone VLM is too weak at thermal scene scanning.
+  \item A standalone detector is too shallow for contextual interpretation.
+  \item A two-stage pipeline is modular, explainable, and easier to improve incrementally.
+  \item Local JSON output supports both immediate use and later auditability.
+\end{itemize}
 
-% ─────────────────────────────────────────────────────────────────────────────
-\subsection{\texttt{SimulationManager} (class)}
-
-Orchestrates the per-tick simulation loop.
-
-\begin{table}[H]
-\centering\small
-\caption{\texttt{SimulationManager} public interface}
-\begin{tabularx}{\textwidth}{@{}lX@{}}
-\toprule
-\textbf{Method} & \textbf{Description} \\
-\midrule
-\texttt{SimulationManager(config)} & Construct; create \texttt{Environment} and grids \\
-\texttt{initialize()} & Spawn agents at random positions; scatter food \\
-\texttt{tick(dt: float)} & One simulation step (see below) \\
-\texttt{reset()} & Re-initialize agents and food for new generation \\
-\texttt{current\_tick() → int} & Ticks elapsed since last reset (const) \\
-\texttt{agents() → const vector<unique\_ptr<Agent>>\&} & All agents (alive and dead) \\
-\texttt{environment() → const Environment\&} & World environment \\
-\texttt{alive\_predators() → int} & Cached count of live predators (const) \\
-\texttt{alive\_prey() → int} & Cached count of live prey (const) \\
-\texttt{get\_sensors(agent\_index) → SensorInput} & Build sensor vector for one agent \\
-\texttt{apply\_action(agent\_index, direction, dt)} & Set velocity and call \texttt{apply\_movement()} \\
-\bottomrule
-\end{tabularx}
-\end{table}
-
-\subsubsection{Per-Tick Sequence (internal)}
-\begin{enumerate}[nosep]
-  \item \texttt{rebuild\_spatial\_grid()} — clear and re-insert all alive agents.
-  \item \texttt{rebuild\_food\_grid()} — same for active food items.
-  \item Per agent (in \texttt{evaluate\_generation}): caller calls
-    \texttt{get\_sensors}, runs NN, calls \texttt{apply\_action}.
-  \item \texttt{process\_energy(dt)} — drain energy; mark zero-energy agents dead.
-  \item \texttt{process\_food()} — for each alive prey, call \texttt{try\_eat\_food}.
-  \item \texttt{process\_attacks()} — delegate to \texttt{Physics::process\_attacks()}.
-  \item \texttt{count\_alive()} — update \texttt{alive\_predators\_} and
-    \texttt{alive\_prey\_}.
-  \item Tick food respawn: \texttt{environment\_.tick\_food(rng\_, respawn\_rate)}.
-\end{enumerate}
-
-\textbf{Private members:} \texttt{config\_: SimulationConfig}, \texttt{rng\_: Random},
-\texttt{environment\_: Environment}, \texttt{grid\_: SpatialGrid},
-\texttt{food\_grid\_: SpatialGrid}, \texttt{agents\_: vector<unique\_ptr<Agent>>},
-\texttt{current\_tick\_: int}, \texttt{alive\_predators\_: int}, \texttt{alive\_prey\_: int}.
+The result is not merely a collection of models, but a deliberately engineered workflow that
+turns thermal pixels into structured, reviewable intelligence.

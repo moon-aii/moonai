@@ -1,132 +1,97 @@
 % ─────────────────────────────────────────────────────────────────────────────
-\section{Data Package (\texttt{src/data/})}
-\label{sec:data}
+\section{Engineering Impact, Ethics, and Contemporary Issues}
+\label{sec:impact}
 % ─────────────────────────────────────────────────────────────────────────────
 
-The data package collects, aggregates, and persists simulation metrics.
+The project is not only a technical exercise in computer vision. It also has broader global,
+economic, environmental, societal, and ethical implications. Because the application domain
+touches surveillance and security, these considerations are part of the design itself rather than
+an afterthought.
 
-\begin{figure}[H]
-  \centering
-  \includegraphics[width=0.65\textwidth]{data_classes}
-  \caption{Data package class diagram.}
-  \label{fig:data}
-\end{figure}
+\subsection{Global and Strategic Impact}
 
-% ─────────────────────────────────────────────────────────────────────────────
-\subsection{\texttt{GenerationMetrics} (struct)}
+At a global level, the project addresses a widely relevant engineering problem: how to obtain
+useful situational awareness from difficult imagery without depending on remote cloud
+infrastructure. This matters not only in defense settings, but also in border monitoring,
+critical-infrastructure protection, disaster assessment, and emergency response in degraded
+visual environments.
 
-Plain value type returned by \texttt{MetricsCollector::collect()}.
+The architectural emphasis on local processing and structured interpretation also contributes to
+the broader trend toward edge intelligence. Instead of sending raw mission imagery to a
+remote platform, the system tries to extract meaning close to the data source.
 
-\begin{table}[H]
-\centering\small
-\caption{\texttt{GenerationMetrics} fields}
-\begin{tabularx}{\textwidth}{@{}lX@{}}
-\toprule
-\textbf{Field} & \textbf{Description} \\
-\midrule
-\texttt{generation}          & Generation index \\
-\texttt{predator\_count}     & Alive predators at end of generation \\
-\texttt{prey\_count}         & Alive prey at end of generation \\
-\texttt{best\_fitness}       & Maximum genome fitness in population \\
-\texttt{avg\_fitness}        & Mean genome fitness in population \\
-\texttt{num\_species}        & Active species count \\
-\texttt{avg\_genome\_complexity} & Mean \texttt{Genome::complexity()} across population \\
-\bottomrule
-\end{tabularx}
-\end{table}
+\subsection{Economic Impact}
 
-% ─────────────────────────────────────────────────────────────────────────────
-\subsection{\texttt{MetricsCollector} (class)}
+The project was intentionally designed around open-source models and frameworks. This has
+clear economic consequences:
 
-\begin{table}[H]
-\centering\small
-\caption{\texttt{MetricsCollector} interface}
-\begin{tabularx}{\textwidth}{@{}lX@{}}
-\toprule
-\textbf{Method} & \textbf{Description} \\
-\midrule
-\texttt{collect(generation, population, pred\_count, prey\_count)} &
-  Iterate \texttt{population} to find max/avg fitness and avg complexity;
-  append to \texttt{history\_}; return metrics struct. \\
-\texttt{history()} &
-  All metrics collected since construction. \\
-\bottomrule
-\end{tabularx}
-\end{table}
+\begin{itemize}[nosep]
+  \item lower licensing cost compared with proprietary end-to-end platforms,
+  \item lower recurring bandwidth and cloud-inference cost due to local processing,
+  \item easier technology transfer to future academic or industrial teams because the toolchain
+    is based on widely available frameworks.
+\end{itemize}
 
-\textbf{Private:} \texttt{history\_: vector<GenerationMetrics>}.
+At the same time, the project also demonstrates that ``open-source'' does not mean ``free of
+engineering cost.'' Thermal adaptation, fine-tuning, validation, and deployment all still
+require time, hardware, and expert effort.
 
-% ─────────────────────────────────────────────────────────────────────────────
-\subsection{\texttt{Logger} (class)}
+\subsection{Environmental Impact}
 
-Writes all run output to \texttt{output/[YYYYMMDD\_HHMMSS\_seedN]/}.
+The environmental profile of the system is mixed. Local edge inference can reduce the energy
+and infrastructure cost associated with constant remote data transfer and cloud processing.
+However, multimodal reasoning models are computationally expensive, and their training or
+adaptation can still consume substantial compute resources.
 
-\begin{table}[H]
-\centering\small
-\caption{\texttt{Logger} interface}
-\begin{tabularx}{\textwidth}{@{}lX@{}}
-\toprule
-\textbf{Method} & \textbf{Description} \\
-\midrule
-\texttt{Logger(output\_dir, seed)} & Store base dir and seed; do not open files yet \\
-\texttt{initialize(config)} & Create run directory; open all files; write headers; save \texttt{config.json} \\
-\texttt{log\_generation(...)} & Append one row to \texttt{stats.csv} \\
-\texttt{log\_best\_genome(generation, genome)} & Append JSON entry to \texttt{genomes.json} \\
-\texttt{log\_species(generation, species)} & Append rows to \texttt{species.csv} \\
-\texttt{log\_tick(generation, tick, agents)} & Append rows to \texttt{ticks\_buffer\_}; auto-flush every 500 rows \\
-\texttt{flush\_ticks()} & Write \texttt{ticks\_buffer\_} to \texttt{ticks.csv} and reset buffer \\
-\texttt{flush()} & Flush all open file streams \\
-\texttt{run\_dir()} & Path to the created run directory \\
-\bottomrule
-\end{tabularx}
-\end{table}
+This is why optimization techniques such as parameter-efficient fine-tuning and
+quantization are important. They are not only performance strategies, but also part of a more
+responsible use of computing resources.
 
-\textbf{Private members:}
-\texttt{base\_dir\_}, \texttt{run\_dir\_}: \texttt{string};
-\texttt{seed\_}: \texttt{uint64\_t};
-\texttt{stats\_file\_}, \texttt{genomes\_file\_}, \texttt{species\_file\_}, \texttt{ticks\_file\_}:
-\texttt{std::ofstream};
-\texttt{ticks\_buffer\_}: \texttt{string} (accumulated CSV rows);
-\texttt{ticks\_buffered\_}: \texttt{int};
-\texttt{genomes\_first\_entry\_}: \texttt{bool} (for JSON comma handling);
-\texttt{TICK\_FLUSH\_EVERY = 500}: \texttt{constexpr int}.
+\subsection{Societal and Ethical Impact}
 
-\subsubsection{Output File Formats}
+The potential societal benefit of the project is improved operator awareness. A system that
+helps distinguish between ``an object exists'' and ``this object is likely relevant or risky'' can
+reduce fatigue and help prioritize attention in time-sensitive environments.
 
-\paragraph{\texttt{config.json}} Full \texttt{SimulationConfig} snapshot, written by
-\texttt{Logger::initialize()}.
+At the same time, surveillance technology creates ethical risk. A system that interprets people,
+vehicles, and possible threats must not be treated as an unquestionable authority. The project
+therefore follows a human-in-the-loop philosophy consistent with professional engineering
+ethics~\cite{acm,ieeeethics}:
 
-\paragraph{\texttt{stats.csv}}
-\begin{lstlisting}[language={}]
-generation,predator_count,prey_count,best_fitness,avg_fitness,num_species,avg_complexity
-0,50,150,12.34,5.67,8,16.2
-...
-\end{lstlisting}
+\begin{itemize}[nosep]
+  \item the system informs human decision-making rather than replacing it,
+  \item outputs are treated as analytical suggestions, not final truth,
+  \item privacy, security, and data sovereignty are design requirements, not optional features.
+\end{itemize}
 
-\paragraph{\texttt{species.csv}}
-\begin{lstlisting}[language={}]
-generation,species_id,size,avg_fitness,stagnation_count
-0,1,42,8.1,0
-...
-\end{lstlisting}
+\subsection{Contemporary Issues Related to the Project Topic}
 
-\paragraph{\texttt{genomes.json}} JSON array of best-genome snapshots:
-\begin{lstlisting}[language={}]
-[
-  {"generation": 0, "genome": {
-    "nodes": [{"id": 0, "type": "input"}, ...],
-    "connections": [{"in": 0, "out": 16, "weight": 0.42,
-                     "enabled": true, "innovation": 3}, ...]
-  }},
-  ...
-]
-\end{lstlisting}
+Several contemporary issues are directly relevant to the project.
 
-\paragraph{\texttt{ticks.csv} (optional)} Written when \texttt{tick\_log\_enabled: true}:
-\begin{lstlisting}[language={}]
-generation,tick,agent_id,type,alive,x,y,energy,kills,food_eaten
-0,0,0,predator,1,312.5,201.3,100.0,0,0
-...
-\end{lstlisting}
-Rows are buffered in \texttt{ticks\_buffer\_} (string) and flushed every
-\texttt{TICK\_FLUSH\_EVERY = 500} rows to amortize \texttt{write()} syscall cost.
+\begin{itemize}[nosep]
+  \item \textbf{AI in security and defense:} there is growing pressure to increase automation,
+    but this increases the importance of accountability and operator oversight.
+  \item \textbf{Bias in multimodal models:} general VLMs are shaped by RGB-heavy training
+    corpora, which can lead to systematic misunderstanding of thermal scenes.
+  \item \textbf{Data sovereignty:} many current AI systems assume cloud-based deployment,
+    which is unacceptable in some operational environments.
+  \item \textbf{Open-source model governance:} open models improve accessibility and
+    reproducibility, but they also require careful evaluation before domain-sensitive use.
+  \item \textbf{Explainability vs. fluency:} a model can produce convincing language that is not
+    always well grounded in thermal evidence, so output structure and operator review remain
+    essential.
+\end{itemize}
+
+\subsection{Professional Responsibility}
+
+From an engineering ethics perspective, the project reinforces three responsibilities:
+
+\begin{itemize}[nosep]
+  \item build systems that reduce harm rather than simply increasing technical capability,
+  \item preserve transparency about what the prototype can and cannot do,
+  \item treat validation, documentation, and human oversight as core deliverables.
+\end{itemize}
+
+For this reason, the final report does not present the system as an autonomous authority. It is
+more accurate and more responsible to describe it as a secure, locally deployable semantic
+assistant for thermal imagery.

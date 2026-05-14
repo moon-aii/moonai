@@ -26,25 +26,25 @@
 \usepackage{ragged2e}
 
 % Breakable table columns
-\newcolumntype{L}{>{\RaggedRight\arraybackslash\ttfamily\scriptsize}X}
+\newcolumntype{L}{>{\RaggedRight\arraybackslash\ttfamily\small}X}
 \newcolumntype{C}{>{\centering\arraybackslash\ttfamily\small}p{2.5cm}}
 \newcolumntype{R}{>{\RaggedRight\arraybackslash}p{3.5cm}}
 
 % Reduce table font size globally
 \usepackage{etoolbox}
-\BeforeBeginEnvironment{tabular}{\small}
-\BeforeBeginEnvironment{tabularx}{\small}
-\BeforeBeginEnvironment{longtable}{\small}
+\BeforeBeginEnvironment{tabular}{\normalsize}
+\BeforeBeginEnvironment{tabularx}{\normalsize}
+\BeforeBeginEnvironment{longtable}{\normalsize}
 
 % ── Code listings ───────────────────────────────────────────────────────────
 \usepackage{listings}
 \lstdefinestyle{cpp}{
   language=C++,
-  basicstyle=\ttfamily\small,
+  basicstyle=\ttfamily\normalsize,
   keywordstyle=\color{blue!70!black}\bfseries,
   commentstyle=\color{green!50!black}\itshape,
   stringstyle=\color{red!60!black},
-  numberstyle=\tiny\color{gray},
+  numberstyle=\small\color{gray!60!black},
   numbers=left,
   numbersep=6pt,
   frame=single,
@@ -58,36 +58,37 @@
 
 % ── Section formatting ───────────────────────────────────────────────────────
 \usepackage{titlesec}
-\setcounter{tocdepth}{2}
-\titleformat{\section}{\large\bfseries}{\thesection}{0em}{\quad}
-\titleformat*{\section}{\large\bfseries}
-\titleformat{\subsection}{\normalsize\bfseries}{}{0em}{\thesubsection\quad}
-\titleformat{\subsubsection}{\normalsize\bfseries}{}{0em}{\thesubsubsection\quad}
-\titlespacing*{\section}{0pt}{12pt}{6pt}  % Reduce after-section spacing to 6pt
+\setcounter{tocdepth}{3}
+\titleformat{\section}[block]{\Large\bfseries}{\thesection.}{1em}{}
+\titleformat{\subsection}[block]{\normalsize\bfseries}{\thesubsection.}{1em}{}
+\titleformat{\subsubsection}[block]{\normalsize\bfseries}{\thesubsubsection.}{1em}{}
+\titlespacing*{\section}{0pt}{18pt}{12pt}
+\titlespacing*{\subsection}{0pt}{12pt}{6pt}
+\titlespacing*{\subsubsection}{0pt}{6pt}{4pt}
 
 % ── List formatting ──────────────────────────────────────────────────────────
 \usepackage{enumitem}
 
 % ── Captions ─────────────────────────────────────────────────────────────────
-\usepackage{caption}
+\usepackage[font=small,labelfont=bf,textfont=normalfont]{caption}
 \usepackage{float}
 
 % ── Hyperlinks ────────────────────────────────────────────────────────────────
-\usepackage[colorlinks=true, linkcolor=black, citecolor=green!50!black,
-            urlcolor=blue!70!black, bookmarksopen=true]{hyperref}
+\usepackage[colorlinks=true, linkcolor=black, citecolor=blue!60!black,
+            urlcolor=blue!60!black, bookmarksopen=true]{hyperref}
 
 % ── Math ─────────────────────────────────────────────────────────────────────
 \usepackage{amsmath}
 
 % ── Header / footer ──────────────────────────────────────────────────────────
 \usepackage{fancyhdr}
-\setlength{\headheight}{14pt}
+\setlength{\headheight}{12pt}
 \pagestyle{fancy}
 \fancyhf{}
-\lhead{\small MoonAI — Low-Level Design Report}
+\lhead{\small MoonAI - Final Report}
 \rhead{\small CMPE 492 — TED University, 2026}
 \cfoot{\thepage}
-\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\headrulewidth}{0pt}
 
 % ── Line spacing ─────────────────────────────────────────────────────────────
 \usepackage{setspace}
@@ -104,15 +105,10 @@
 
 % ── Standardized Font Sizes ───────────────────────────────────────────────────
 \makeatletter
-% Redefine standard size commands to integer point sizes (academic standards)
-\renewcommand{\Huge}{\@setfontsize\Huge{18}{22}}        % Title: 18pt on 22pt leading
-\renewcommand{\LARGE}{\@setfontsize\LARGE{16}{19}}      % Institution: 16pt on 19pt
-\renewcommand{\Large}{\@setfontsize\Large{14}{17}}      % Sections: 14pt on 17pt
-\renewcommand{\normalsize}{\@setfontsize\normalsize{12}{14}} % Body: 12pt on 14pt (required)
-\renewcommand{\small}{\@setfontsize\small{10}{12}}      % Tables/captions: 10pt on 12pt
-\renewcommand{\footnotesize}{\@setfontsize\footnotesize{10}{12}} % Footnotes: 10pt
-\renewcommand{\scriptsize}{\@setfontsize\scriptsize{10}{12}} % Dense tables: 10pt (min)
-\renewcommand{\tiny}{\@setfontsize\tiny{8}{10}}         % Line numbers: 8pt on 10pt
+\renewcommand{\LARGE}{\@setfontsize\LARGE{16}{18}}
+\renewcommand{\Large}{\@setfontsize\Large{14}{16}}
+\renewcommand{\normalsize}{\@setfontsize\normalsize{12}{14}}
+\renewcommand{\small}{\@setfontsize\small{10}{12}}
 \makeatother
 
 % ─────────────────────────────────────────────────────────────────────────────
@@ -122,26 +118,27 @@
 \begin{singlespace}
 	\begin{titlepage}
 		\centering
-		\vspace*{1.2cm}
-		\includegraphics[width=5.4cm]{img/tedu_logo}\par
-		\vspace{0.8cm}
+    \includegraphics[height=5.4cm]{img/tedu_logo}\par
+		\vspace{0.2cm}
 		{\LARGE\bfseries TED UNIVERSITY\par}
-		\vspace{0.3cm}
-		{\Large Department of Computer Engineering\par}
-		\vspace{2.0cm}
-		{\Huge\bfseries MoonAI\par}
-		\vspace{0.5cm}
-		{\LARGE Low-Level Design Report\par}
-		\vspace{1.5cm}
-		{\large\bfseries Team:\par}
-		\vspace{0.3cm}
-		{\large Caner Aras \quad Emir Irkılata \quad Oğuzhan Özkaya\par}
-		\vspace{0.6cm}
-		{\large\bfseries Supervisor:} {\large Ayşenur Birtürk\par}
-		\vspace{1.2cm}
-		{\large CMPE 492 — Senior Project II\par}
+		{\LARGE Department of Computer Engineering\par}
+    \vspace{1.8cm}
+		{\LARGE\bfseries
+		\parbox{0.92\textwidth}{\centering
+    MoonAI}\par{\centering Neuroevolution Prey-Predator Simulation}\par}
+		\vspace{0.2cm}
+		{\LARGE Final Report\par}
+    \vspace{1.8cm}
+    {\Large\bfseries Team:\par}
+    {\Large Caner Aras\quad Emir Irkılata\quad Oğuzhan Özkaya\par}
+    \vspace{0.4cm}
+    {\Large\bfseries Supervisor:\par} {\Large Dr. Ayşenur Birtürk\par}
+    \vspace{0.4cm}
+    {\Large\bfseries Jury Members:\par} {\Large Asst. Prof. Deniz Cantürk \quad Asst. Prof. Mehmet Evren Coşkun\par}
+    \vspace{3.0cm}
+		{\Large CMPE 492 — Senior Project II\par}
 		\vspace{0.4cm}
-		{\large Spring 2026\par}
+		{\Large Spring 2026\par}
 		\vfill
 	\end{titlepage}
 \end{singlespace}

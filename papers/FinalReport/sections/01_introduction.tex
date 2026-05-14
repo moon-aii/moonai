@@ -1,171 +1,76 @@
 % ─────────────────────────────────────────────────────────────────────────────
-\section{Introduction}
+\section{Introduction and Project Context}
 \label{sec:intro}
 % ─────────────────────────────────────────────────────────────────────────────
 
-This Low-Level Design (LLD) document describes the complete class-level architecture of
-\textbf{MoonAI}: a predator-prey simulation for studying NeuroEvolution of Augmenting
-Topologies (NEAT) and evolutionary algorithms.  It serves as the authoritative reference
-linking the High-Level Design (HLD, December 2025) to the actual C++17 implementation.
+This final report presents the completed architecture, implementation approach, validation
+summary, and engineering assessment of the senior project titled
+\textbf{Hybrid Intelligence for Deep Semantic Analysis of UAV Thermal Imagery in Closed
+Networks}. The project was developed as a decision-support system for security-oriented
+scenarios in which external connectivity is either prohibited or operationally unsafe.
 
-The HLD defined six subsystems at a conceptual level.  This document closes the gap to the
-source code: every class, struct, enum, algorithm, and design decision is documented with
-enough precision that a developer could re-implement any component independently.
+The central engineering problem addressed by the project is the gap between
+\emph{detection} and \emph{understanding}. Existing surveillance pipelines can often locate
+objects such as people or vehicles, but they frequently fail to explain their likely role,
+status, or threat relevance. For thermal imagery this gap is even larger because the input is
+noisy, low in texture, and fundamentally different from standard RGB imagery.
 
-% ─────────────────────────────────────────────────────────────────────────────
-\subsection{Object Design Trade-offs}
-\label{sec:tradeoffs}
-% ─────────────────────────────────────────────────────────────────────────────
+The project therefore adopted a hybrid architecture: a fast detector first scans the full
+thermal scene and identifies candidate objects, after which a vision-language reasoner
+performs deeper analysis on cropped regions of interest. In practical terms, the system is
+designed to move from outputs such as ``vehicle detected'' toward outputs such as ``light
+pickup-type vehicle with an active front thermal signature'' or ``human carrying a long,
+rifle-like object.''
 
-Five key trade-offs shaped the implementation.
+\subsection{Project Motivation}
 
-\subsubsection{Value Semantics vs.\ Pointer Semantics for \texttt{Genome}}
+Thermal imagery is highly relevant for night operations, wide-area reconnaissance, and
+degraded visual environments. However, most modern multimodal models are trained mainly
+on RGB imagery and therefore inherit a strong bias toward color, texture, and ordinary
+lighting conditions. This creates a mismatch between the strengths of general-purpose visual
+models and the actual needs of thermal UAV analysis.
 
-\texttt{EvolutionManager::population\_} stores \texttt{Genome} objects by value
-(\texttt{std::vector<Genome>}).  \texttt{Species::members\_} holds raw, non-owning
-\texttt{Genome*} pointers into that contiguous vector.
+At the same time, security-sensitive deployments often cannot rely on cloud services. A
+closed-network architecture is desirable for data sovereignty, reduced latency, and
+operational robustness. These two realities together motivated a design that is both
+\textbf{thermal-aware} and \textbf{offline-capable}.
 
-\textbf{Alternatives considered:}
+\subsection{Project Objectives}
+
+The final project was organized around the following objectives:
+
 \begin{itemize}[nosep]
-  \item \texttt{std::shared\_ptr<Genome>} — would eliminate the raw pointer but incurs
-    reference-counting overhead and heap fragmentation for every genome in the hot
-    evaluate/reproduce loop.
-  \item \texttt{std::unique\_ptr<Genome>} — moves ownership but breaks the contiguous
-    layout needed for GPU packing.
+  \item detect objects of interest in thermal UAV imagery with a model specialized for fast
+    scene scanning,
+  \item perform deeper semantic interpretation on detected targets rather than relying only on
+    coarse labels,
+  \item operate fully inside a local or air-gapped network without dependence on external
+    APIs or cloud inference,
+  \item produce structured outputs suitable for dashboards, logs, and post-mission review,
+  \item preserve a human-in-the-loop decision model rather than replacing the operator.
 \end{itemize}
 
-\textbf{Decision:} The species list is rebuilt at the start of every generation
-\emph{before} the population vector is reallocated, so the raw pointers are valid for the
-entire lifetime of one generation.  The value-semantics vector gives cache-friendly
-iteration and trivial move/copy semantics for checkpointing.
+\subsection{Project Context}
 
-\subsubsection{GPU CSR Layout vs.\ Padded Layout}
+The work aligns with the broader goal of building secure and locally deployable artificial
+intelligence systems for defense and critical-infrastructure monitoring. Within this context,
+the project treated the software as a decision-support mechanism, not as an autonomous
+action system. The operator remains responsible for interpreting alerts and making any
+mission-critical decision.
 
-The GPU inference path packs all agent networks into flat device arrays using Compressed
-Sparse Row (CSR) encoding.  Each agent is described by a \texttt{GpuNetDesc} containing
-eight integer offsets into shared flat arrays.
+The project also fits the educational purpose of the senior design sequence: it combines
+requirements engineering, system design, literature review, model selection, deployment
+planning, testing, and ethical assessment within a single integrated capstone effort.
 
-\textbf{Alternatives considered:}
+\subsection{Scope of This Report}
+
+This report documents:
+
 \begin{itemize}[nosep]
-  \item \textbf{Padded layout} — each network occupies a fixed-size slot
-    (\texttt{MAX\_NODES} × \texttt{MAX\_NODES}).  Simple indexing, but wastes up to
-    10× VRAM for the small early-generation topologies that NEAT produces.
-  \item \textbf{Per-agent device allocation} — flexible but requires thousands of
-    \texttt{cudaMalloc} calls and non-coalesced memory access.
+  \item the final problem framing and literature background,
+  \item the requirements and constraints that shaped the system,
+  \item the implemented two-stage architecture,
+  \item the tools and technologies studied and applied,
+  \item the test results and their engineering interpretation,
+  \item the global, economic, environmental, societal, and ethical implications of the work.
 \end{itemize}
-
-\textbf{Decision:} CSR eliminates VRAM waste and enables coalesced reads along the
-\texttt{eval\_order} and \texttt{conn\_w} arrays.  The host-side packing step
-(\texttt{upload\_network\_data}) runs once per generation, so its O(N) complexity is
-acceptable.
-
-\subsubsection{Precomputed Incoming Adjacency in \texttt{NeuralNetwork}}
-
-At construction, \texttt{NeuralNetwork} builds \texttt{incoming\_[node\_idx]}, a list of
-\texttt{(source\_idx, weight)} pairs for each node.  The \texttt{activate()} method then
-iterates this precomputed structure.
-
-\textbf{Alternative:} Build the adjacency on each forward pass from the raw connection
-list.  Profiling showed this as the dominant cost in the CPU inference path (map
-allocation in the hot loop).
-
-\textbf{Decision:} One-time O(E) build cost at network construction; zero allocation per
-\texttt{activate()} call.  Activation state is stored in a pre-allocated \texttt{float}
-vector \texttt{values\_} of fixed size.
-
-\subsubsection{Static Utility Classes (\texttt{Mutation}, \texttt{Crossover},
-\texttt{Physics})}
-
-These classes expose only \texttt{static} methods and carry no instance state.
-
-\textbf{Alternative:} Instantiable objects or singletons.  Singletons would require
-locking for potential future multi-threading; instantiable objects would add unnecessary
-storage.
-
-\textbf{Decision:} Pure functions are simpler to reason about, easier to test (no
-construction overhead), and completely thread-safe given the same \texttt{Random}
-instance.  All operators are deterministic given the same \texttt{Random} state, so unit
-tests verify correctness via outcome assertions rather than mock objects.
-
-\subsubsection{\texttt{TickCallback} Decoupling}
-
-\texttt{EvolutionManager} exposes a
-\texttt{std::function<void(int, const SimulationManager\&)>} type alias called
-\texttt{TickCallback} rather than holding a raw \texttt{Logger*}.
-
-\textbf{Alternative:} Pass a \texttt{Logger*} directly — simpler but couples the
-evolution engine to the data layer.
-
-\textbf{Decision:} The callback pattern lets \texttt{main.cpp} wire logging, live
-visualization updates, and benchmarking probes independently.  The slight
-\texttt{std::function} overhead (one indirect call per tick) is negligible compared with
-the simulation physics cost.
-
-% ─────────────────────────────────────────────────────────────────────────────
-\subsection{Interface Documentation Guidelines}
-\label{sec:guidelines}
-% ─────────────────────────────────────────────────────────────────────────────
-
-\begin{itemize}
-  \item All public interfaces are defined exclusively in \texttt{.hpp} files under
-    \texttt{src/}.
-  \item Include paths are written relative to the \texttt{src/} root, e.g.\
-    \texttt{\#include "evolution/genome.hpp"}.
-  \item \textbf{\texttt{const} correctness:} all read-only accessors are
-    \texttt{const}; mutation methods are clearly non-const.
-  \item \textbf{RAII:} all resources are managed by constructors/destructors —
-    GPU memory (\texttt{GpuBatch}), file handles (\texttt{Logger}), and the SFML
-    window (\texttt{VisualizationManager}).
-  \item All symbols reside in namespace \texttt{moonai}; CUDA internals reside in
-    \texttt{moonai::gpu}.
-  \item This document uses exact C++17 signatures as the canonical interface specification.
-\end{itemize}
-
-% ─────────────────────────────────────────────────────────────────────────────
-\subsection{Engineering Standards}
-\label{sec:standards}
-% ─────────────────────────────────────────────────────────────────────────────
-
-\begin{itemize}
-  \item \textbf{UML 2.5} — Class diagrams use standard notation: \texttt{+} public,
-    \texttt{-} private, \texttt{\#} protected; \texttt{<<abstract>>},
-    \texttt{<<static>>} stereotypes; standard relationship arrows (inheritance,
-    composition, dependency).
-  \item \textbf{IEEE 1016-2009} — \emph{Software Design Descriptions}: the structure of
-    this document follows this standard.
-  \item \textbf{C++17 ISO/IEC 14882:2017} — implementation language.
-  \item \textbf{NEAT specification} — Stanley \& Miikkulainen (2002)~\cite{stanley2002}
-    defines correctness requirements for the compatibility-distance formula, speciation,
-    and reproduction.
-  \item \textbf{ACM Code of Ethics} — reproducibility and transparency are maintained
-    via seeded RNG, checkpointing, and open source tooling.
-\end{itemize}
-
-% ─────────────────────────────────────────────────────────────────────────────
-\subsection{Definitions, Acronyms, and Abbreviations}
-\label{sec:defs}
-% ─────────────────────────────────────────────────────────────────────────────
-
-See Section~\ref{sec:glossary} for the full glossary.  Key terms used throughout this
-document:
-
-\begin{description}[style=nextline,leftmargin=3.5cm,font=\ttfamily]
-  \item[NEAT]  NeuroEvolution of Augmenting Topologies — the evolutionary algorithm
-    implemented in \texttt{moonai::evolution}.
-  \item[CSR]   Compressed Sparse Row — the GPU memory layout for variable-topology
-    networks.
-  \item[RAII]  Resource Acquisition Is Initialization — C++ idiom for deterministic
-    resource lifetime.
-  \item[RNG]   Random Number Generator; the project uses MT19937-64 via
-    \texttt{std::mt19937\_64}.
-  \item[NN]    Neural Network — a \texttt{NeuralNetwork} object built from a
-    \texttt{Genome}.
-  \item[HLD]   High-Level Design document (December 2025).
-  \item[LLD]   This document — Low-Level Design.
-  \item[SensorInput]  The 15-element observation vector fed to each agent's NN per tick.
-  \item[TickCallback] \texttt{std::function<void(int, const SimulationManager\&)>} —
-    hook invoked after each simulation tick.
-  \item[GpuBatch] RAII wrapper for all CUDA device memory needed for one generation.
-  \item[InnovationTracker] Per-generation map from connection pairs to innovation
-    numbers, ensuring history alignment for NEAT crossover.
-\end{description}

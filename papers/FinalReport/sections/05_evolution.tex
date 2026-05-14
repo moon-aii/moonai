@@ -1,409 +1,194 @@
 % ─────────────────────────────────────────────────────────────────────────────
-\section{Evolution Package (\texttt{src/evolution/})}
-\label{sec:evolution}
+\section{Implementation, Tools, and Technologies}
+\label{sec:implementation}
 % ─────────────────────────────────────────────────────────────────────────────
 
-The evolution package implements the NEAT algorithm: genome representation, neural
-network construction and inference, speciation, mutation, crossover, and the generation
-evaluation loop.
+The project was implemented by combining open-source vision,
+multimodal reasoning, and edge-deployment techniques. The main technical challenge was
+not inventing a new model from scratch, but selecting and integrating the right tools for the
+problem. As the low-level design matured, the implementation focus expanded from model
+selection alone to reproducible packaging, hardware-aware optimization, and explicit runtime
+contracts for Jetson-class devices.
 
-\begin{figure}[H]
+\subsection{Main Technologies Used}
+
+\begin{table}[H]
   \centering
-  \includegraphics[width=\textwidth]{evolution_classes}
-  \caption{Evolution package class diagram.}
-  \label{fig:evo}
-\end{figure}
-
-% ─────────────────────────────────────────────────────────────────────────────
-\subsection{\texttt{NodeType} (enum class)}
-
-\begin{lstlisting}
-enum class NodeType { Input, Hidden, Output, Bias };
-\end{lstlisting}
-
-\texttt{Bias} nodes have a fixed activation of 1.0 and appear in every initial genome.
-
-% ─────────────────────────────────────────────────────────────────────────────
-\subsection{\texttt{NodeGene} and \texttt{ConnectionGene} (structs)}
-
-\begin{table}[H]
-\centering\small
-\caption{Gene struct fields}
-\begin{tabularx}{\textwidth}{@{}lllX@{}}
-\toprule
-\textbf{Struct} & \textbf{Field} & \textbf{Type} & \textbf{Description} \\
-\midrule
-\texttt{NodeGene}       & \texttt{id}         & \texttt{uint32\_t} & Global node identifier \\
-                        & \texttt{type}       & \texttt{NodeType}  & Input/Hidden/Output/Bias \\
-\midrule
-\texttt{ConnectionGene} & \texttt{in\_node}   & \texttt{uint32\_t} & Source node id \\
-                        & \texttt{out\_node}  & \texttt{uint32\_t} & Target node id \\
-                        & \texttt{weight}     & \texttt{float}     & Synaptic weight \\
-                        & \texttt{enabled}    & \texttt{bool}      & False = structurally present but not expressed \\
-                        & \texttt{innovation} & \texttt{uint32\_t} & Historical marking for alignment during crossover \\
-\bottomrule
-\end{tabularx}
+  \caption{Core tools and technologies used in the project}
+  \begin{tabularx}{\textwidth}{@{}p{2.8cm}p{2.8cm}X@{}}
+    \toprule
+    Layer & Technology & Role in the project \\
+    \midrule
+    Detection & YOLOv8 & Fast object detection on thermal imagery with strong practical
+    tooling and broad community support~\cite{yolov8}. \\
+    Reasoning & Qwen2-VL 7B & Second-stage vision-language reasoning model used to
+    interpret cropped thermal targets in more detail~\cite{qwen2vl}. \\
+    Adaptation & LoRA & Parameter-efficient fine-tuning strategy for adapting the reasoning
+    model without retraining all weights~\cite{lora}. \\
+    Containerization & Docker / buildx & Reproducible deployment environment and cross-
+    architecture image generation from workstation-class development hosts to ARM-based edge
+    targets~\cite{dockerdocs}. \\
+    Optimization runtime & TensorRT / Torch-TensorRT & Hardware-aware inference
+    acceleration through engine compilation, mixed precision, and memory-conscious execution
+    strategies~\cite{tensorrt,torchtrt}. \\
+    Image processing & OpenCV & Region cropping, pre-processing, and data preparation
+    utilities~\cite{opencv}. \\
+    Deep learning runtime & PyTorch & Model development, loading, and experimentation
+    framework~\cite{pytorch}. \\
+    Deployment target & NVIDIA Jetson family & Edge-oriented hardware target for local,
+    low-latency inference in a closed network~\cite{jetson}. \\
+    Data interchange & JSON & Structured output format for alerts, logs, and downstream
+    consumption. \\
+    \bottomrule
+  \end{tabularx}
 \end{table}
 
-% ─────────────────────────────────────────────────────────────────────────────
-\subsection{\texttt{Genome} (class)}
+\subsection{Detector Layer}
 
-Encodes a variable-topology neural network as gene lists.
+YOLOv8 was selected for the detector layer because the problem requires rapid scanning of an
+entire scene before any deeper reasoning becomes possible. The model family is practical for
+prototype work because it has mature training and inference tooling, strong existing
+documentation, and published success on related thermal or aerial detection tasks.
 
-\begin{table}[H]
-\centering\small
-\caption{\texttt{Genome} interface}
-\begin{tabularx}{\textwidth}{@{}p{8.4cm}X@{}}
-\toprule
-\textbf{Method} & \textbf{Description} \\
-\midrule
-\texttt{Genome(num\_inputs, num\_outputs)} & Create minimal genome (inputs + bias + outputs; no hidden) \\
-\texttt{add\_node(node)} & Append \texttt{NodeGene} \\
-\texttt{add\_connection(conn)} & Append \texttt{ConnectionGene} \\
-\texttt{has\_connection(from, to)} & Check structural connectivity \\
-\texttt{has\_node(id)} & Membership test \\
-\texttt{max\_node\_id()} & Largest node id in genome \\
-\texttt{nodes()} & Gene list accessors \\
-\texttt{connections()} & Gene list accessors \\
-\texttt{fitness() / set\_fitness(f)} & Raw fitness from evaluation \\
-\texttt{adjusted\_fitness() / set\_adjusted\_fitness(f)} & Shared fitness (divided by species size) \\
-\texttt{num\_inputs(), num\_outputs()} & Topology constants \\
-\texttt{complexity()} & \texttt{nodes\_.size() + enabled\_connection\_count} \\
-\texttt{compatibility\_distance(a,b,c1,c2,c3)} & Static; compatibility metric (see below) \\
-\texttt{to\_json()} & Serialize to JSON string \\
-\texttt{from\_json(str)} & Static factory from JSON string \\
-\bottomrule
-\end{tabularx}
-\end{table}
+The detector is responsible for:
 
-\subsubsection{Compatibility Distance Algorithm}
+\begin{itemize}[nosep]
+  \item locating candidate targets in the full frame,
+  \item producing bounding boxes and coarse class labels,
+  \item acting as the gatekeeper for the more expensive reasoning stage.
+\end{itemize}
 
-Defined by Stanley \& Miikkulainen~\cite{stanley2002}:
-\[
-  \delta = \frac{c_1 \cdot E + c_2 \cdot D}{\max(N_1, N_2)} + c_3 \cdot \bar{W}
-\]
-where $E$ = excess gene count, $D$ = disjoint gene count, $\bar{W}$ = mean weight
-difference of matching genes, and $N_i$ = genome size.  Genes are aligned by innovation
-number.
+This means the detector is not merely a preprocessing step; it is the part of the system that
+protects runtime performance and gives the VLM a focused visual problem.
 
-\subsubsection{JSON Serialization Format}
+From a deployment perspective, the detector is also the component that benefits most directly
+from TensorRT-style optimization because it is invoked continuously on the full frame and
+therefore dominates the first stage of the runtime budget.
 
-\begin{lstlisting}[language={},caption={Genome JSON schema}]
-{
-  "nodes": [{"id": 0, "type": "input"}, ...],
-  "connections": [
-    {"in": 0, "out": 16, "weight": 0.42, "enabled": true, "innovation": 3}, ...
-  ]
-}
-\end{lstlisting}
+\subsection{Reasoning Layer}
 
-\textbf{Private members:} \texttt{nodes\_}, \texttt{connections\_},
-\texttt{num\_inputs\_}, \texttt{num\_outputs\_}, \texttt{fitness\_},
-\texttt{adjusted\_fitness\_}.
+Qwen2-VL was selected as the primary reasoning model because it provides strong open
+multimodal performance, supports high-resolution inputs, and is well suited for prompt-based
+description and inference tasks~\cite{qwen2vl}. In this project, the role of the model is not
+to rediscover the object location but to examine the isolated target and produce a more useful
+interpretation.
 
-% ─────────────────────────────────────────────────────────────────────────────
-\subsection{\texttt{NeuralNetwork} (class)}
+Typical reasoning goals include:
 
-Builds a runnable feedforward network from a \texttt{Genome}.
+\begin{itemize}[nosep]
+  \item narrowing ``vehicle'' to a more specific category such as pickup-type or light utility
+    vehicle,
+  \item inferring whether a strong localized thermal signature suggests recent engine activity,
+  \item interpreting whether a human figure appears to be carrying a rifle-like object,
+  \item converting low-level visual evidence into natural-language explanation.
+\end{itemize}
 
-\subsubsection{Construction Algorithm}
-\begin{enumerate}[nosep]
-  \item Build \texttt{nodes\_} list from enabled nodes in genome.
-  \item Topological sort: Kahn's algorithm on the enabled connection DAG.  DFS cycle
-    detection is applied to any new hidden connections before insertion.  Result stored
-    in \texttt{evaluation\_order\_} (list of \texttt{uint32\_t} node ids in activation
-    order).
-  \item Precompute \texttt{incoming\_[i]}: for each node at eval-order index $i$,
-    collect all \texttt{(source\_idx, weight)} pairs from enabled connections.
-  \item Allocate \texttt{values\_} float vector of length \texttt{nodes\_.size()}.
-\end{enumerate}
+Alternative open models such as LLaVA-NeXT and InternVL were also studied
+as comparison points because they are strong open multimodal baselines with useful
+reasoning capability~\cite{llavanext,internvl2024}. However, Qwen2-VL remained the most
+aligned with the project's need for fine-grained visual reasoning under a relatively efficient
+open-source setup.
 
-\subsubsection{\texttt{activate(inputs)} Algorithm}
-\begin{enumerate}[nosep]
-  \item Copy \texttt{inputs} into \texttt{values\_} at input node indices.
-  \item Set bias node value to 1.0.
-  \item Iterate \texttt{evaluation\_order\_}:
-    \[
-      v_i = f\!\left(\sum_{(j,w) \in \mathit{incoming}[i]} w \cdot v_j\right)
-    \]
-    where $f$ is the configured activation function.
-  \item Return output node values in order.
-\end{enumerate}
+\subsection{LoRA Fine-Tuning and Domain Adaptation}
 
-\subsubsection{Activation Functions}
+One of the most important technical lessons of the project was that thermal adaptation is a
+separate engineering problem from general multimodal reasoning. A VLM trained mostly on
+ordinary web images does not automatically understand that thermal brightness represents
+heat, not visible texture or color.
 
-\begin{lstlisting}
-enum class ActivationFn { Sigmoid, Tanh, ReLU };
-\end{lstlisting}
+LoRA was therefore important as a strategy because it enables targeted adaptation of a large
+model with lower computational cost than full retraining~\cite{lora}. Even when the final
+prototype is evaluated primarily at system level, the project's design logic remained clear:
+the analyst model benefits from thermal-domain adaptation, especially when asked to produce
+object-specific explanations rather than generic captions. This emphasis on adaptation is also
+consistent with broader thermal-domain transfer work, where modality mismatch is one of the
+core causes of performance loss~\cite{sstn2021}.
 
-\begin{table}[H]
-\centering\small
-\caption{Activation function formulas}
-\begin{tabular}{@{}lll@{}}
-\toprule
-\textbf{Name} & \textbf{Formula} & \textbf{Output range} \\
-\midrule
-\texttt{Sigmoid} & $1/(1+e^{-x})$ & $(0,1)$ \\
-\texttt{Tanh}    & $\tanh(x)$     & $(-1,1)$ \\
-\texttt{ReLU}    & $\max(0,x)$    & $[0,\infty)$ \\
-\bottomrule
-\end{tabular}
-\end{table}
+\subsection{Containerized Deployment Workflow}
 
-\begin{table}[H]
-\centering\small
-\caption{\texttt{NeuralNetwork} interface}
-\begin{tabularx}{\textwidth}{@{}lX@{}}
-\toprule
-\textbf{Method} & \textbf{Description} \\
-\midrule
-\texttt{NeuralNetwork(genome, activation\_fn)} & Construct; run build algorithm \\
-\texttt{activate(inputs)} & Forward pass; returns output activations \\
-\texttt{num\_nodes(), num\_connections()} & Topology counts \\
-\texttt{num\_inputs(), num\_outputs()} & I/O sizes \\
-\texttt{raw\_nodes()} & All node descriptors \\
-\texttt{eval\_order()} & Activation sequence (for GPU packing) \\
-\texttt{incoming()} & Precomputed adjacency \\
-\texttt{node\_index\_map()} & node\_id → value index \\
-\texttt{last\_activations()} & Activations from most recent \texttt{activate()} call \\
-\bottomrule
-\end{tabularx}
-\end{table}
+To make the implementation portable across workstation and Jetson environments, the low-
+level deployment workflow was organized around containerization. This has several practical
+advantages:
 
-% ─────────────────────────────────────────────────────────────────────────────
-\subsection{\texttt{Species} (class)}
+\begin{itemize}[nosep]
+  \item model dependencies are frozen in a reproducible runtime image,
+  \item Jetson-specific library versions can be aligned with the target JetPack or L4T stack,
+  \item the same application pipeline can be developed on x86 hosts and prepared for ARM
+    deployment through cross-architecture image builds.
+\end{itemize}
 
-Groups genomes by structural similarity.  Manages stagnation detection and adjusted
-fitness for fair reproduction allocation.
+The use of \texttt{docker buildx} is particularly valuable in this context because it bridges the
+gap between high-resource development machines and ARM-based edge targets. Instead of
+compiling every dependency directly on the embedded device, the build process can produce a
+more controlled and repeatable deployment artifact in advance.
 
-\begin{table}[H]
-\centering\small
-\caption{\texttt{Species} private members}
-\begin{tabularx}{\textwidth}{@{}lX@{}}
-\toprule
-\textbf{Member} & \textbf{Description} \\
-\midrule
-\texttt{id\_}                           & Unique species id \\
-\texttt{representative\_}               & Reference genome for compatibility tests \\
-\texttt{members\_}                      & Non-owning pointers into \texttt{EvolutionManager::population\_} \\
-\texttt{average\_fitness\_}             & Mean raw fitness of members \\
-\texttt{total\_adjusted\_fitness\_}     & Sum of adjusted fitnesses \\
-\texttt{best\_fitness\_ever\_}          & Highest fitness seen since species creation \\
-\texttt{generations\_without\_improvement\_} & Incremented each generation max fitness does not improve \\
-\texttt{fitness\_history\_}             & Rolling history of average fitness \\
-\bottomrule
-\end{tabularx}
-\end{table}
+\subsection{TensorRT Optimization Strategy}
 
-\subsubsection{Key Algorithms}
-
-\textbf{\texttt{adjust\_fitness()}}: Divides each member's raw fitness by species size
-(explicit fitness sharing):
-\[
-  f'_i = f_i / |\mathit{members}|
-\]
-
-\textbf{\texttt{is\_stagnant(limit)}}: Returns
-\texttt{generations\_without\_improvement\_ >= limit}.
-
-\textbf{\texttt{update\_best\_fitness()}}: If the current maximum member fitness exceeds
-\texttt{best\_fitness\_ever\_}, update it and reset the stagnation counter; otherwise
-increment it.
-
-\textbf{\texttt{update\_representative()}}: Set \texttt{representative\_} to the
-highest-fitness member (used for next-generation compatibility tests).
-
-% ─────────────────────────────────────────────────────────────────────────────
-\subsection{\texttt{InnovationTracker} (class)}
-
-Ensures historical markings are consistent within a generation, enabling correct NEAT
-crossover alignment.
-
-\begin{table}[H]
-\centering\small
-\caption{\texttt{InnovationTracker} interface}
-\begin{tabularx}{\textwidth}{@{}lX@{}}
-\toprule
-\textbf{Method} & \textbf{Description} \\
-\midrule
-\texttt{init\_from\_population(population)} & Scan all genomes; set counters to max innovation / node ids found \\
-\texttt{get\_innovation(in, out)} & Look up or create innovation for edge (in→out) within this generation \\
-\texttt{next\_node\_id()} & Return and increment the global node counter \\
-\texttt{reset\_generation()} & Clear \texttt{generation\_innovations\_} (called at start of \texttt{evolve()}) \\
-\texttt{innovation\_count(), node\_count()} & Current counter values \\
-\texttt{set\_counters(innov, node)} & Restore from checkpoint \\
-\bottomrule
-\end{tabularx}
-\end{table}
-
-\textbf{Private:} \texttt{generation\_innovations\_: map<pair<uint32\_t,uint32\_t>,\allowbreak uint32\_t>}
-— the within-generation map that guarantees the same structural mutation receives the
-same innovation number across all genomes in one generation.
-
-% ─────────────────────────────────────────────────────────────────────────────
-\subsection{\texttt{Mutation} (static class)}
-
-All methods are \texttt{static}.
-
-\begin{table}[H]
-\centering\small
-\caption{\texttt{Mutation} operator algorithms}
-\begin{tabularx}{\textwidth}{@{}lX@{}}
-\toprule
-\textbf{Method} & \textbf{Algorithm} \\
-\midrule
-\texttt{mutate\_weights(genome, rng, power)} &
-  For each connection: with probability 0.9 apply Gaussian perturbation
-  $w \leftarrow w + \mathcal{N}(0, \mathit{power})$; with probability 0.1 replace
-  with uniform sample from $[-2, 2]$. \\
-\texttt{add\_connection(genome, rng, tracker)} &
-  Sample random unconnected node pair; check no cycle (DFS); assign innovation via
-  \texttt{tracker.get\_innovation()}; initialize weight $\sim \mathcal{U}(-1,1)$. \\
-\texttt{add\_node(genome, rng, tracker, max\_hidden)} &
-  Select random enabled connection; disable it; insert new hidden node
-  (\texttt{tracker.next\_node\_id()}); add connection \texttt{in → new} with weight 1.0;
-  add connection \texttt{new → out} with old weight. \\
-\texttt{toggle\_connection(genome, rng)} &
-  Pick random connection; flip \texttt{enabled} flag. \\
-\texttt{mutate(genome, rng, config, tracker)} &
-  Apply each operator independently: \texttt{mutate\_weights} with
-  \texttt{mutation\_rate}, \texttt{add\_node} with \texttt{add\_node\_rate},
-  \texttt{add\_connection} with \texttt{add\_connection\_rate},
-  \texttt{toggle\_connection} at a fixed low rate. \\
-\bottomrule
-\end{tabularx}
-\end{table}
-
-% ─────────────────────────────────────────────────────────────────────────────
-\subsection{\texttt{Crossover} (static class)}
-
-\begin{lstlisting}
-static Genome crossover(const Genome& parent_a,
-                        const Genome& parent_b, Random& rng);
-\end{lstlisting}
-
-\textbf{Algorithm:} Align genes by innovation number.
-\begin{enumerate}[nosep]
-  \item \textbf{Matching genes:} Pick from either parent with probability 0.5.
-  \item \textbf{Disjoint / excess genes:} Always inherit from the fitter parent.
-  \item \textbf{Disabled genes:} If disabled in either contributing parent, disable
-    in child with probability 0.75.
-  \item Inherit \texttt{num\_inputs} and \texttt{num\_outputs} from the fitter parent.
-\end{enumerate}
-
-% ─────────────────────────────────────────────────────────────────────────────
-\subsection{\texttt{EvolutionManager} (class)}
-
-Top-level controller for NEAT: holds the population, networks, species, and orchestrates
-the evaluate → compute\_fitness → evolve cycle.
-
-\begin{table}[H]
-\centering\small
-\caption{\texttt{EvolutionManager} private members}
-\begin{tabularx}{\textwidth}{@{}lX@{}}
-\toprule
-\textbf{Member} & \textbf{Description} \\
-\midrule
-\texttt{config\_}     & Run parameters \\
-\texttt{rng\_}        & Shared RNG (owned by main) \\
-\texttt{tracker\_}    & Innovation numbering \\
-\texttt{population\_} & Full population by value \\
-\texttt{species\_}    & Current species list \\
-\texttt{networks\_}   & One NN per genome \\
-\texttt{generation\_} & Current generation index \\
-\texttt{num\_inputs\_, num\_outputs\_} & Determined at \texttt{initialize()} \\
-\texttt{use\_gpu\_}   & GPU inference enabled \\
-\texttt{gpu\_batch\_} & Device memory (CUDA build only) \\
-\texttt{tick\_callback\_} & Optional per-tick hook \\
-\bottomrule
-\end{tabularx}
-\end{table}
-
-\begin{table}[H]
-\centering\small
-\caption{\texttt{EvolutionManager} public interface}
-\begin{tabularx}{\textwidth}{@{}lX@{}}
-\toprule
-\textbf{Method} & \textbf{Description} \\
-\midrule
-\texttt{EvolutionManager(config, rng)} & Store config and RNG reference \\
-\texttt{initialize(num\_inputs, num\_outputs)} & Create minimal genomes; build networks \\
-\texttt{evaluate\_generation(sim)} & Run one generation (see below) \\
-\texttt{evolve()} & Speciate → remove stagnant → reproduce \\
-\texttt{compute\_fitness(sim)} & Write fitness into each genome (see below) \\
-\texttt{population()} & Access genome vector \\
-\texttt{generation()} & Current generation number \\
-\texttt{species()} & Current species list \\
-\texttt{networks()} & Built network list \\
-\texttt{set\_tick\_callback(cb)} & Install \texttt{TickCallback} \\
-\texttt{clear\_tick\_callback()} & Remove callback \\
-\texttt{enable\_gpu(flag)} & Toggle GPU inference path \\
-\texttt{gpu\_enabled()} & Query current GPU state \\
-\texttt{save\_checkpoint(path, rng)} & Serialize to JSON (see below) \\
-\texttt{load\_checkpoint(path, rng)} & Restore from checkpoint; false if not found \\
-\bottomrule
-\end{tabularx}
-\end{table}
-
-\subsubsection{\texttt{evaluate\_generation()} Algorithm}
+The implementation protocol treated acceleration as a structured workflow rather than a single
+toggle. In edge deployment, optimization typically proceeds through three related steps:
 
 \begin{enumerate}[nosep]
-  \item Call \texttt{sim.reset()} and \texttt{sim.initialize()}.
-  \item For each tick $t \in [0, \mathit{generation\_ticks})$:
-    \begin{enumerate}[nosep,label=\alph*.]
-      \item For each alive agent $i$: call \texttt{sim.get\_sensors(i)};
-        run \texttt{networks\_[i]->activate()}; decode output to direction vector;
-        call \texttt{sim.apply\_action(i, direction, dt)}.
-      \item Call \texttt{sim.tick(dt)}.
-      \item If \texttt{tick\_callback\_} is set, invoke it with $(t, \mathit{sim})$.
-    \end{enumerate}
-  \item On GPU path: \texttt{gpu\_batch\_->pack\_inputs()} before agent loop;
-    \texttt{batch\_neural\_inference()} launches CUDA kernel;
-    \texttt{gpu\_batch\_->unpack\_outputs()} retrieves results.
+  \item graph-level simplification and layer fusion where supported,
+  \item reduced-precision execution such as FP16 for lower latency and smaller memory use,
+  \item engine-level runtime specialization for the target NVIDIA hardware.
 \end{enumerate}
 
-\subsubsection{\texttt{compute\_fitness()} Algorithm}
+In this project, such optimizations are most naturally aligned with the detector stage and other
+repeated tensor operations. For the reasoning stage, the analogous concerns are quantization,
+reduced memory footprint, staged loading, and careful balancing between semantic depth and
+runtime cost.
 
-For each genome $i$ paired with \texttt{agents\_[i]}:
-\[
-  f_i = w_s \cdot \frac{\mathit{age}}{T} + w_k \cdot \mathit{kills} + w_e \cdot \frac{\mathit{energy}}{E_0}
-        + w_d \cdot \frac{\mathit{dist}}{d_{\max}} - w_c \cdot \mathit{complexity}
-\]
-where $T$ = \texttt{generation\_ticks}, $E_0$ = \texttt{initial\_energy},
-$d_{\max} = \sqrt{w^2+h^2}$, and the $w_*$ constants come from
-\texttt{SimulationConfig}.
+\subsection{Supporting Software Components}
 
-\subsubsection{\texttt{evolve()} Algorithm}
-\begin{enumerate}[nosep]
-  \item \texttt{speciate()}: For each genome, find the first compatible species
-    (representative comparison).  No match → new species.  Update
-    \texttt{update\_best\_fitness()} on each species.
-  \item \texttt{remove\_stagnant\_species()}: Remove species where
-    \texttt{is\_stagnant(stagnation\_limit)} is true (except the top-fitness species).
-  \item Compute offspring allocation via largest-remainder method proportional to
-    total adjusted fitness.
-  \item \texttt{reproduce()}: For each species, elitism (top genome survives);
-    remainder via \texttt{Crossover::crossover} + \texttt{Mutation::mutate} using
-    tournament selection within species.
-  \item \texttt{tracker\_.reset\_generation()}.
-  \item \texttt{build\_networks()}.
-  \item Increment \texttt{generation\_}.
-\end{enumerate}
+OpenCV and PyTorch were used as the main supporting frameworks. OpenCV fits the bridge
+layer of the architecture because cropping and preparing regions of interest is a direct image-
+processing task. PyTorch fits the model layer because it is the de facto standard framework
+for open detector and multimodal model experimentation.
 
-\subsubsection{Checkpoint Format}
+JSON was used as the common output format because it offers a simple contract between
+vision, reasoning, logging, and interface components. A structured format was necessary to
+avoid producing outputs that were only human-readable but difficult to archive or integrate.
 
-JSON file with fields: \texttt{generation}, \texttt{population} (array of genome JSON),
-\texttt{rng\_state} (hex string of engine state), \texttt{species\_stagnation} (array of
-\texttt{\{id, best\_ever, gens\_no\_improvement\}}), \texttt{innovation\_counter},
-\texttt{node\_counter}.
+At implementation level, these supporting components also define memory boundaries. Raw
+frames, normalized detector tensors, cropped ROIs, analysis objects, and final JSON records
+must move between packages without ambiguity over format or ownership.
 
-\subsubsection{\texttt{TickCallback} Type Alias}
+\subsection{Edge Optimization}
 
-\begin{lstlisting}
-using TickCallback =
-    std::function<void(int tick, const SimulationManager& sim)>;
-\end{lstlisting}
+The project targeted edge-oriented operation rather than cloud dependence. This led to an
+interest in quantization and model-size reduction strategies, especially for the reasoning
+model. In principle, INT4-style quantization is attractive because it reduces memory pressure
+and improves the feasibility of local deployment on Jetson-class hardware. This does not
+eliminate the challenge of multimodal inference at the edge, but it makes the deployment goal
+far more realistic.
 
-\texttt{main.cpp} uses this to wire \texttt{Logger::log\_tick}, live visualization
-updates, and per-generation benchmarking probes into the evaluation loop without creating
-any dependency from \texttt{evolution/} on \texttt{data/} or \texttt{visualization/}.
+Recent Jetson benchmarking work also shows that throughput, memory headroom, and energy
+budget can vary substantially across embedded hardware classes, which is why edge AI design
+cannot treat deployment as an afterthought~\cite{pham2023}. For this reason, the project
+considered memory pressure and runtime continuity as first-class concerns alongside model
+accuracy.
+
+\subsection{Memory Management and Runtime Discipline}
+
+Intermediate buffers can become as important as model weights in a
+resource-constrained deployment. The implementation protocol therefore benefits from:
+
+\begin{itemize}[nosep]
+  \item explicit staging between frame ingestion, detection, cropping, and reasoning,
+  \item avoiding unnecessary duplication of image tensors,
+  \item conditional execution of the reasoning stage only when the detector produces targets,
+  \item reduced-precision and engine-compiled execution where it provides a stable gain.
+\end{itemize}
+
+\subsection{Why These Technologies Matter}
+
+Each tool solved a specific problem:
+
+\begin{itemize}[nosep]
+  \item YOLOv8 solved rapid thermal localization.
+  \item Qwen2-VL solved semantic interpretation beyond labels.
+  \item LoRA solved practical domain adaptation.
+  \item OpenCV solved region isolation and pre-processing.
+  \item PyTorch solved model experimentation and integration.
+  \item Jetson-oriented optimization solved the closed-network edge-deployment goal.
+\end{itemize}
