@@ -1,0 +1,14 @@
+flowchart LR
+    A[experiments.lua] --> C[main.rs]
+    B[settings.json] --> C
+    C --> D[ui::app::App]
+    D --> E[RunQueue]
+    D --> F[RunSession]
+    F --> G[sim::Simulation]
+    G --> H[CUDA kernels]
+    G --> I[Compact render and metrics readback]
+    I --> J[wgpu world renderer]
+    F --> K[metrics::Logger]
+    K --> L[output/experiments/<run>/config.json\nstats.csv\nspecies.csv\ngenomes.json]
+    L --> M[analysis pipeline]
+    M --> N[HTML analysis report]

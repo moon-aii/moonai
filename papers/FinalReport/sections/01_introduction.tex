@@ -1,76 +1,73 @@
-% ─────────────────────────────────────────────────────────────────────────────
-\section{Introduction and Project Context}
+% -----------------------------------------------------------------------------
+\section{Introduction}
 \label{sec:intro}
-% ─────────────────────────────────────────────────────────────────────────────
+% -----------------------------------------------------------------------------
 
-This final report presents the completed architecture, implementation approach, validation
-summary, and engineering assessment of the senior project titled
-\textbf{Hybrid Intelligence for Deep Semantic Analysis of UAV Thermal Imagery in Closed
-Networks}. The project was developed as a decision-support system for security-oriented
-scenarios in which external connectivity is either prohibited or operationally unsafe.
+MoonAI is a simulation platform for studying evolutionary algorithms and neural network
+evolution through predator-prey dynamics. The project uses a synthetic ecosystem instead of a
+task-specific supervised dataset: predators, prey, and food interact in a configurable world;
+agent behavior is controlled by evolving neural networks; and the resulting runs produce both
+visual and structured data for later analysis.
 
-The central engineering problem addressed by the project is the gap between
-\emph{detection} and \emph{understanding}. Existing surveillance pipelines can often locate
-objects such as people or vehicles, but they frequently fail to explain their likely role,
-status, or threat relevance. For thermal imagery this gap is even larger because the input is
-noisy, low in texture, and fundamentally different from standard RGB imagery.
-
-The project therefore adopted a hybrid architecture: a fast detector first scans the full
-thermal scene and identifies candidate objects, after which a vision-language reasoner
-performs deeper analysis on cropped regions of interest. In practical terms, the system is
-designed to move from outputs such as ``vehicle detected'' toward outputs such as ``light
-pickup-type vehicle with an active front thermal signature'' or ``human carrying a long,
-rifle-like object.''
+The final deliverable is therefore not a single machine learning model with a fixed accuracy
+number. The main contribution is the simulation environment itself: a reproducible,
+interactive, GPU-accelerated benchmark for observing how neuroevolution behaves under
+changing ecological pressure. This emphasis is important because the project goal is to help
+study machine learning methods, not to claim that one evolved policy is the final answer to a
+real-world task.
 
 \subsection{Project Motivation}
 
-Thermal imagery is highly relevant for night operations, wide-area reconnaissance, and
-degraded visual environments. However, most modern multimodal models are trained mainly
-on RGB imagery and therefore inherit a strong bias toward color, texture, and ordinary
-lighting conditions. This creates a mismatch between the strengths of general-purpose visual
-models and the actual needs of thermal UAV analysis.
+Modern machine learning experiments often depend on large labeled datasets or narrowly defined
+benchmarks. Those inputs are useful, but they also constrain what kinds of adaptation can be
+observed. MoonAI was motivated by a different question: can a self-generating environment be
+used to study how learning systems adapt, compete, diversify, and change over time?
 
-At the same time, security-sensitive deployments often cannot rely on cloud services. A
-closed-network architecture is desirable for data sovereignty, reduced latency, and
-operational robustness. These two realities together motivated a design that is both
-\textbf{thermal-aware} and \textbf{offline-capable}.
+The predator-prey setting is suitable for that purpose because it creates continuous selective
+pressure. Predators and prey are both required to survive, move, consume resources, and
+reproduce. Once those rules are combined with evolving neural networks and speciation,
+emergent behavior becomes an observable engineering artifact rather than an abstract concept.
 
 \subsection{Project Objectives}
 
-The final project was organized around the following objectives:
+The project objectives were:
 
 \begin{itemize}[nosep]
-  \item detect objects of interest in thermal UAV imagery with a model specialized for fast
-    scene scanning,
-  \item perform deeper semantic interpretation on detected targets rather than relying only on
-    coarse labels,
-  \item operate fully inside a local or air-gapped network without dependence on external
-    APIs or cloud inference,
-  \item produce structured outputs suitable for dashboards, logs, and post-mission review,
-  \item preserve a human-in-the-loop decision model rather than replacing the operator.
+  \item implement a configurable simulation environment for predator-prey coevolution,
+  \item integrate NEAT-style neuroevolution so both topology and weights can change over time
+    \cite{neat2002},
+  \item execute the hot simulation path on the GPU to keep large populations practical,
+  \item provide an interactive desktop interface for experiment selection, live inspection, and
+    settings control,
+  \item generate reproducible output artifacts such as configuration snapshots, population
+    metrics, species summaries, and representative genome exports,
+  \item provide an analysis pipeline that turns run artifacts into a self-contained report.
 \end{itemize}
 
 \subsection{Project Context}
 
-The work aligns with the broader goal of building secure and locally deployable artificial
-intelligence systems for defense and critical-infrastructure monitoring. Within this context,
-the project treated the software as a decision-support mechanism, not as an autonomous
-action system. The operator remains responsible for interpreting alerts and making any
-mission-critical decision.
+MoonAI was developed as a CMPE 492 senior design project. The work combines systems
+programming, GPU computing, simulation design, neuroevolution, UI engineering, data export,
+and technical documentation into a single project. The final codebase is a Rust and CUDA
+rewrite centered on a GPU-first runtime, with Python-based post-run analysis and a GitHub
+Pages documentation site.
 
-The project also fits the educational purpose of the senior design sequence: it combines
-requirements engineering, system design, literature review, model selection, deployment
-planning, testing, and ethical assessment within a single integrated capstone effort.
+The resulting system is useful in two ways. First, it is a research and teaching tool for
+studying evolutionary computation. Second, it is a software engineering case study in how to
+build a non-trivial simulation product around reproducibility, observability, and strong
+workflow discipline.
 
 \subsection{Scope of This Report}
 
-This report documents:
+This final report covers:
 
 \begin{itemize}[nosep]
-  \item the final problem framing and literature background,
-  \item the requirements and constraints that shaped the system,
-  \item the implemented two-stage architecture,
-  \item the tools and technologies studied and applied,
-  \item the test results and their engineering interpretation,
-  \item the global, economic, environmental, societal, and ethical implications of the work.
+  \item the background and design inputs that shaped the project,
+  \item the final requirements, constraints, and scope boundaries,
+  \item the final system architecture and simulation workflow,
+  \item the tools and technologies used during the course,
+  \item the executed test cases and their results,
+  \item the engineering impact of the project in global, economic, environmental, and societal
+    context,
+  \item the final project status, availability links, limitations, and future work.
 \end{itemize}

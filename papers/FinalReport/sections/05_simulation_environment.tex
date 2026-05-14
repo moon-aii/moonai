@@ -1,0 +1,125 @@
+% -----------------------------------------------------------------------------
+\section{Simulation Environment, Experiment Workflow, and Outputs}
+\label{sec:environment}
+% -----------------------------------------------------------------------------
+
+MoonAI is centered on the simulation environment itself. The final runtime defines how
+experiments are described, how they are executed, what data is produced, and how that data is
+reviewed after the run.
+
+\subsection{Experiment Definition and Parameter Space}
+
+The base experiment structure is defined by \texttt{SimulationConfig}. The default
+configuration includes a square world, separate predator and prey populations, food entities,
+energy rules, mutation rates, compatibility parameters, reporting cadence, and seed control.
+Current defaults include a world size of 3000, 12000 predators, 48000 prey, 60000 food items,
+and a report interval of 1000 ticks.
+
+The shipped \texttt{experiments.lua} file expands that base into a broad experiment matrix. It
+defines 55 named conditions and applies 5 fixed seeds to each, producing 275 seeded runs, plus
+an additional \texttt{default} entry for ad hoc use. The experiment groups cover multiple kinds
+of study rather than only one benchmark dimension.
+
+\begin{table}[H]
+  \centering
+  \caption{Main experiment groups defined in \texttt{experiments.lua}}
+  \begin{tabularx}{\textwidth}{@{}p{3.0cm}p{3.4cm}X@{}}
+    \toprule
+    Group & Main variable & Purpose \\
+    \midrule
+    Baseline sweeps & Mutation, speciation, population size & Compare broad evolutionary behavior
+    under different default-scale pressures. \\
+    Scale experiments & Population and world size & Observe how the runtime and population
+    dynamics behave as density and total counts change. \\
+    Density experiments & World size at fixed population & Study sparse and dense ecological
+    pressure at the same agent count. \\
+    Run-length experiments & \texttt{max\_ticks} & Compare short and long runs under otherwise
+    similar conditions. \\
+    Energy/resource experiments & Food respawn and energy budget & Stress-test survival and
+    reproduction under scarce or abundant resources. \\
+    Perception and mobility & Vision, speed, interaction range & Observe how sensing and
+    movement shape survival strategies. \\
+    Complexity experiments & Add-node, add-connection, hidden-node limits & Study how network
+    growth constraints affect behavior and topology. \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\subsection{Interactive Runtime Workflow}
+
+The application always launches the UI. From the interface, a user can select a preset, edit a
+draft configuration, queue runs, replace the current run, inspect the world, and adjust visual
+settings without modifying source files.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth,height=0.68\textheight,keepaspectratio]{app-screen.png}
+  \caption{MoonAI desktop application showing the live simulation interface and experiment
+  inspection workflow.}
+  \label{fig:app-screen}
+\end{figure}
+
+The runtime view shown in Figure~\ref{fig:app-screen} reflects several design decisions:
+
+\begin{itemize}[nosep]
+  \item the full active population is rendered instead of a sampled subset,
+  \item a selected agent can expose additional information such as sensor lines and neural
+    topology,
+  \item queue management is built into the application shell,
+  \item settings are persisted separately from experiment definitions.
+\end{itemize}
+
+This separation between experiment definitions and UI state is important for repeatability.
+Simulation parameters live in \texttt{experiments.lua}, while interface settings live in
+\texttt{settings.json}.
+
+\subsection{Selected-Agent Inspection and Observability}
+
+MoonAI does more than display moving points. When an agent is selected, the UI can show a
+vision circle, sensor lines, a stats panel, and a network panel. The controller receives 35
+inputs consisting of nearest predators, nearest prey, nearest food items, self state, and wall
+proximity. This makes the runtime useful not only for entertainment or visualization, but for
+actual inspection of how evolved behavior is being produced.
+
+The runtime also includes a scoped profiler tree. This profiler is useful when evaluating where
+time is spent across spatial grid construction, movement, reproduction, and other host-side
+control scopes.
+
+\subsection{Output Artifacts and Analysis Pipeline}
+
+Every run writes a structured output bundle under \texttt{output/experiments/}. The most
+important files are listed below.
+
+\begin{table}[H]
+  \centering
+  \caption{Primary experiment output artifacts}
+  \begin{tabularx}{\textwidth}{@{}p{3.0cm}X@{}}
+    \toprule
+    File & Purpose \\
+    \midrule
+    \texttt{config.json} & Full configuration snapshot for the executed run. \\
+    \texttt{stats.csv} & Time-series population and complexity metrics at each report interval.
+    \\
+    \texttt{species.csv} & Species-level population summaries over time. \\
+    \texttt{genomes.json} & Representative genome snapshots including nodes and connections.
+    \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+Those artifacts feed the Python analysis package. The analysis pipeline discovers valid runs,
+groups them by condition, builds comparison plots, renders representative genomes, and writes a
+self-contained HTML report.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth,height=0.68\textheight,keepaspectratio]{analysis-report.png}
+  \caption{Generated HTML analysis report used to compare experiment conditions and summarize
+  completed runs.}
+  \label{fig:analysis-report}
+\end{figure}
+
+The report shown in Figure~\ref{fig:analysis-report} is an important part of the final system.
+It turns raw exports into a usable comparison surface for researchers, which reinforces the
+project's main goal: providing an environment for studying evolutionary machine learning, not
+merely running one simulation loop.

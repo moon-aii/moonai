@@ -1,0 +1,81 @@
+% -----------------------------------------------------------------------------
+\section{Requirements, Constraints, and Final Scope}
+\label{sec:reqs}
+% -----------------------------------------------------------------------------
+
+The final scope of MoonAI is defined by the requirements of a simulation platform, not by the
+requirements of a standalone production machine learning service. The central product is an
+environment for running, observing, and analyzing neuroevolution experiments.
+
+\subsection{Functional Requirements}
+
+The implemented system was designed to satisfy the following functional requirements.
+
+\begin{itemize}[nosep]
+  \item \textbf{FR-1:} The runtime shall load experiment definitions from
+    \texttt{experiments.lua} at startup.
+  \item \textbf{FR-2:} The runtime shall persist UI-related settings through
+    \texttt{settings.json}.
+  \item \textbf{FR-3:} The application shall allow users to select an experiment, edit a draft
+    configuration, queue runs, and replace the active run from the UI.
+  \item \textbf{FR-4:} The simulation shall evolve predator and prey agents whose controllers
+    are neural networks with mutable topology and weights.
+  \item \textbf{FR-5:} The runtime shall render the active population and provide selected-agent
+    inspection data.
+  \item \textbf{FR-6:} The runtime shall export structured artifacts including
+    \texttt{config.json}, \texttt{stats.csv}, \texttt{species.csv}, and
+    \texttt{genomes.json}.
+  \item \textbf{FR-7:} The project shall include an analysis pipeline that reads run artifacts and
+    generates a self-contained HTML report.
+  \item \textbf{FR-8:} The runtime shall support fixed seeds so experiment results can be
+    compared under controlled conditions.
+\end{itemize}
+
+\subsection{Non-Functional Requirements}
+
+The most important non-functional requirements were:
+
+\begin{itemize}[nosep]
+  \item \textbf{Performance:} the hot simulation path should stay on the GPU so large
+    populations remain practical.
+  \item \textbf{Reproducibility:} experiment definitions, seeds, and output artifacts should make
+    runs traceable and comparable.
+  \item \textbf{Usability:} the project should provide a usable interface for selecting
+    experiments, observing runs, and changing settings without editing source files.
+  \item \textbf{Observability:} the runtime should expose enough metrics, snapshots, and
+    profiler output to support debugging and analysis.
+  \item \textbf{Maintainability:} configuration, UI, simulation, metrics, and analysis should be
+    separated into clear modules.
+\end{itemize}
+
+\subsection{Project Constraints}
+
+Several constraints strongly influenced the final design.
+
+\begin{itemize}[nosep]
+  \item \textbf{CUDA dependency:} the current runtime is centered on NVIDIA GPU execution.
+  \item \textbf{Single-machine execution:} runs are executed locally, not through a distributed
+    cluster scheduler.
+  \item \textbf{Academic time budget:} the project had to prioritize a robust core runtime over
+    optional platform features.
+  \item \textbf{Verification cost:} GPU-first design improves runtime performance but makes
+    step-by-step validation more demanding than a pure CPU reference implementation.
+  \item \textbf{Documentation burden:} the project includes code, analysis tooling,
+    documentation, and reports, so consistency across artifacts had to be managed carefully.
+\end{itemize}
+
+\subsection{Final Scope Boundaries}
+
+The final scope boundaries are as important as the implemented features.
+
+\begin{itemize}[nosep]
+  \item MoonAI is \textbf{not} primarily a project about maximizing one machine learning output
+    metric. Its main focus is the environment that supports study of evolutionary learning.
+  \item MoonAI is \textbf{not} a generic reinforcement learning framework, cloud platform, or
+    distributed experiment manager.
+  \item MoonAI is \textbf{not} a production scientific cluster tool; it is a research-oriented,
+    interactive simulation product with supporting analysis utilities.
+\end{itemize}
+
+These boundaries kept the implementation focused on one coherent goal: a high-performance
+simulation environment for studying neuroevolution through predator-prey dynamics.

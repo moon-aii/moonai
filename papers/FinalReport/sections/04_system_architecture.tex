@@ -1,0 +1,103 @@
+% -----------------------------------------------------------------------------
+\section{Final System Architecture and Design}
+\label{sec:architecture}
+% -----------------------------------------------------------------------------
+
+The final MoonAI architecture follows a GPU-first design. The CPU loads experiments and
+settings, starts the UI, orchestrates kernel launches, and writes compact exports. The GPU owns
+the simulation state and performs the dominant computation for sensing, inference, movement,
+combat, reproduction, and metrics reduction.
+
+\subsection{Architecture Overview}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth,height=0.62\textheight,keepaspectratio]{system_overview}
+  \caption{High-level architecture of the final MoonAI runtime and analysis workflow.}
+  \label{fig:system-overview}
+\end{figure}
+
+As shown in Figure~\ref{fig:system-overview}, the runtime begins with two external inputs:
+\texttt{experiments.lua} and \texttt{settings.json}. The executable loads those files,
+initializes the desktop application, creates or replaces run sessions, and coordinates GPU
+simulation plus output logging. Completed run artifacts are then consumed by the Python
+analysis pipeline to produce a self-contained HTML report.
+
+\subsection{Module Decomposition}
+
+The final repository is organized around clear module responsibilities.
+
+\begin{table}[H]
+  \centering
+  \caption{Main implementation modules in the final codebase}
+  \begin{tabularx}{\textwidth}{@{}p{3.4cm}X@{}}
+    \toprule
+    Module & Responsibility \\
+    \midrule
+    \texttt{main.rs} & Bootstraps the executable, resolves the runtime directory, loads
+    settings and experiments, and starts the UI application. \\
+    \texttt{experiment.rs} & Defines \texttt{SimulationConfig}, loads
+    \texttt{experiments.lua}, injects defaults into Lua, and validates experiment values. \\
+    \texttt{settings.rs} & Loads and saves \texttt{settings.json} and defines the persistent UI
+    configuration surface. \\
+    \texttt{src/ui/} & Implements the desktop application shell, run queue, active run session,
+    render helpers, UI state, and custom world renderer. \\
+    \texttt{src/sim/} & Defines the host-side simulation API, GPU readback structures, and CUDA
+    bindings for the simulation and evolution kernels. \\
+    \texttt{metrics.rs} & Writes structured runtime artifacts to the experiment output
+    directory. \\
+    \texttt{analysis/} & Discovers completed runs, groups conditions, generates plots, and
+    renders a self-contained HTML analysis report. \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+This decomposition keeps configuration, runtime execution, rendering, metrics export, and
+analysis separate enough to remain understandable while still functioning as one coherent
+system.
+
+\subsection{GPU-First Tick Flow}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.92\textwidth,height=0.70\textheight,keepaspectratio]{tick_flow}
+  \caption{Simplified tick flow for the final GPU-first simulation runtime.}
+  \label{fig:tick-flow}
+\end{figure}
+
+The internal tick execution path is summarized in Figure~\ref{fig:tick-flow}. At each step,
+the runtime builds spatial grids, computes sensor inputs, executes neural inference, updates
+agent state, resolves interactions, performs reproduction, advances counters, and optionally
+refreshes metrics and render snapshots.
+
+Two cadences are intentionally separated in the design:
+
+\begin{itemize}[nosep]
+  \item \textbf{\texttt{report\_interval\_ticks}} controls when export artifacts such as
+    \texttt{stats.csv}, \texttt{species.csv}, and \texttt{genomes.json} are refreshed.
+  \item \textbf{UI speed multiplier} controls how often the interactive interface refreshes the
+    visible world state.
+\end{itemize}
+
+This separation matters because reporting and rendering serve different purposes. Export should
+remain consistent and comparable across runs, while UI refresh rate should remain adjustable
+for live observation.
+
+\subsection{Design Rationale}
+
+The main architectural decisions were driven by three principles:
+
+\begin{enumerate}[nosep]
+  \item \textbf{Keep the hot path on the GPU.} Large populations make CPU-side simulation
+    unattractive. GPU ownership of simulation state reduces host-side duplication and keeps the
+    main path compact \cite{cuda}.
+  \item \textbf{Expose the system through a usable interface.} The project is not only a kernel
+    benchmark. It is also a tool for selecting experiments, watching live behavior, inspecting
+    agents, and exporting results through a desktop application built with \texttt{egui} and
+    \texttt{wgpu} \cite{egui,wgpu}.
+  \item \textbf{Make every run analyzable after execution.} Structured metrics, species summaries,
+    and representative genomes are part of the product, not optional extras.
+\end{enumerate}
+
+This combination of GPU execution, interactive runtime control, and post-run analysis is the
+core of the final MoonAI design.

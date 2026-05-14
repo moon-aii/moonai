@@ -1,0 +1,73 @@
+% -----------------------------------------------------------------------------
+\section{Background, Related Work, and Research Inputs}
+\label{sec:background}
+% -----------------------------------------------------------------------------
+
+MoonAI sits at the intersection of neuroevolution, artificial life simulation, GPU computing,
+and interactive experiment tooling. The final design was shaped by both academic background
+and practical engineering references.
+
+\subsection{Neuroevolution and Predator-Prey Simulation}
+
+The underlying learning approach is NeuroEvolution of Augmenting Topologies (NEAT), which
+evolves both neural network weights and network structure over time \cite{neat2002}. NEAT is
+relevant to MoonAI because the project is concerned with adaptation under pressure, not only
+with parameter fitting inside a fixed model architecture.
+
+Predator-prey worlds are a natural fit for this kind of study. They create coevolutionary
+pressure, local competition, and non-stationary behavior: the quality of a strategy depends on
+what other agents are doing at the same time. This makes the environment useful for observing
+emergent behavior, species diversity, and topology growth under changing conditions.
+
+\subsection{Why a Synthetic Environment Matters}
+
+The project deliberately prioritizes a synthetic environment over a pre-collected dataset.
+That decision has several research advantages:
+
+\begin{itemize}[nosep]
+  \item the environment generates its own behavior traces and metrics,
+  \item experiments can be rerun with fixed seeds and controlled parameter sweeps,
+  \item selective pressure is explicit and configurable,
+  \item the benchmark can be extended without collecting external labeled data.
+\end{itemize}
+
+This does not make synthetic environments universally superior to real data. Instead, it makes
+them appropriate for a different class of questions: questions about adaptation, dynamics,
+policy diversity, and algorithmic behavior under repeated interaction.
+
+\subsection{Related Engineering Inputs}
+
+The final implementation was also shaped by practical design inputs rather than by a single
+prior system. The team relied on official documentation and mature open-source ecosystems for:
+
+\begin{itemize}[nosep]
+  \item Rust systems programming and package management \cite{rust},
+  \item CUDA kernel programming and host-device orchestration \cite{cuda},
+  \item immediate-mode desktop UI and GPU rendering through \texttt{egui}, \texttt{eframe},
+    and \texttt{wgpu} \cite{egui,wgpu},
+  \item Lua-based runtime configuration through \texttt{mlua} \cite{mlua},
+  \item JSON serialization and persistence through \texttt{serde} \cite{serde},
+  \item post-run analysis and report generation through Pandas, Matplotlib, NetworkX, and
+    Jinja2 \cite{pandas,matplotlib,networkx,jinja2}.
+\end{itemize}
+
+These sources were used to understand component behavior, data handling, rendering patterns,
+and reporting workflows. They informed the project architecture, but the final integration and
+runtime behavior are specific to MoonAI.
+
+\subsection{Use of Library and Internet Resources}
+
+Library and Internet resources were used in four main ways during the course:
+
+\begin{enumerate}[nosep]
+  \item to study background concepts such as NEAT and evolutionary computation,
+  \item to evaluate technology choices for GPU execution, UI rendering, serialization, and
+    report generation,
+  \item to check component APIs, version compatibility, and workflow constraints,
+  \item to document and visualize the final system using GitHub Pages, LaTeX, and Mermaid
+    diagrams \cite{mermaid}.
+\end{enumerate}
+
+The project therefore depends on both academic references and engineering documentation. The
+academic literature explains why the problem is interesting; the technical references explain
+how the system can be implemented reliably.

@@ -1,60 +1,51 @@
 \babel@toc {english}{}\relax 
-\contentsline {section}{\numberline {1}Introduction and Project Context}{3}{section.1}%
+\contentsline {section}{\numberline {1}Introduction}{3}{section.1}%
 \contentsline {subsection}{\numberline {1.1}Project Motivation}{3}{subsection.1.1}%
 \contentsline {subsection}{\numberline {1.2}Project Objectives}{3}{subsection.1.2}%
 \contentsline {subsection}{\numberline {1.3}Project Context}{4}{subsection.1.3}%
 \contentsline {subsection}{\numberline {1.4}Scope of This Report}{4}{subsection.1.4}%
-\contentsline {section}{\numberline {2}Background and Related Work}{4}{section.2}%
-\contentsline {subsection}{\numberline {2.1}Why Thermal UAV Imagery Is Difficult}{4}{subsection.2.1}%
-\contentsline {subsection}{\numberline {2.2}Detection-Focused Literature}{5}{subsection.2.2}%
-\contentsline {subsection}{\numberline {2.3}Vision-Language Reasoning Models}{5}{subsection.2.3}%
+\contentsline {section}{\numberline {2}Background, Related Work, and Research Inputs}{4}{section.2}%
+\contentsline {subsection}{\numberline {2.1}Neuroevolution and Predator-Prey Simulation}{4}{subsection.2.1}%
+\contentsline {subsection}{\numberline {2.2}Why a Synthetic Environment Matters}{5}{subsection.2.2}%
+\contentsline {subsection}{\numberline {2.3}Related Engineering Inputs}{5}{subsection.2.3}%
 \contentsline {subsection}{\numberline {2.4}Use of Library and Internet Resources}{5}{subsection.2.4}%
-\contentsline {subsection}{\numberline {2.5}Key Takeaway from the Review}{6}{subsection.2.5}%
 \contentsline {section}{\numberline {3}Requirements, Constraints, and Final Scope}{6}{section.3}%
 \contentsline {subsection}{\numberline {3.1}Functional Requirements}{6}{subsection.3.1}%
-\contentsline {subsection}{\numberline {3.2}Non-Functional Requirements}{7}{subsection.3.2}%
+\contentsline {subsection}{\numberline {3.2}Non-Functional Requirements}{6}{subsection.3.2}%
 \contentsline {subsection}{\numberline {3.3}Project Constraints}{7}{subsection.3.3}%
 \contentsline {subsection}{\numberline {3.4}Final Scope Boundaries}{7}{subsection.3.4}%
 \contentsline {section}{\numberline {4}Final System Architecture and Design}{7}{section.4}%
-\contentsline {subsection}{\numberline {4.1}Architecture Overview}{8}{subsection.4.1}%
-\contentsline {subsection}{\numberline {4.2}Two-Stage ``Gözcü + Analist'' Pipeline}{8}{subsection.4.2}%
-\contentsline {subsection}{\numberline {4.3}Subsystem Decomposition}{8}{subsection.4.3}%
-\contentsline {subsection}{\numberline {4.4}Low-Level Deployment Packages}{9}{subsection.4.4}%
-\contentsline {subsection}{\numberline {4.5}Secure Deployment in a Closed Network}{10}{subsection.4.5}%
-\contentsline {subsection}{\numberline {4.6}Control Flow}{11}{subsection.4.6}%
-\contentsline {subsection}{\numberline {4.7}Interface Contracts}{11}{subsection.4.7}%
-\contentsline {subsection}{\numberline {4.8}Structured Output Format}{11}{subsection.4.8}%
-\contentsline {subsection}{\numberline {4.9}Design Rationale}{12}{subsection.4.9}%
-\contentsline {section}{\numberline {5}Implementation, Tools, and Technologies}{12}{section.5}%
-\contentsline {subsection}{\numberline {5.1}Main Technologies Used}{13}{subsection.5.1}%
-\contentsline {subsection}{\numberline {5.2}Detector Layer}{13}{subsection.5.2}%
-\contentsline {subsection}{\numberline {5.3}Reasoning Layer}{14}{subsection.5.3}%
-\contentsline {subsection}{\numberline {5.4}LoRA Fine-Tuning and Domain Adaptation}{14}{subsection.5.4}%
-\contentsline {subsection}{\numberline {5.5}Containerized Deployment Workflow}{14}{subsection.5.5}%
-\contentsline {subsection}{\numberline {5.6}TensorRT Optimization Strategy}{15}{subsection.5.6}%
-\contentsline {subsection}{\numberline {5.7}Supporting Software Components}{15}{subsection.5.7}%
-\contentsline {subsection}{\numberline {5.8}Edge Optimization}{15}{subsection.5.8}%
-\contentsline {subsection}{\numberline {5.9}Memory Management and Runtime Discipline}{16}{subsection.5.9}%
-\contentsline {subsection}{\numberline {5.10}Why These Technologies Matter}{16}{subsection.5.10}%
-\contentsline {section}{\numberline {6}Test Plan Summary and Results}{16}{section.6}%
-\contentsline {subsection}{\numberline {6.1}Reconstructed Validation Scope}{16}{subsection.6.1}%
-\contentsline {subsection}{\numberline {6.2}Test Cases}{16}{subsection.6.2}%
-\contentsline {subsection}{\numberline {6.3}Observed Bugs and Weaknesses}{17}{subsection.6.3}%
-\contentsline {subsection}{\numberline {6.4}Potential Enhancements}{18}{subsection.6.4}%
-\contentsline {section}{\numberline {7}Engineering Impact, Ethics, and Contemporary Issues}{18}{section.7}%
-\contentsline {subsection}{\numberline {7.1}Global and Strategic Impact}{18}{subsection.7.1}%
-\contentsline {subsection}{\numberline {7.2}Economic Impact}{18}{subsection.7.2}%
-\contentsline {subsection}{\numberline {7.3}Environmental Impact}{19}{subsection.7.3}%
-\contentsline {subsection}{\numberline {7.4}Societal and Ethical Impact}{19}{subsection.7.4}%
-\contentsline {subsection}{\numberline {7.5}Contemporary Issues Related to the Project Topic}{19}{subsection.7.5}%
-\contentsline {subsection}{\numberline {7.6}Professional Responsibility}{19}{subsection.7.6}%
-\contentsline {section}{\numberline {8}Final Project Status, Limitations, and Future Work}{20}{section.8}%
-\contentsline {subsection}{\numberline {8.1}Final Status Overview}{20}{subsection.8.1}%
-\contentsline {subsection}{\numberline {8.2}Main Limitations}{20}{subsection.8.2}%
-\contentsline {subsection}{\numberline {8.3}Low-Level Engineering Constraints}{21}{subsection.8.3}%
-\contentsline {subsection}{\numberline {8.4}Future Work}{21}{subsection.8.4}%
-\contentsline {subsection}{\numberline {8.5}Overall Final Assessment}{21}{subsection.8.5}%
-\contentsline {section}{\numberline {9}Project Availability and Submission Package}{22}{section.9}%
-\contentsline {subsection}{\numberline {9.1}Repository, Public Web Links, and Distribution Materials}{22}{subsection.9.1}%
-\contentsline {subsection}{\numberline {9.2}DVD-ROM and Manual Contents}{22}{subsection.9.2}%
-\contentsline {section}{References}{23}{section*.7}%
+\contentsline {subsection}{\numberline {4.1}Architecture Overview}{7}{subsection.4.1}%
+\contentsline {subsection}{\numberline {4.2}Module Decomposition}{8}{subsection.4.2}%
+\contentsline {subsection}{\numberline {4.3}GPU-First Tick Flow}{9}{subsection.4.3}%
+\contentsline {subsection}{\numberline {4.4}Design Rationale}{10}{subsection.4.4}%
+\contentsline {section}{\numberline {5}Simulation Environment, Experiment Workflow, and Outputs}{10}{section.5}%
+\contentsline {subsection}{\numberline {5.1}Experiment Definition and Parameter Space}{10}{subsection.5.1}%
+\contentsline {subsection}{\numberline {5.2}Interactive Runtime Workflow}{11}{subsection.5.2}%
+\contentsline {subsection}{\numberline {5.3}Selected-Agent Inspection and Observability}{12}{subsection.5.3}%
+\contentsline {subsection}{\numberline {5.4}Output Artifacts and Analysis Pipeline}{12}{subsection.5.4}%
+\contentsline {section}{\numberline {6}Implementation, Tools, and Technologies}{13}{section.6}%
+\contentsline {subsection}{\numberline {6.1}Core Technology Stack}{14}{subsection.6.1}%
+\contentsline {subsection}{\numberline {6.2}Why Rust and CUDA Were Used}{14}{subsection.6.2}%
+\contentsline {subsection}{\numberline {6.3}Why the UI Stack Matters}{14}{subsection.6.3}%
+\contentsline {subsection}{\numberline {6.4}Why the Analysis Stack Matters}{15}{subsection.6.4}%
+\contentsline {subsection}{\numberline {6.5}Supporting Engineering Tools Used During the Course}{15}{subsection.6.5}%
+\contentsline {section}{\numberline {7}Test Results}{15}{section.7}%
+\contentsline {subsection}{\numberline {7.1}Executed Test Cases}{16}{subsection.7.1}%
+\contentsline {subsection}{\numberline {7.2}Assessment of the Results}{16}{subsection.7.2}%
+\contentsline {subsection}{\numberline {7.3}Bugs, Risks, and Potential Enhancements}{17}{subsection.7.3}%
+\contentsline {section}{\numberline {8}Engineering Impact, Ethics, and Contemporary Issues}{17}{section.8}%
+\contentsline {subsection}{\numberline {8.1}Global Impact}{17}{subsection.8.1}%
+\contentsline {subsection}{\numberline {8.2}Economic Impact}{17}{subsection.8.2}%
+\contentsline {subsection}{\numberline {8.3}Environmental Impact}{18}{subsection.8.3}%
+\contentsline {subsection}{\numberline {8.4}Societal and Ethical Impact}{18}{subsection.8.4}%
+\contentsline {subsection}{\numberline {8.5}Contemporary Issues Related to the Project Topic}{18}{subsection.8.5}%
+\contentsline {subsection}{\numberline {8.6}Professional Responsibility}{19}{subsection.8.6}%
+\contentsline {section}{\numberline {9}Final Project Status, Availability, and Future Work}{19}{section.9}%
+\contentsline {subsection}{\numberline {9.1}Final Status Overview}{19}{subsection.9.1}%
+\contentsline {subsection}{\numberline {9.2}Project Availability}{19}{subsection.9.2}%
+\contentsline {subsection}{\numberline {9.3}Current Limitations}{20}{subsection.9.3}%
+\contentsline {subsection}{\numberline {9.4}Future Work}{20}{subsection.9.4}%
+\contentsline {subsection}{\numberline {9.5}Overall Final Assessment}{20}{subsection.9.5}%
+\contentsline {section}{\numberline {10}Glossary}{21}{section.10}%
+\contentsline {section}{References}{22}{section*.13}%

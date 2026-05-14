@@ -1,8 +1,14 @@
 [default]
-build:
+build: mermaid
   mkdir -p out
   xelatex -interaction=nonstopmode -output-directory=out main.tex
   xelatex -interaction=nonstopmode -output-directory=out main.tex
+  xelatex -interaction=nonstopmode -output-directory=out main.tex
+
+mermaid:
+  mkdir -p out/diagrams
+  mmdc -t neutral -b transparent -i diagrams/system_overview.mmd -o out/diagrams/system_overview.png
+  mmdc -t neutral -b transparent -i diagrams/tick_flow.mmd -o out/diagrams/tick_flow.png
 
 clean:
   rm -rf out

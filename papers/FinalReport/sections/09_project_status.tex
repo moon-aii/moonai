@@ -1,0 +1,91 @@
+% -----------------------------------------------------------------------------
+\section{Final Project Status, Availability, and Future Work}
+\label{sec:status}
+% -----------------------------------------------------------------------------
+
+The final MoonAI project reached a complete prototype stage. The main runtime, UI, experiment
+catalog, metrics exports, and analysis pipeline are all implemented in the repository. The
+project is therefore finished as a senior design deliverable, while still leaving room for
+future research and productization work.
+
+\subsection{Final Status Overview}
+
+\begin{table}[H]
+  \centering
+  \caption{Final status by work package}
+  \begin{tabularx}{\textwidth}{@{}p{5.0cm}p{2.0cm}X@{}}
+    \toprule
+    Work package & Status & Notes \\
+    \midrule
+    GPU-first simulation runtime & Complete & Core tick execution, readback, and evolution path
+    are implemented. \\
+    Interactive desktop application & Complete & Experiment selection, queueing, run
+    replacement, settings control, and live inspection are implemented. \\
+    Experiment configuration system & Complete & Runtime loading from \texttt{experiments.lua}
+    and validation through \texttt{SimulationConfig} are implemented. \\
+    Output artifact generation & Complete & Configuration, metrics, species, and genome exports
+    are implemented. \\
+    Analysis and reporting pipeline & Complete & HTML analysis generation from run artifacts is
+    implemented. \\
+    Documentation website & Complete & GitHub Pages site and project documentation are
+    available. \\
+    Broad end-to-end automation & Partial & Automated unit coverage exists, but wider system
+    smoke automation can still be improved. \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\subsection{Project Availability}
+
+The project is publicly available through both its source repository and its documentation site.
+
+\begin{table}[H]
+  \centering
+  \caption{Project URLs required for the final report}
+  \begin{tabularx}{\textwidth}{@{}p{4.0cm}X@{}}
+    \toprule
+    Item & URL \\
+    \midrule
+    GitHub repository & \url{https://github.com/moon-aii/moonai} \\
+    GitHub Pages documentation & \url{https://moon-aii.github.io/moonai/} \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+These links provide access to the source code, documentation, and report artifacts published by
+the team.
+
+\subsection{Current Limitations}
+
+The final project still has several clear limitations.
+
+\begin{itemize}[nosep]
+  \item The runtime currently depends on CUDA-capable NVIDIA hardware for its intended hot-path
+    execution model.
+  \item The automated test suite is useful, but still lighter on full end-to-end GPU validation
+    than on host-side logic.
+  \item The project is optimized for local execution and study, not for distributed experiment
+    scheduling or multi-user orchestration.
+  \item The project's main focus is the simulation environment, so conclusions about the quality
+    of individual evolved behaviors must remain conservative.
+\end{itemize}
+
+\subsection{Future Work}
+
+The most valuable future extensions are:
+
+\begin{enumerate}[nosep]
+  \item add stronger end-to-end GPU invariant and determinism tests,
+  \item extend artifact comparison and regression tooling across experiment batches,
+  \item improve automation for long-running experiment suites,
+  \item expand interactive analysis features for selected agents and species trends,
+  \item investigate additional evolutionary strategies and environment variants on top of the
+    current runtime.
+\end{enumerate}
+
+\subsection{Overall Final Assessment}
+
+The overall final assessment of MoonAI is positive. The project successfully delivered a
+high-performance simulation platform for studying neuroevolution in a predator-prey world,
+along with an interactive UI, structured artifacts, and analysis tooling. The final result is a
+useful experimental environment and a credible engineering capstone product.

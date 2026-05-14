@@ -1,0 +1,91 @@
+% -----------------------------------------------------------------------------
+\section{Implementation, Tools, and Technologies}
+\label{sec:implementation}
+% -----------------------------------------------------------------------------
+
+The final MoonAI codebase combines systems programming, GPU execution, UI rendering,
+serialization, experiment analysis, and documentation tooling. The value of this section is not
+to list technologies mechanically, but to explain why they were used.
+
+\subsection{Core Technology Stack}
+
+\begin{table}[H]
+  \centering
+  \caption{Main tools and technologies used in the final implementation}
+  \begin{tabularx}{\textwidth}{@{}p{2.8cm}p{2.8cm}X@{}}
+    \toprule
+    Layer & Technology & Role in MoonAI \\
+    \midrule
+    Systems language & Rust 2024 & Primary implementation language for the runtime, UI,
+    configuration, metrics, and analysis integration points \cite{rust}. \\
+    GPU execution & CUDA via \texttt{build.rs} and \texttt{cc} & Executes the hot simulation,
+    evolution, and readback path on NVIDIA GPUs \cite{cuda}. \\
+    Desktop UI & \texttt{eframe} / \texttt{egui} & Provides the application shell, controls,
+    panels, and interactive runtime workflow \cite{egui}. \\
+    GPU rendering & \texttt{wgpu} & Renders the world view and supports custom population
+    drawing in the UI \cite{wgpu}. \\
+    Runtime configuration & \texttt{mlua} & Loads \texttt{experiments.lua} so simulation
+    presets remain editable without recompilation \cite{mlua}. \\
+    Persistence & \texttt{serde} / \texttt{serde\_json} & Stores settings and exports structured
+    artifacts in JSON form \cite{serde}. \\
+    Analysis & Pandas, Matplotlib, NetworkX, Jinja2 & Loads run artifacts, computes summaries,
+    renders plots and genome diagrams, and builds self-contained HTML reports
+    \cite{pandas,matplotlib,networkx,jinja2}. \\
+    Workflow & \texttt{just}, \texttt{uv} & Standardizes build, test, and analysis commands for
+    the project workflow. \\
+    Documentation & Zensical, GitHub Pages, Mermaid, LaTeX & Publishes docs, renders diagrams,
+    and produces course reports \cite{mermaid}. \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\subsection{Why Rust and CUDA Were Used}
+
+Rust was selected because the final system needed strong module organization, explicit data
+types, good tooling, and direct interoperability with low-level code. The CUDA side was needed
+because the project is fundamentally population-heavy: sensor computation, inference,
+movement, reproduction, and compact readback become expensive when tens of thousands of agents
+are simulated simultaneously.
+
+The combination allows MoonAI to keep high-level application flow readable while still moving
+the computationally dominant path to the GPU.
+
+\subsection{Why the UI Stack Matters}
+
+The UI stack is not cosmetic. It is part of the engineering solution. \texttt{egui} and
+\texttt{wgpu} were chosen because the project required:
+
+\begin{itemize}[nosep]
+  \item a desktop application with live controls,
+  \item custom rendering for a dense simulated world,
+  \item selection and inspection of individual agents,
+  \item in-application queue management and settings editing.
+\end{itemize}
+
+This turns MoonAI from a raw simulation executable into an actual experimental workbench.
+
+\subsection{Why the Analysis Stack Matters}
+
+The Python analysis stack was selected to support post-run comparison rather than real-time
+simulation. Pandas is used for structured metric handling, Matplotlib for plots, NetworkX for
+topology visualization, and Jinja2 for self-contained HTML report rendering. This separation of
+concerns is pragmatic: Rust and CUDA handle the runtime, while Python handles data analysis and
+presentation efficiently.
+
+\subsection{Supporting Engineering Tools Used During the Course}
+
+Several supporting tools were also important during the course:
+
+\begin{itemize}[nosep]
+  \item \textbf{\texttt{just}} standardized recurring commands such as build, test, and
+    analysis.
+  \item \textbf{\texttt{uv}} simplified Python environment and dependency management for the
+    analysis tooling.
+  \item \textbf{Mermaid CLI} was used to generate architecture diagrams for the final report and
+    documentation \cite{mermaid}.
+  \item \textbf{GitHub Pages} and Zensical were used to publish project documentation and report
+    links.
+  \item \textbf{LaTeX} was used to prepare the formal design and final course reports.
+\end{itemize}
+
+Together, these tools made the project easier to build, reason about, validate, and present.

@@ -1,0 +1,89 @@
+% -----------------------------------------------------------------------------
+\section{Engineering Impact, Ethics, and Contemporary Issues}
+\label{sec:impact}
+% -----------------------------------------------------------------------------
+
+MoonAI is not only a technical artifact. It also has broader engineering implications because
+it changes how machine learning behavior can be studied, compared, and reproduced.
+
+\subsection{Global Impact}
+
+At a global level, MoonAI contributes to a broader movement toward synthetic environments and
+reproducible AI experimentation. A system that can generate its own evolving behavioral data is
+valuable for research groups that do not have access to large real-world datasets or expensive
+data collection pipelines.
+
+The project also shows that meaningful machine learning research infrastructure does not always
+mean collecting more external data. In some settings, building a better environment is the more
+important engineering contribution.
+
+\subsection{Economic Impact}
+
+The project was intentionally built on open-source tools and libraries. That has positive
+economic effects:
+
+\begin{itemize}[nosep]
+  \item lower software licensing cost,
+  \item easier reuse by future students or research teams,
+  \item lower onboarding cost because the stack is based on widely documented tools.
+\end{itemize}
+
+However, the project also makes a real economic tradeoff visible: high-performance simulation
+still depends on capable GPU hardware. Open-source software reduces licensing barriers, but it
+does not eliminate compute cost.
+
+\subsection{Environmental Impact}
+
+The environmental impact of MoonAI is mixed. On one hand, simulation can reduce the need for
+repeated physical field trials or repeated collection of external behavioral data. On the other
+hand, GPU-heavy workloads consume non-trivial energy.
+
+This means performance engineering has environmental consequences as well. Efficient kernels,
+compact readback, and avoiding unnecessary duplicate computation are not only speed concerns;
+they are also responsible engineering choices.
+
+\subsection{Societal and Ethical Impact}
+
+MoonAI has a positive educational and research impact because it provides a controlled
+environment for studying learning behavior. It allows experimentation without collecting
+personal data by default, which is a meaningful advantage compared with many real-world AI
+datasets.
+
+At the same time, synthetic environments create a different ethical risk: overclaiming what a
+simulation result means. A strategy that performs well inside one benchmark should not be
+misrepresented as proof of general intelligence or guaranteed real-world behavior.
+
+This is consistent with professional engineering responsibilities emphasized by ACM and IEEE
+ethics guidance \cite{acm,ieeeethics}:
+
+\begin{itemize}[nosep]
+  \item describe capabilities accurately,
+  \item disclose limitations clearly,
+  \item avoid overstating conclusions from partial evidence,
+  \item build tools that support understanding rather than confusion.
+\end{itemize}
+
+\subsection{Contemporary Issues Related to the Project Topic}
+
+Several contemporary issues are directly relevant to MoonAI.
+
+\begin{itemize}[nosep]
+  \item \textbf{Reproducibility in AI research:} many results remain hard to repeat. MoonAI
+    addresses this through explicit experiment definitions, seeds, and structured outputs.
+  \item \textbf{Simulation-to-reality gap:} synthetic environments are powerful, but their
+    conclusions must be interpreted carefully.
+  \item \textbf{Compute concentration:} advanced experimentation often depends on hardware that is
+    not equally available to all researchers.
+  \item \textbf{Open-source governance:} research software depends on external open-source
+    components, so versioning, documentation quality, and long-term maintenance matter.
+  \item \textbf{Explainability of adaptive systems:} as evolved behavior becomes more complex,
+    observability tools such as profiler views, species summaries, and network inspection become
+    more important.
+\end{itemize}
+
+\subsection{Professional Responsibility}
+
+The final engineering lesson is straightforward: building the environment, documenting it, and
+reporting its limitations are part of the solution. For MoonAI, responsible engineering means
+providing a useful experimental platform while remaining honest about what the platform does and
+does not prove.

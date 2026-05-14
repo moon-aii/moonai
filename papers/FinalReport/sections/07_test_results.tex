@@ -1,0 +1,83 @@
+% -----------------------------------------------------------------------------
+\section{Test Results}
+\label{sec:testing}
+% -----------------------------------------------------------------------------
+
+The final test results were recorded against the current Rust and CUDA implementation. During
+the report preparation process, the automated regression command \texttt{just test} was rerun on
+the repository snapshot and completed successfully with 7 passing automated tests and 0
+failures.
+
+Because the implementation changed substantially during the course, the final reported cases
+below were traced to the current codebase and final project artifacts rather than copied from an
+older implementation plan.
+
+\subsection{Executed Test Cases}
+
+\begin{table}[H]
+  \centering
+  \small
+  \caption{Final executed test cases and outcomes}
+  \begin{tabularx}{\textwidth}{@{}>{\ttfamily}p{1.3cm}X>{\centering\arraybackslash}p{1.5cm}p{4.3cm}@{}}
+    \toprule
+    ID & Test description & Result & Evidence and notes \\
+    \midrule
+    TR-01 & Metrics logger writes expected experiment artifacts. & Pass & Automated unit test in
+    \texttt{src/metrics.rs}; confirms \texttt{stats.csv}, \texttt{species.csv},
+    \texttt{config.json}, and \texttt{genomes.json}. \\
+    TR-02 & Profiler records nested scope trees correctly. & Pass & Automated unit test in
+    \texttt{src/profiler.rs}; confirms hierarchical scope accounting. \\
+    TR-03 & Profiler output rows preserve indentation and formatting rules. & Pass & Automated
+    unit test in \texttt{src/profiler.rs}; confirms readable profiler formatting. \\
+    TR-04 & Vision radius matches world-to-screen projection. & Pass & Automated unit test in
+    \texttt{src/ui/render.rs}; checks selected-agent overlay math. \\
+    TR-05 & Predator and prey triangle geometry remains normalized. & Pass & Automated unit test
+    in \texttt{src/ui/world.rs}; checks renderer geometry scaling. \\
+    TR-06 & Agent selection radius stays within configured bounds. & Pass & Automated unit test
+    in \texttt{src/ui/world.rs}; checks selection interaction limits. \\
+    TR-07 & Food size setting maps correctly into world-space rendering. & Pass & Automated unit
+    test in \texttt{src/ui/world.rs}; confirms UI setting propagation. \\
+    TR-08 & GUI runtime launches and renders a live experiment view. & Pass & Final screenshot
+    evidence in Figure~\ref{fig:app-screen}. \\
+    TR-09 & Analysis report generation produces a usable HTML summary. & Pass & Final screenshot
+    evidence in Figure~\ref{fig:analysis-report}. \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\subsection{Assessment of the Results}
+
+The executed final test set contains 9 recorded cases:
+
+\begin{itemize}[nosep]
+  \item 7 automated unit tests,
+  \item 2 manual smoke checks backed by final project artifacts,
+  \item 9 passing cases,
+  \item 0 failing cases.
+\end{itemize}
+
+This result is strong enough to support the final submission, but it also reveals where future
+validation work should improve. The current automated coverage is best around metrics export,
+profiler formatting, and render math. Coverage is still lighter for end-to-end GPU simulation
+behavior, long-duration stability, and broader system smoke automation.
+
+\subsection{Bugs, Risks, and Potential Enhancements}
+
+No failing test case remained in the rerun final snapshot. However, several verification risks
+remain relevant:
+
+\begin{itemize}[nosep]
+  \item end-to-end kernel invariants are harder to test than pure host-side logic,
+  \item the UI workflow still relies partly on manual validation,
+  \item the current repository does not yet include a broad automated matrix for complete build,
+    run, and artifact checks across multiple platforms.
+\end{itemize}
+
+The most useful testing enhancements for future work are:
+
+\begin{enumerate}[nosep]
+  \item add deterministic seed-comparison tests for compact GPU readbacks,
+  \item add artifact-schema regression tests for completed runs,
+  \item add automated smoke tests for representative experiment conditions,
+  \item extend manual test evidence into repeatable scripted system checks.
+\end{enumerate}

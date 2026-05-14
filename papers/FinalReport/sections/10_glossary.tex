@@ -1,0 +1,35 @@
+% -----------------------------------------------------------------------------
+\section{Glossary}
+\label{sec:glossary}
+% -----------------------------------------------------------------------------
+
+\begin{table}[H]
+  \centering
+  \caption{Key terms used in the report}
+  \begin{tabularx}{\textwidth}{@{}p{3.2cm}X@{}}
+    \toprule
+    Term & Meaning \\
+    \midrule
+    NEAT & NeuroEvolution of Augmenting Topologies, the evolutionary algorithm used to evolve
+    both weights and neural network structure. \\
+    Genome & The encoded neural-network representation of an agent, including node and
+    connection genes. \\
+    Species & A compatibility-based grouping of similar genomes used to preserve innovation
+    during evolution. \\
+    Readback & Copying compact simulation state from GPU memory to host memory for UI or export.
+    \\
+    Report interval & The tick cadence at which structured output artifacts are refreshed and
+    written. \\
+    Speed multiplier & The UI-side visualization cadence that controls how many simulation ticks
+    are advanced per visible frame. \\
+    Render snapshot & The compact host-visible population data used to draw the world in the UI.
+    \\
+    Run queue & The UI-managed list of pending experiments that execute sequentially. \\
+    Representative genome & A selected genome snapshot exported to describe one species or
+    agent at a reporting point. \\
+    GPU-first architecture & A design in which the dominant simulation state and hot execution
+    path remain on the GPU, while the CPU mainly orchestrates and exports compact results.
+    \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
