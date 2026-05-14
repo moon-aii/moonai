@@ -31,34 +31,6 @@ constexpr std::uint32_t kWallXInputIndex = kSelfEnergyInputIndex + kSelfStateSen
 constexpr std::uint32_t kWallYInputIndex = kWallXInputIndex + 1U;
 constexpr std::uint32_t kUnclaimedMate = 0xFFFF'FFFFU;
 
-template <typename T> inline uint32_t alloc_array(T **ptr, std::size_t count) {
-  if (count == 0U) {
-    *ptr = nullptr;
-    return 0;
-  }
-
-  return cudaMalloc(ptr, count * sizeof(T));
-}
-
-template <typename T> inline void free_array(T *&ptr) {
-  if (ptr != nullptr) {
-    cudaFree(ptr);
-    ptr = nullptr;
-  }
-}
-
-inline uint32_t zero_device_memory(void *ptr, std::size_t size) {
-  return cudaMemset(ptr, 0, size);
-}
-
-inline uint32_t copy_compact_device_readback(const void *device_ptr, void *host_ptr, std::size_t size) {
-  return cudaMemcpy(host_ptr, device_ptr, size, cudaMemcpyDeviceToHost);
-}
-
-inline uint32_t copy_host_data_to_device(void *device_ptr, const void *host_ptr, std::size_t size) {
-  return cudaMemcpy(device_ptr, host_ptr, size, cudaMemcpyHostToDevice);
-}
-
 inline uint32_t synchronize_kernels() { 
   return cudaDeviceSynchronize();
 }
@@ -69,6 +41,23 @@ inline const DevicePopulationBuffers &population_for_kind(const DeviceState &sta
 
 inline DevicePopulationBuffers &population_for_kind(DeviceState &state, PopulationKind population_kind) {
   return population_kind == PopulationKind::Predator ? state.predator : state.prey;
+}
+
+__device__ inline std::uint32_t cell_coord(float pos, float cell_size, std::uint32_t limit) {
+  const auto coord = static_cast<std::uint32_t>(pos / cell_size);
+  return coord < limit ? coord : limit - 1U;
+}
+
+__device__ inline bool cell_may_intersect_radius(std::uint32_t cx, std::uint32_t cy, float cell_size,
+                                                 float origin_x, float origin_y, float radius) {
+  const auto center_x = (static_cast<float>(cx) + 0.5F) * cell_size;
+  const auto center_y = (static_cast<float>(cy) + 0.5F) * cell_size;
+  const auto dx = center_x - origin_x;
+  const auto dy = center_y - origin_y;
+  const auto half_size = cell_size * 0.5F;
+  const auto nearest_x = fmaxf(fabsf(dx) - half_size, 0.0F);
+  const auto nearest_y = fmaxf(fabsf(dy) - half_size, 0.0F);
+  return (nearest_x * nearest_x) + (nearest_y * nearest_y) <= radius * radius;
 }
 
 __device__ inline std::uint64_t splitmix64(std::uint64_t state) {

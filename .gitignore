@@ -31,3 +31,4 @@ target/
 
 # Simulation output data
 output/
+*out/

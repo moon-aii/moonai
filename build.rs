@@ -62,7 +62,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .flag("-arch=native")
         .flag("-O2")
         .files(&[
-            "src/sim/kernel.cu",
+            "src/sim/bootstrap.cu",
+            "src/sim/spatial_grid.cu",
+            "src/sim/sensing.cu",
+            "src/sim/dynamics.cu",
+            "src/sim/food.cu",
+            "src/sim/combat.cu",
+            "src/sim/reproduction.cu",
+            "src/sim/metrics.cu",
+            "src/sim/render.cu",
             "src/sim/crossover.cu",
             "src/sim/mutation.cu",
             "src/sim/network_compilation.cu",

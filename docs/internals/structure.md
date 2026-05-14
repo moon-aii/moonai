@@ -50,14 +50,34 @@ src/
 ├── metrics.rs                  # Metrics logger facade
 ├── profiler.rs                 # Runtime scope profiler tree and formatting helpers
 ├── sim/
-│   ├── mod.rs                  # Host-side simulation API + CUDA bindings + readback types
-│   ├── kernel.cu               # Main CUDA simulation/runtime kernels
+│   ├── mod.rs                  # Public sim API, shared ABI/readback types, and module wiring
+│   ├── helpers.rs              # Rust-side generic CUDA helper bindings
+│   ├── helpers.cu              # CUDA malloc/memcpy/memset helper implementations
+│   ├── bootstrap.rs            # Rust-side startup/device allocation orchestration + bootstrap FFI
+│   ├── bootstrap.cu            # Population seeding, food seeding, counters, and free-list bootstrap kernels
+│   ├── spatial_grid.rs         # Rust-side spatial-grid orchestration + grid FFI
+│   ├── spatial_grid.cu         # Grid counting, scan finalization, and scatter kernels
+│   ├── sensing.rs              # Rust-side sensor compute/snapshot entrypoints
+│   ├── sensing.cu              # Sensor-input and sensor-snapshot kernels
+│   ├── dynamics.rs             # Rust-side inference, vitals, movement, and tick entrypoints
+│   ├── dynamics.cu             # Inference, vitals, movement, and tick kernels
+│   ├── food.rs                 # Rust-side food resolution orchestration + FFI
+│   ├── food.cu                 # Food claim, finalize, and respawn kernels
+│   ├── combat.rs               # Rust-side combat resolution orchestration + FFI
+│   ├── combat.cu               # Predator-prey combat claim/finalize kernels
+│   ├── reproduction.rs         # Rust-side reproduction orchestration, expansion, and pair readback
+│   ├── reproduction.cu         # Reproduction reset, pair search, and parent-energy kernels
+│   ├── metrics.rs              # Rust-side live-count, UI stats, and report-refresh entrypoints
+│   ├── metrics.cu              # Metrics reduction, UI stats, and free-list-state kernels
+│   ├── render.rs               # Rust-side render snapshot readback entrypoints
+│   ├── render.cu               # Render snapshot packing kernels
+│   ├── network_compilation.rs  # Rust-side compile/species/network readback entrypoints
+│   ├── network_compilation.cu  # GPU network compilation and species classification kernels
+│   ├── crossover.rs            # Rust-side crossover FFI owner
 │   ├── crossover.cu            # GPU crossover logic
+│   ├── mutation.rs             # Rust-side mutation FFI owner
 │   ├── mutation.cu             # GPU mutation logic
-│   ├── network_compilation.cu  # GPU network compilation logic
-│   ├── helpers.rs              # Rust-side CUDA helper bindings
-│   ├── helpers.cu              # CUDA helper implementations
-│   └── sim.cuh                 # Shared CUDA declarations and helper utilities
+│   └── sim.cuh                 # Minimal shared CUDA-only constants and helper utilities
 ├── ui/
 │   ├── app.rs                  # Top-level UI shell, tabs, queue orchestration, and settings editor
 │   ├── run_queue.rs            # Queued run snapshots and run history tracking
