@@ -414,10 +414,6 @@ pub enum PopulationKind {
 #[repr(C)]
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub struct GpuEvolutionConfig {
-    pub predator_capacity: u32,
-    pub prey_capacity: u32,
-    pub initial_predator_count: u32,
-    pub initial_prey_count: u32,
     pub world_size: f32,
     pub initial_energy: f32,
     pub max_energy: f32,
@@ -456,8 +452,6 @@ fn readback<T>(context: &str, mut call: impl FnMut(*mut T) -> i32) -> Result<T> 
 pub struct Simulation {
     pub config: SimulationConfig,
     device_state: DeviceState,
-    predator_capacity: u32,
-    prey_capacity: u32,
 }
 
 impl Drop for Simulation {
@@ -468,12 +462,7 @@ impl Drop for Simulation {
 
 impl Simulation {
     pub fn init(config: &SimulationConfig) -> Result<Self> {
-        let mut simulation = Simulation {
-            device_state: DeviceState::default(),
-            predator_capacity: config.predator_count,
-            prey_capacity: config.prey_count,
-            config: *config,
-        };
+        let mut simulation = Simulation { device_state: DeviceState::default(), config: *config };
         simulation.init_dev()?;
         Ok(simulation)
     }
@@ -502,10 +491,6 @@ impl Simulation {
             .context("phase-3 connection stride overflowed")?;
 
         self.device_state.config = GpuEvolutionConfig {
-            predator_capacity: self.config.predator_count,
-            prey_capacity: self.config.prey_count,
-            initial_predator_count: self.config.predator_count,
-            initial_prey_count: self.config.prey_count,
             world_size: self.config.grid_size,
             initial_energy: self.config.initial_energy,
             max_energy: self.config.max_energy,
@@ -538,10 +523,10 @@ impl Simulation {
             "dev_reset_reproduction_state",
         )?;
 
-        if self.predator_capacity > 0 {
+        if self.device_state.predator.capacity > 0 {
             let _ = self.compile_population(PopulationKind::Predator, 0)?;
         }
-        if self.prey_capacity > 0 {
+        if self.device_state.prey.capacity > 0 {
             let _ = self.compile_population(PopulationKind::Prey, 0)?;
         }
 
@@ -653,7 +638,6 @@ impl Simulation {
             )
         };
         check_cuda_status(status, "moonai_gpu_simulation_render_snapshot")?;
-        // SAFETY: A successful render-snapshot call initializes the header.
         let header = unsafe { header.assume_init() };
         let returned_predators =
             usize::try_from(header.returned_predators).context("predator render length overflowed")?;
@@ -896,12 +880,7 @@ impl Simulation {
 
     fn expand_population(&mut self, population_kind: PopulationKind, new_capacity: u32) -> Result<()> {
         let status = unsafe { dev_expand_population(self.get_dev_state(), population_kind, new_capacity) };
-        check_cuda_status(status, "moonai_gpu_simulation_expand_population")?;
-        match population_kind {
-            PopulationKind::Predator => self.predator_capacity = new_capacity,
-            PopulationKind::Prey => self.prey_capacity = new_capacity,
-        }
-        Ok(())
+        check_cuda_status(status, "moonai_gpu_simulation_expand_population")
     }
 
     fn run_reproduction(&mut self, population_kind: PopulationKind) -> Result<()> {
@@ -944,8 +923,8 @@ impl Simulation {
 
     const fn population_capacity(&self, population_kind: PopulationKind) -> u32 {
         match population_kind {
-            PopulationKind::Predator => self.predator_capacity,
-            PopulationKind::Prey => self.prey_capacity,
+            PopulationKind::Predator => self.device_state.predator.capacity,
+            PopulationKind::Prey => self.device_state.prey.capacity,
         }
     }
 

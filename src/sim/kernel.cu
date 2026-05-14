@@ -1349,8 +1349,8 @@ uint32_t read_device_u32(const std::uint32_t *device_ptr, std::uint32_t &host_va
 
 extern "C" std::int32_t dev_create(DeviceState *state) {
   for (auto status : {
-           allocate_population_buffers(state->predator, state->config.predator_capacity, state->config.num_inputs, state->config.node_stride, state->config.connection_stride, state->config.num_outputs),
-           allocate_population_buffers(state->prey, state->config.prey_capacity, state->config.num_inputs, state->config.node_stride, state->config.connection_stride, state->config.num_outputs),
+           allocate_population_buffers(state->predator, state->simulation.predator_count, state->config.num_inputs, state->config.node_stride, state->config.connection_stride, state->config.num_outputs),
+           allocate_population_buffers(state->prey, state->simulation.prey_count, state->config.num_inputs, state->config.node_stride, state->config.connection_stride, state->config.num_outputs),
            moonai_gpu::alloc_array(&state->innovation, 1U),
            moonai_gpu::alloc_array(&state->next_entity_id, 1U),
            moonai_gpu::alloc_array(&state->population_live_count_scratch, 1U),
@@ -1365,9 +1365,9 @@ extern "C" std::int32_t dev_create(DeviceState *state) {
            moonai_gpu::alloc_array(&state->representative_headers_scratch, moonai_gpu::kSpeciesBucketCount),
            moonai_gpu::alloc_array(&state->species_count_scratch, 1U),
            moonai_gpu::alloc_array(&state->render_header_scratch, 1U),
-           moonai_gpu::alloc_array(&state->render_predators_scratch, state->config.predator_capacity),
-           moonai_gpu::alloc_array(&state->render_prey_scratch, state->config.prey_capacity),
-        }) {
+           moonai_gpu::alloc_array(&state->render_predators_scratch, state->simulation.predator_count),
+           moonai_gpu::alloc_array(&state->render_prey_scratch, state->simulation.prey_count),
+         }) {
     if (status) {
       // destroy_state(state);
       return status;
@@ -1380,8 +1380,8 @@ extern "C" std::int32_t dev_create(DeviceState *state) {
 extern "C" std::int32_t dev_seed_initial_population(DeviceState *state) {
   const auto predator_blocks = (state->predator.capacity + 255U) / 256U;
   const auto prey_blocks = (state->prey.capacity + 255U) / 256U;
-  seed_population_kernel<<<predator_blocks == 0U ? 1U : predator_blocks, 256U>>>(state->predator, state->config.initial_predator_count, 1U, state->config.seed, state->config.num_inputs, state->config.num_outputs, state->config.world_size, state->config.initial_energy, state->config.max_energy, PopulationKind::Predator);
-  seed_population_kernel<<<prey_blocks == 0U ? 1U : prey_blocks, 256U>>>(state->prey, state->config.initial_prey_count, state->config.initial_predator_count + 1U, state->config.seed ^ 0x9e3779b97f4a7c15ULL, state->config.num_inputs, state->config.num_outputs, state->config.world_size, state->config.initial_energy, state->config.max_energy, PopulationKind::Prey);
+  seed_population_kernel<<<predator_blocks == 0U ? 1U : predator_blocks, 256U>>>(state->predator, state->simulation.predator_count, 1U, state->config.seed, state->config.num_inputs, state->config.num_outputs, state->config.world_size, state->config.initial_energy, state->config.max_energy, PopulationKind::Predator);
+  seed_population_kernel<<<prey_blocks == 0U ? 1U : prey_blocks, 256U>>>(state->prey, state->simulation.prey_count, state->simulation.predator_count + 1U, state->config.seed ^ 0x9e3779b97f4a7c15ULL, state->config.num_inputs, state->config.num_outputs, state->config.world_size, state->config.initial_energy, state->config.max_energy, PopulationKind::Prey);
   auto status = moonai_gpu::synchronize_kernels();
   if (status) return status;
 
@@ -1389,7 +1389,7 @@ extern "C" std::int32_t dev_seed_initial_population(DeviceState *state) {
   status = moonai_gpu::copy_host_data_to_device(state->innovation, &innovation_state, sizeof(innovation_state));
   if (status) return status;
 
-  const std::uint32_t next_entity_id = state->config.initial_predator_count + state->config.initial_prey_count + 1U;
+  const std::uint32_t next_entity_id = state->simulation.predator_count + state->simulation.prey_count + 1U;
   status = moonai_gpu::copy_host_data_to_device(state->next_entity_id, &next_entity_id, sizeof(next_entity_id));
   if (status) return status;
 
