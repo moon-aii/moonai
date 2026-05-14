@@ -74,12 +74,12 @@ implementation compiled through `build.rs`.
 
 ## Delivery and Deployment Files
 
-| Path                    | Purpose |
-| ----------------------- | ------- |
-| `runtime/experiments.lua` | Shipped experiment matrix and defaults overrides |
-| `runtime/settings.json`   | Shipped persisted UI settings |
+| Path                         | Purpose                                            |
+| ---------------------------- | -------------------------------------------------- |
+| `runtime/experiments.lua`    | Shipped experiment matrix and defaults overrides   |
+| `runtime/settings.json`      | Shipped persisted UI settings                      |
 | `.github/workflows/docs.yml` | GitHub Pages deployment for the documentation site |
-| `papers/` | Course report sources and generated report PDFs |
+| `papers/`                    | Course report sources and generated report PDFs    |
 
 ## `analysis/`
 

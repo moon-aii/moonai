@@ -302,144 +302,34 @@ __global__ void classify_species_batch_kernel(DevicePopulationBuffers population
 
 } // namespace
 
-extern "C" std::int32_t dev_compile_population(DeviceState *state, PopulationKind population_kind, std::uint32_t inspected_slot, CompiledNetworkReadbackHeader *out_header) {
+extern "C" std::int32_t dev_compile_population(DeviceState *state, PopulationKind population_kind) {
   auto &population = moonai_gpu::population_for_kind(*state, population_kind);
 
   const auto blocks = (population.capacity + 255U) / 256U;
   compile_population_kernel<<<blocks == 0U ? 1U : blocks, 256U>>>(population, state->num_outputs);
-  auto status = moonai_gpu::synchronize_kernels();
-  if (!status) {
-    compiled_header_kernel<<<1U, 1U>>>(population, population_kind, inspected_slot, state->num_outputs, state->compiled_header_scratch);
-    status = moonai_gpu::synchronize_kernels();
-  }
-  if (!status) {
-    status = moonai_gpu::copy_compact_device_readback(state->compiled_header_scratch, out_header, sizeof(*out_header));
-  }
-  return status;
+  return moonai_gpu::synchronize_kernels();
 }
 
-extern "C" std::int32_t dev_compile_slot(DeviceState *state, PopulationKind population_kind,
-                                                             std::uint32_t slot,
-                                                             CompiledNetworkReadbackHeader *out_header) {
+extern "C" std::int32_t dev_compile_slot(DeviceState *state, PopulationKind population_kind, std::uint32_t slot) {
   auto &population = moonai_gpu::population_for_kind(*state, population_kind);
   compile_single_slot_kernel<<<1U, 1U>>>(population, slot, state->num_outputs);
-  auto status = moonai_gpu::synchronize_kernels();
-  if (!status) {
-    compiled_header_kernel<<<1U, 1U>>>(population, population_kind, slot, state->num_outputs, state->compiled_header_scratch);
-    status = moonai_gpu::synchronize_kernels();
-  }
-  if (!status) {
-    status = moonai_gpu::copy_compact_device_readback(state->compiled_header_scratch, out_header, sizeof(*out_header));
-  }
-  return status;
+  return moonai_gpu::synchronize_kernels();
 }
 
-extern "C" std::int32_t dev_selected_agent_network(const DeviceState *state, PopulationKind population_kind, std::uint32_t slot, SelectedAgentNetworkReadback *out_network) {
+extern "C" std::int32_t dev_write_compiled_header(const DeviceState *state, PopulationKind population_kind, std::uint32_t slot) {
+  const auto &population = moonai_gpu::population_for_kind(*state, population_kind);
+  compiled_header_kernel<<<1U, 1U>>>(population, population_kind, slot, state->num_outputs, state->compiled_header_scratch);
+  return moonai_gpu::synchronize_kernels();
+}
+
+extern "C" std::int32_t dev_write_selected_agent_network(const DeviceState *state, PopulationKind population_kind, std::uint32_t slot) {
   const auto &population = moonai_gpu::population_for_kind(*state, population_kind);
   selected_agent_network_kernel<<<1U, 1U>>>(population, population_kind, slot, state->num_inputs, state->selected_network_scratch);
-  auto status = moonai_gpu::synchronize_kernels();
-  if (!status) {
-    status = moonai_gpu::copy_compact_device_readback(state->selected_network_scratch, out_network, sizeof(*out_network));
-  }
-  return status;
+  return moonai_gpu::synchronize_kernels();
 }
 
-extern "C" std::int32_t dev_species_summaries(DeviceState *state, PopulationKind population_kind, std::uint32_t max_species, SpeciesBatchReadbackHeader *out_header, SpeciesSummaryReadback *out_summaries, RepresentativeGenomeHeader *out_representatives) {
+extern "C" std::int32_t dev_classify_species_summaries(DeviceState *state, PopulationKind population_kind) {
   auto &population = moonai_gpu::population_for_kind(*state, population_kind);
   classify_species_batch_kernel<<<1U, 1U>>>(population, population_kind, state->species_summaries_scratch, state->representative_headers_scratch, state->species_count_scratch);
-  auto status = moonai_gpu::synchronize_kernels();
-  std::uint32_t species_count = 0U;
-  if (!status) {
-    status = moonai_gpu::copy_compact_device_readback(state->species_count_scratch, &species_count, sizeof(species_count));
-  }
-  if (!status) {
-    const auto returned_species_count = species_count < max_species ? species_count : max_species;
-    out_header->population_kind = population_kind;
-    out_header->species_count = species_count;
-    out_header->returned_species_count = returned_species_count;
-    if (returned_species_count > 0U) {
-      status = moonai_gpu::copy_compact_device_readback(state->species_summaries_scratch, out_summaries, sizeof(SpeciesSummaryReadback) * returned_species_count);
-    }
-    if (!status && returned_species_count > 0U) {
-      status = moonai_gpu::copy_compact_device_readback(state->representative_headers_scratch, out_representatives, sizeof(RepresentativeGenomeHeader) * returned_species_count);
-    }
-  }
-
-  return status;
-}
-
-extern "C" std::int32_t dev_representative_genome_header(const DeviceState *state, PopulationKind population_kind, std::uint32_t slot, RepresentativeGenomeHeader *out_header) {
-  const auto &population = moonai_gpu::population_for_kind(*state, population_kind);
-  std::uint32_t entity_id = 0U;
-  std::uint32_t generation = 0U;
-  std::uint32_t species_id = 0U;
-  std::uint16_t num_nodes = 0U;
-  std::uint16_t num_connections = 0U;
-
-  auto status = moonai_gpu::copy_compact_device_readback(population.entity_id + slot, &entity_id, sizeof(entity_id));
-  if (!status) {
-    status = moonai_gpu::copy_compact_device_readback(population.generation + slot, &generation, sizeof(generation));
-  }
-  if (!status) {
-    status = moonai_gpu::copy_compact_device_readback(population.species_id + slot, &species_id, sizeof(species_id));
-  }
-  if (!status) {
-    status = moonai_gpu::copy_compact_device_readback(population.genome.num_nodes + slot, &num_nodes, sizeof(num_nodes));
-  }
-  if (!status) {
-    status = moonai_gpu::copy_compact_device_readback(population.genome.num_connections + slot, &num_connections, sizeof(num_connections));
-  }
-  if (status) return status;
-
-  *out_header = RepresentativeGenomeHeader{population_kind, slot, entity_id, generation, species_id, num_nodes, num_connections};
-
-  return 0;
-}
-
-extern "C" std::int32_t dev_representative_genome_node_types(const DeviceState *state, PopulationKind population_kind, std::uint32_t slot, std::uint32_t max_nodes, std::uint8_t *out_node_types) {
-  const auto &population = moonai_gpu::population_for_kind(*state, population_kind);
-  std::uint16_t num_nodes = 0U;
-  auto status = moonai_gpu::copy_compact_device_readback(population.genome.num_nodes + slot, &num_nodes, sizeof(num_nodes));
-  if (status) return status;
-  if (num_nodes > max_nodes) {
-    return 1;
-  }
-  if (num_nodes == 0U) {
-    return 0;
-  }
-
-  const auto node_base = static_cast<std::size_t>(slot) * population.genome.node_stride;
-  status = moonai_gpu::copy_compact_device_readback(population.genome.node_types + node_base, out_node_types, sizeof(std::uint8_t) * num_nodes);
-  return status;
-}
-
-extern "C" std::int32_t dev_representative_genome_connections(const DeviceState *state, PopulationKind population_kind, std::uint32_t slot, std::uint32_t max_connections, std::int32_t *out_from_nodes, std::int32_t *out_to_nodes, float *out_weights, std::uint32_t *out_innovations, std::uint8_t *out_enabled_flags) {
-  const auto &population = moonai_gpu::population_for_kind(*state, population_kind);
-
-  std::uint16_t num_connections = 0U;
-  auto status = moonai_gpu::copy_compact_device_readback(population.genome.num_connections + slot, &num_connections, sizeof(num_connections));
-  if (status) return status;
-  if (num_connections > max_connections) {
-    return 1;
-  }
-  if (num_connections == 0U) {
-    return 0;
-  }
-
-  const auto connection_base = static_cast<std::size_t>(slot) * population.genome.connection_stride;
-  status = moonai_gpu::copy_compact_device_readback(population.genome.connection_from + connection_base, out_from_nodes, sizeof(std::int32_t) * num_connections);
-  if (!status) {
-    status = moonai_gpu::copy_compact_device_readback(population.genome.connection_to + connection_base, out_to_nodes, sizeof(std::int32_t) * num_connections);
-  }
-  if (!status) {
-    status = moonai_gpu::copy_compact_device_readback(population.genome.connection_weight + connection_base, out_weights, sizeof(float) * num_connections);
-  }
-  if (!status) {
-    status = moonai_gpu::copy_compact_device_readback(population.genome.connection_innovation + connection_base, out_innovations, sizeof(std::uint32_t) * num_connections);
-  }
-  if (!status) {
-    status = moonai_gpu::copy_compact_device_readback(population.genome.connection_enabled + connection_base, out_enabled_flags, sizeof(std::uint8_t) * num_connections);
-  }
-
-  return status;
+  return moonai_gpu::synchronize_kernels();
 }

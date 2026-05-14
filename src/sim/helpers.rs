@@ -42,6 +42,30 @@ pub fn cuda_memset_zero<T>(ptr: *mut T, count: usize) -> Result<()> {
     )
 }
 
+pub fn cuda_memset_byte<T>(ptr: *mut T, byte: u8, count: usize) -> Result<()> {
+    if ptr.is_null() || count == 0 {
+        return Ok(());
+    }
+
+    check_cuda_status(
+        unsafe { c_cuda_memset_byte(ptr as *mut c_void, i32::from(byte), count * std::mem::size_of::<T>()) },
+        "cuda_memset_byte",
+    )
+}
+
+pub fn cuda_dev_to_host<T>(dev_ptr: *const T, host_ptr: *mut T, count: usize) -> Result<()> {
+    if count == 0 {
+        return Ok(());
+    }
+
+    check_cuda_status(
+        unsafe {
+            c_cuda_dev_to_host(dev_ptr as *const c_void, host_ptr as *mut c_void, count * std::mem::size_of::<T>())
+        },
+        "cuda_dev_to_host",
+    )
+}
+
 pub fn cuda_host_to_dev<T>(dev_ptr: *mut T, host_ptr: *const T, count: usize) -> Result<()> {
     if count == 0 {
         return Ok(());
@@ -72,6 +96,8 @@ unsafe extern "C" {
     fn c_cuda_malloc(ptr: *mut *mut c_void, size: usize) -> i32;
     fn c_cuda_free(ptr: *mut c_void) -> i32;
     fn c_cuda_memset_zero(ptr: *mut c_void, size: usize) -> i32;
+    fn c_cuda_memset_byte(ptr: *mut c_void, value: i32, size: usize) -> i32;
+    fn c_cuda_dev_to_host(dev_ptr: *const c_void, host_ptr: *mut c_void, size: usize) -> i32;
     fn c_cuda_host_to_dev(dev_ptr: *mut c_void, host_ptr: *const c_void, size: usize) -> i32;
     fn c_cuda_dev_to_dev(dst_ptr: *mut c_void, src_ptr: *const c_void, size: usize) -> i32;
 }

@@ -8,15 +8,15 @@ Pre-compiled binaries are not currently published. Build from source for now.
 
 ### Prerequisites
 
-| Tool                | Version / Requirement                   | Required                  |
-| ------------------- | --------------------------------------- | ------------------------- |
-| Rust toolchain      | 1.95.0                                  | Yes                       |
-| Cargo               | matching Rust toolchain                 | Yes                       |
-| C++ compiler        | usable by `nvcc` as host compiler       | Yes                       |
-| CUDA Toolkit        | recent toolkit with `nvcc` and `cudart` | Yes                       |
-| just                | any                                     | Recommended               |
-| uv                  | 0.11+                                   | For analysis and docs     |
-| Python              | 3.14+                                   | For analysis and docs     |
+| Tool           | Version / Requirement                   | Required              |
+| -------------- | --------------------------------------- | --------------------- |
+| Rust toolchain | 1.95.0                                  | Yes                   |
+| Cargo          | matching Rust toolchain                 | Yes                   |
+| C++ compiler   | usable by `nvcc` as host compiler       | Yes                   |
+| CUDA Toolkit   | recent toolkit with `nvcc` and `cudart` | Yes                   |
+| just           | any                                     | Recommended           |
+| uv             | 0.11+                                   | For analysis and docs |
+| Python         | 3.14+                                   | For analysis and docs |
 
 #### Just
 
@@ -63,8 +63,8 @@ cargo build --release
 cp -r runtime/* target/release
 ```
 
-| Command        | Description             |
-| -------------- | ----------------------- |
+| Command            | Description                       |
+| ------------------ | --------------------------------- |
 | `just build-debug` | Debug build with runtime assets   |
 | `just build`       | Release build with runtime assets |
 

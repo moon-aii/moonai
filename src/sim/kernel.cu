@@ -20,12 +20,6 @@ using moonai_gpu::FoodGridEntry;
 using moonai_gpu::MetricsReduceScratch;
 using moonai_gpu::MetricsSummaryReadback;
 
-extern "C" std::int32_t dev_crossover(DeviceState *state, PopulationKind population_kind, std::uint32_t parent_a_slot, std::uint32_t parent_b_slot, std::uint32_t offspring_slot);
-extern "C" std::int32_t dev_population_live_count(const DeviceState *state, PopulationKind population_kind, std::uint32_t *out_live_count);
-extern "C" std::int32_t dev_mutate_slot(DeviceState *state, PopulationKind population_kind, std::uint32_t slot, const moonai_gpu::GpuMutationConfig *config);
-extern "C" std::int32_t dev_compile_slot(DeviceState *state, PopulationKind population_kind, std::uint32_t slot, moonai_gpu::CompiledNetworkReadbackHeader *out_header);
-extern "C" std::int32_t dev_species_summaries(DeviceState *state, PopulationKind population_kind, std::uint32_t max_species, moonai_gpu::SpeciesBatchReadbackHeader *out_header, moonai_gpu::SpeciesSummaryReadback *out_summaries, moonai_gpu::RepresentativeGenomeHeader *out_representatives);
-
 namespace {
 
 __global__ void initialize_free_list_kernel(DevicePopulationBuffers population, std::uint32_t *free_list, std::uint32_t *free_len);
@@ -989,10 +983,6 @@ __global__ void summarize_population_kernel(DevicePopulationBuffers population, 
   *out_live_count = live_count;
 }
 
-uint32_t read_device_u32(const std::uint32_t *device_ptr, std::uint32_t &host_value) {
-  return moonai_gpu::copy_compact_device_readback(device_ptr, &host_value, sizeof(host_value));
-}
-
 } // namespace
 
 extern "C" std::int32_t dev_seed_initial_population(DeviceState *state) {
@@ -1003,13 +993,9 @@ extern "C" std::int32_t dev_seed_initial_population(DeviceState *state) {
   return moonai_gpu::synchronize_kernels();
 }
 
-extern "C" std::int32_t dev_population_live_count(const DeviceState *state, PopulationKind population_kind, std::uint32_t *out_live_count) {
+extern "C" std::int32_t dev_write_population_live_count(const DeviceState *state, PopulationKind population_kind) {
   summarize_population_kernel<<<1U, 1U>>>(moonai_gpu::population_for_kind(*state, population_kind), state->population_live_count_scratch);
-  auto status = moonai_gpu::synchronize_kernels();
-  if (!status) {
-    status = moonai_gpu::copy_compact_device_readback(state->population_live_count_scratch, out_live_count, sizeof(*out_live_count));
-  }
-  return status;
+  return moonai_gpu::synchronize_kernels();
 }
 
 extern "C" std::int32_t dev_reset_counters(DeviceState *state) {
@@ -1017,9 +1003,11 @@ extern "C" std::int32_t dev_reset_counters(DeviceState *state) {
   return moonai_gpu::synchronize_kernels();
 }
 
-extern "C" std::int32_t dev_initialize_free_lists(DeviceState *state) {
-  initialize_free_list_kernel<<<1U, 1U>>>(state->predator, state->predator_free_list, state->predator_free_len);
-  initialize_free_list_kernel<<<1U, 1U>>>(state->prey, state->prey_free_list, state->prey_free_len);
+extern "C" std::int32_t dev_initialize_population_free_list(DeviceState *state, PopulationKind population_kind) {
+  auto &population = moonai_gpu::population_for_kind(*state, population_kind);
+  auto *free_list = population_kind == PopulationKind::Predator ? state->predator_free_list : state->prey_free_list;
+  auto *free_len = population_kind == PopulationKind::Predator ? state->predator_free_len : state->prey_free_len;
+  initialize_free_list_kernel<<<1U, 1U>>>(population, free_list, free_len);
   return moonai_gpu::synchronize_kernels();
 }
 
@@ -1029,41 +1017,67 @@ extern "C" std::int32_t dev_seed_food(DeviceState *state) {
   return moonai_gpu::synchronize_kernels();
 }
 
-extern "C" std::int32_t dev_reset_reproduction_state(DeviceState *state) {
-  const auto predator_blocks = (state->predator.capacity + 255U) / 256U;
-  const auto prey_blocks = (state->prey.capacity + 255U) / 256U;
-  reset_reproduction_state_kernel<<<predator_blocks == 0U ? 1U : predator_blocks, 256U>>>( state->predator_mate_claims, state->predator.capacity, state->predator_pair_count);
-  reset_reproduction_state_kernel<<<prey_blocks == 0U ? 1U : prey_blocks, 256U>>>( state->prey_mate_claims, state->prey.capacity, state->prey_pair_count);
+extern "C" std::int32_t dev_reset_population_reproduction_state(DeviceState *state, PopulationKind population_kind) {
+  const auto &population = moonai_gpu::population_for_kind(*state, population_kind);
+  auto *mate_claims = population_kind == PopulationKind::Predator ? state->predator_mate_claims : state->prey_mate_claims;
+  auto *pair_count = population_kind == PopulationKind::Predator ? state->predator_pair_count : state->prey_pair_count;
+  const auto blocks = (population.capacity + 255U) / 256U;
+  reset_reproduction_state_kernel<<<blocks == 0U ? 1U : blocks, 256U>>>(mate_claims, population.capacity, pair_count);
   return moonai_gpu::synchronize_kernels();
 }
 
-extern "C" std::int32_t dev_build_spatial_grid(DeviceState *state) {
-  const auto cell_count = state->grid_cols * state->grid_rows;
-
-  auto status = moonai_gpu::zero_device_memory(state->predator_cell_counts, sizeof(std::uint32_t) * cell_count);
-  if (status) return status;
-  status = moonai_gpu::zero_device_memory(state->prey_cell_counts, sizeof(std::uint32_t) * cell_count);
-  if (status) return status;
-  status = moonai_gpu::zero_device_memory(state->food_cell_counts, sizeof(std::uint32_t) * cell_count);
-  if (status) return status;
-
+extern "C" std::int32_t dev_count_population_cells(const DeviceState *state, PopulationKind population_kind) {
+  const auto &population = moonai_gpu::population_for_kind(*state, population_kind);
+  auto *cell_counts = population_kind == PopulationKind::Predator ? state->predator_cell_counts : state->prey_cell_counts;
   const auto predator_blocks = (state->predator.capacity + 255U) / 256U;
   const auto prey_blocks = (state->prey.capacity + 255U) / 256U;
+  const auto blocks = population_kind == PopulationKind::Predator ? predator_blocks : prey_blocks;
+  count_population_cells_kernel<<<blocks == 0U ? 1U : blocks, 256U>>>(population, cell_counts, state->grid_cols, state->grid_rows, state->grid_cell_size);
+  return moonai_gpu::synchronize_kernels();
+}
+
+extern "C" std::int32_t dev_count_food_cells(const DeviceState *state) {
   const auto food_blocks = (state->food.capacity + 255U) / 256U;
-  count_population_cells_kernel<<<predator_blocks == 0U ? 1U : predator_blocks, 256U>>>( state->predator, state->predator_cell_counts, state->grid_cols, state->grid_rows, state->grid_cell_size);
-  count_population_cells_kernel<<<prey_blocks == 0U ? 1U : prey_blocks, 256U>>>( state->prey, state->prey_cell_counts, state->grid_cols, state->grid_rows, state->grid_cell_size);
   count_food_cells_kernel<<<food_blocks == 0U ? 1U : food_blocks, 256U>>>(state->food, state->food_cell_counts, state->grid_cols, state->grid_rows, state->grid_cell_size);
-  thrust::exclusive_scan(thrust::device, state->predator_cell_counts, state->predator_cell_counts + cell_count, state->predator_cell_offsets);
-  thrust::exclusive_scan(thrust::device, state->prey_cell_counts, state->prey_cell_counts + cell_count, state->prey_cell_offsets);
-  thrust::exclusive_scan(thrust::device, state->food_cell_counts, state->food_cell_counts + cell_count, state->food_cell_offsets);
+  return moonai_gpu::synchronize_kernels();
+}
+
+extern "C" std::int32_t dev_exclusive_scan_u32(const std::uint32_t *input, std::uint32_t count, std::uint32_t *output) {
+  if (count == 0U) {
+    return 0;
+  }
+
+  thrust::exclusive_scan(thrust::device, input, input + count, output);
+  return moonai_gpu::synchronize_kernels();
+}
+
+extern "C" std::int32_t dev_finalize_population_cell_offsets(const DeviceState *state, PopulationKind population_kind, std::uint32_t cell_count) {
+  auto *cell_counts = population_kind == PopulationKind::Predator ? state->predator_cell_counts : state->prey_cell_counts;
+  auto *cell_offsets = population_kind == PopulationKind::Predator ? state->predator_cell_offsets : state->prey_cell_offsets;
+  auto *cell_write_offsets = population_kind == PopulationKind::Predator ? state->predator_cell_write_offsets : state->prey_cell_write_offsets;
   const auto cell_blocks = (cell_count + 255U) / 256U;
-  finalize_cell_offsets_kernel<<<cell_blocks == 0U ? 1U : cell_blocks, 256U>>>( state->predator_cell_counts, state->predator_cell_offsets, state->predator_cell_write_offsets, cell_count);
-  finalize_cell_offsets_kernel<<<cell_blocks == 0U ? 1U : cell_blocks, 256U>>>( state->prey_cell_counts, state->prey_cell_offsets, state->prey_cell_write_offsets, cell_count);
-  finalize_cell_offsets_kernel<<<cell_blocks == 0U ? 1U : cell_blocks, 256U>>>( state->food_cell_counts, state->food_cell_offsets, state->food_cell_write_offsets, cell_count);
-  scatter_population_cells_kernel<<<predator_blocks == 0U ? 1U : predator_blocks, 256U>>>( state->predator, state->predator_cell_write_offsets, state->predator_grid_entries, state->grid_cols, state->grid_rows, state->grid_cell_size);
-  scatter_population_cells_kernel<<<prey_blocks == 0U ? 1U : prey_blocks, 256U>>>( state->prey, state->prey_cell_write_offsets, state->prey_grid_entries, state->grid_cols, state->grid_rows,
-      state->grid_cell_size);
-  scatter_food_cells_kernel<<<food_blocks == 0U ? 1U : food_blocks, 256U>>>( state->food, state->food_cell_write_offsets, state->food_grid_entries, state->grid_cols, state->grid_rows, state->grid_cell_size);
+  finalize_cell_offsets_kernel<<<cell_blocks == 0U ? 1U : cell_blocks, 256U>>>(cell_counts, cell_offsets, cell_write_offsets, cell_count);
+  return moonai_gpu::synchronize_kernels();
+}
+
+extern "C" std::int32_t dev_finalize_food_cell_offsets(const DeviceState *state, std::uint32_t cell_count) {
+  const auto cell_blocks = (cell_count + 255U) / 256U;
+  finalize_cell_offsets_kernel<<<cell_blocks == 0U ? 1U : cell_blocks, 256U>>>(state->food_cell_counts, state->food_cell_offsets, state->food_cell_write_offsets, cell_count);
+  return moonai_gpu::synchronize_kernels();
+}
+
+extern "C" std::int32_t dev_scatter_population_cells(const DeviceState *state, PopulationKind population_kind) {
+  const auto &population = moonai_gpu::population_for_kind(*state, population_kind);
+  auto *cell_write_offsets = population_kind == PopulationKind::Predator ? state->predator_cell_write_offsets : state->prey_cell_write_offsets;
+  auto *grid_entries = population_kind == PopulationKind::Predator ? state->predator_grid_entries : state->prey_grid_entries;
+  const auto blocks = (population.capacity + 255U) / 256U;
+  scatter_population_cells_kernel<<<blocks == 0U ? 1U : blocks, 256U>>>(population, cell_write_offsets, grid_entries, state->grid_cols, state->grid_rows, state->grid_cell_size);
+  return moonai_gpu::synchronize_kernels();
+}
+
+extern "C" std::int32_t dev_scatter_food_cells(const DeviceState *state) {
+  const auto food_blocks = (state->food.capacity + 255U) / 256U;
+  scatter_food_cells_kernel<<<food_blocks == 0U ? 1U : food_blocks, 256U>>>(state->food, state->food_cell_write_offsets, state->food_grid_entries, state->grid_cols, state->grid_rows, state->grid_cell_size);
   return moonai_gpu::synchronize_kernels();
 }
 
@@ -1101,29 +1115,47 @@ extern "C" std::int32_t dev_update_vitals(DeviceState *state, PopulationKind pop
   return static_cast<std::int32_t>(moonai_gpu::synchronize_kernels());
 }
 
-extern "C" std::int32_t dev_resolve_food(DeviceState *state) {
+extern "C" std::int32_t dev_resolve_food_claims(DeviceState *state) {
   if (state->prey.capacity == 0U || state->food.capacity == 0U) {
     return 0;
   }
   const auto prey_blocks = (state->prey.capacity + 255U) / 256U;
-  const auto food_blocks = (state->food.capacity + 255U) / 256U;
-  const auto status = cudaMemset(state->food_claimed_by, 0xFF, sizeof(std::uint32_t) * state->food.capacity);
-  if (status) return status;
   resolve_food_kernel<<<prey_blocks == 0U ? 1U : prey_blocks, 256U>>>( state->prey, state->food, state->counters, state->food_cell_offsets, state->food_grid_entries, state->food_claimed_by, state->grid_cols, state->grid_rows, state->grid_cell_size, state->simulation.interaction_range);
+  return moonai_gpu::synchronize_kernels();
+}
+
+extern "C" std::int32_t dev_finalize_food(DeviceState *state) {
+  if (state->prey.capacity == 0U || state->food.capacity == 0U) {
+    return 0;
+  }
+  const auto food_blocks = (state->food.capacity + 255U) / 256U;
   finalize_food_kernel<<<food_blocks == 0U ? 1U : food_blocks, 256U>>>( state->prey, state->food, state->counters, state->food_claimed_by, state->simulation.energy_gain_from_food, state->simulation.max_energy);
+  return moonai_gpu::synchronize_kernels();
+}
+
+extern "C" std::int32_t dev_respawn_food(DeviceState *state) {
+  if (state->food.capacity == 0U) {
+    return 0;
+  }
+  const auto food_blocks = (state->food.capacity + 255U) / 256U;
   respawn_food_kernel<<<food_blocks == 0U ? 1U : food_blocks, 256U>>>(state->food, state->counters, state->simulation.seed ^ 0xC0FFEEULL, state->simulation.food_respawn_rate, state->simulation.grid_size);
   return moonai_gpu::synchronize_kernels();
 }
 
-extern "C" std::int32_t dev_resolve_combat(DeviceState *state) {
+extern "C" std::int32_t dev_resolve_combat_claims(DeviceState *state) {
   if (state->predator.capacity == 0U || state->prey.capacity == 0U) {
     return 0;
   }
   const auto predator_blocks = (state->predator.capacity + 255U) / 256U;
-  const auto prey_blocks = (state->prey.capacity + 255U) / 256U;
-  const auto status = cudaMemset(state->prey_claimed_by, 0xFF, sizeof(std::uint32_t) * state->prey.capacity);
-  if (status) return status;
   resolve_combat_kernel<<<predator_blocks == 0U ? 1U : predator_blocks, 256U>>>( state->predator, state->prey, state->prey_claimed_by, state->prey_cell_offsets, state->prey_grid_entries, state->grid_cols, state->grid_rows, state->grid_cell_size, state->simulation.interaction_range);
+  return moonai_gpu::synchronize_kernels();
+}
+
+extern "C" std::int32_t dev_finalize_combat(DeviceState *state) {
+  if (state->predator.capacity == 0U || state->prey.capacity == 0U) {
+    return 0;
+  }
+  const auto prey_blocks = (state->prey.capacity + 255U) / 256U;
   finalize_combat_kernel<<<prey_blocks == 0U ? 1U : prey_blocks, 256U>>>( state->predator, state->prey, state->counters, state->prey_free_list, state->prey_free_len, state->prey_claimed_by, state->simulation.energy_gain_from_kill, state->simulation.max_energy);
   return moonai_gpu::synchronize_kernels();
 }
@@ -1136,7 +1168,7 @@ extern "C" std::int32_t dev_apply_movement(DeviceState *state, PopulationKind po
   return moonai_gpu::synchronize_kernels();
 }
 
-extern "C" std::int32_t dev_reproduction_candidate_count(DeviceState *state, PopulationKind population_kind, std::uint32_t *out_pair_count) {
+extern "C" std::int32_t dev_find_reproduction_pairs(DeviceState *state, PopulationKind population_kind) {
   auto &population = moonai_gpu::population_for_kind(*state, population_kind);
   auto *mate_claims = population_kind == PopulationKind::Predator ? state->predator_mate_claims : state->prey_mate_claims;
   auto *pair_buffer = population_kind == PopulationKind::Predator ? state->predator_reproduction_pairs : state->prey_reproduction_pairs;
@@ -1144,62 +1176,22 @@ extern "C" std::int32_t dev_reproduction_candidate_count(DeviceState *state, Pop
   auto *cell_offsets = population_kind == PopulationKind::Predator ? state->predator_cell_offsets : state->prey_cell_offsets;
   auto *entries = population_kind == PopulationKind::Predator ? state->predator_grid_entries : state->prey_grid_entries;
   const auto blocks = (population.capacity + 255U) / 256U;
-  reset_reproduction_state_kernel<<<blocks == 0U ? 1U : blocks, 256U>>>(mate_claims, population.capacity, pair_count_ptr);
   find_reproduction_pairs_kernel<<<blocks == 0U ? 1U : blocks, 256U>>>( population, cell_offsets, entries, state->grid_cols, state->grid_rows, state->grid_cell_size, state->simulation.mate_range, state->simulation.reproduction_energy_threshold, mate_claims, pair_buffer, pair_count_ptr);
-  auto status = moonai_gpu::synchronize_kernels();
-  if (status) return status;
-  return read_device_u32(pair_count_ptr, *out_pair_count);
+  return moonai_gpu::synchronize_kernels();
 }
 
-extern "C" std::int32_t dev_read_reproduction_pairs(const DeviceState *state, PopulationKind population_kind, std::uint32_t max_pairs, ReproductionPairReadback *out_pairs, std::uint32_t *out_returned_pairs) {
-  const auto *pair_count_ptr = population_kind == PopulationKind::Predator ? state->predator_pair_count : state->prey_pair_count;
-  const auto *pair_buffer =
-      population_kind == PopulationKind::Predator ? state->predator_reproduction_pairs : state->prey_reproduction_pairs;
-  std::uint32_t pair_count = 0U;
-  auto status = read_device_u32(pair_count_ptr, pair_count);
-  if (status) return status;
-
-  const auto returned_pairs = pair_count < max_pairs ? pair_count : max_pairs;
-  *out_returned_pairs = returned_pairs;
-  if (returned_pairs == 0U) {
-    return 0;
-  }
-
-  return moonai_gpu::copy_compact_device_readback(pair_buffer, out_pairs, sizeof(ReproductionPairReadback) * returned_pairs);
-}
-
-extern "C" std::int32_t dev_read_free_slots(const DeviceState *state, PopulationKind population_kind, std::uint32_t max_slots, std::uint32_t *out_slots, std::uint32_t *out_returned_slots) {
-  const auto *free_len_ptr = population_kind == PopulationKind::Predator ? state->predator_free_len : state->prey_free_len;
-  const auto *free_list = population_kind == PopulationKind::Predator ? state->predator_free_list : state->prey_free_list;
-  std::uint32_t free_len = 0U;
-  auto status = read_device_u32(free_len_ptr, free_len);
-  if (status) return status;
-
-  const auto returned_slots = free_len < max_slots ? free_len : max_slots;
-  *out_returned_slots = returned_slots;
-  if (returned_slots == 0U) {
-    return 0;
-  }
-
-  return moonai_gpu::copy_compact_device_readback(free_list, out_slots, sizeof(std::uint32_t) * returned_slots);
-}
-
-extern "C" std::int32_t dev_apply_reproduction_energy(DeviceState *state, PopulationKind population_kind, std::uint32_t births_applied) {
+extern "C" std::int32_t dev_apply_reproduction_energy_kernel(DeviceState *state, PopulationKind population_kind, std::uint32_t births_applied) {
   auto &population = moonai_gpu::population_for_kind(*state, population_kind);
+  if (births_applied == 0U) {
+    return 0;
+  }
+
   auto *pair_buffer = population_kind == PopulationKind::Predator ? state->predator_reproduction_pairs : state->prey_reproduction_pairs;
   auto *birth_counter = population_kind == PopulationKind::Predator ? &state->counters->predator_births : &state->counters->prey_births;
   auto *death_counter = population_kind == PopulationKind::Predator ? &state->counters->predator_deaths : &state->counters->prey_deaths;
-  if (births_applied > 0U) {
-    const auto blocks = (births_applied + 255U) / 256U;
-    apply_reproduction_energy_kernel<<<blocks == 0U ? 1U : blocks, 256U>>>(
-        population, pair_buffer, births_applied, state->simulation.reproduction_energy_cost, birth_counter, death_counter);
-    auto status = moonai_gpu::synchronize_kernels();
-    if (status) return status;
-  }
-
-  auto *free_list = population_kind == PopulationKind::Predator ? state->predator_free_list : state->prey_free_list;
-  auto *free_len = population_kind == PopulationKind::Predator ? state->predator_free_len : state->prey_free_len;
-  initialize_free_list_kernel<<<1U, 1U>>>(population, free_list, free_len);
+  const auto blocks = (births_applied + 255U) / 256U;
+  apply_reproduction_energy_kernel<<<blocks == 0U ? 1U : blocks, 256U>>>(
+      population, pair_buffer, births_applied, state->simulation.reproduction_energy_cost, birth_counter, death_counter);
   return moonai_gpu::synchronize_kernels();
 }
 
@@ -1208,86 +1200,57 @@ extern "C" std::int32_t dev_advance_tick(DeviceState *state) {
   return moonai_gpu::synchronize_kernels();
 }
 
-extern "C" std::int32_t dev_ui_stats(const DeviceState *state, UiStatsReadback *out_stats) {
+extern "C" std::int32_t dev_write_ui_stats(const DeviceState *state) {
   write_ui_stats_kernel<<<1U, 1U>>>(state->predator, state->prey, state->counters, state->ui_stats_scratch);
-  auto status = moonai_gpu::synchronize_kernels();
-  if (!status) {
-    status = moonai_gpu::copy_compact_device_readback(state->ui_stats_scratch, out_stats, sizeof(*out_stats));
-  }
-  return status;
+  return moonai_gpu::synchronize_kernels();
 }
 
-extern "C" std::int32_t dev_free_list_state(const DeviceState *state, moonai_gpu::FreeListStateReadback *out_state) {
+extern "C" std::int32_t dev_write_free_list_state(const DeviceState *state) {
   free_list_state_kernel<<<1U, 1U>>>(state->food, state->counters, state->predator_free_len, state->prey_free_len, state->free_list_state_scratch);
-  auto status = moonai_gpu::synchronize_kernels();
-  if (!status) {
-    status = moonai_gpu::copy_compact_device_readback(state->free_list_state_scratch, out_state, sizeof(*out_state));
+  return moonai_gpu::synchronize_kernels();
+}
+
+extern "C" std::int32_t dev_accumulate_metrics(DeviceState *state, PopulationKind population_kind) {
+  auto &population = moonai_gpu::population_for_kind(*state, population_kind);
+  const auto blocks = (population.capacity + 255U) / 256U;
+  if (population_kind == PopulationKind::Predator) {
+    accumulate_metrics_kernel<PopulationKind::Predator><<<blocks == 0U ? 1U : blocks, 256U>>>( population, state->metrics_reduce_scratch);
+  } else {
+    accumulate_metrics_kernel<PopulationKind::Prey><<<blocks == 0U ? 1U : blocks, 256U>>>( population, state->metrics_reduce_scratch);
   }
-  return status;
+  return moonai_gpu::synchronize_kernels();
 }
 
-extern "C" std::int32_t dev_metrics_summary(const DeviceState *state, MetricsSummaryReadback *out_summary) {
-  return moonai_gpu::copy_compact_device_readback(state->metrics_summary, out_summary, sizeof(*out_summary));
-}
-
-extern "C" std::int32_t dev_refresh_reports(DeviceState *state) {
-  moonai_gpu::SpeciesBatchReadbackHeader predator_header{};
-  moonai_gpu::SpeciesBatchReadbackHeader prey_header{};
-  auto status = dev_species_summaries(state, PopulationKind::Predator, 0U, &predator_header, nullptr, nullptr);
-  if (status) return status;
-  status = dev_species_summaries(state, PopulationKind::Prey, 0U, &prey_header, nullptr, nullptr);
-  if (status) return status;
-  status = moonai_gpu::zero_device_memory(state->metrics_reduce_scratch, sizeof(MetricsReduceScratch));
-  if (status) return status;
-  const auto predator_blocks = (state->predator.capacity + 255U) / 256U;
-  const auto prey_blocks = (state->prey.capacity + 255U) / 256U;
-  accumulate_metrics_kernel<PopulationKind::Predator><<<predator_blocks == 0U ? 1U : predator_blocks, 256U>>>( state->predator, state->metrics_reduce_scratch);
-  accumulate_metrics_kernel<PopulationKind::Prey><<<prey_blocks == 0U ? 1U : prey_blocks, 256U>>>( state->prey, state->metrics_reduce_scratch);
+extern "C" std::int32_t dev_finalize_metrics_summary(const DeviceState *state) {
   finalize_metrics_reduce_kernel<<<1U, 1U>>>(state->counters, state->metrics_reduce_scratch, state->metrics_summary);
   return moonai_gpu::synchronize_kernels();
 }
 
-extern "C" std::int32_t dev_sensor_snapshot(const DeviceState *state, PopulationKind population_kind, std::uint32_t slot, SensorSnapshotReadback *out_snapshot) {
+extern "C" std::int32_t dev_write_sensor_snapshot(const DeviceState *state, PopulationKind population_kind, std::uint32_t slot) {
   const auto &population = moonai_gpu::population_for_kind(*state, population_kind);
   sensor_snapshot_kernel<<<1U, 1U>>>(population, population_kind, slot, state->num_inputs, state->sensor_snapshot_scratch);
-  auto status = moonai_gpu::synchronize_kernels();
-  if (!status) {
-    status = moonai_gpu::copy_compact_device_readback(state->sensor_snapshot_scratch, out_snapshot, sizeof(*out_snapshot));
-  }
-  return status;
+  return moonai_gpu::synchronize_kernels();
 }
 
-extern "C" std::int32_t dev_render_snapshot(const DeviceState *state, std::uint32_t max_predators, std::uint32_t max_prey, std::uint32_t max_food, RenderSnapshotHeader *out_header, RenderAgentReadback *out_predators, RenderAgentReadback *out_prey, RenderFoodReadback *out_food) {
-  const auto predator_blocks = (state->predator.capacity + 255U) / 256U;
-  const auto prey_blocks = (state->prey.capacity + 255U) / 256U;
-  const auto food_blocks = (state->food.capacity + 255U) / 256U;
+extern "C" std::int32_t dev_initialize_render_snapshot(const DeviceState *state) {
   initialize_render_snapshot_kernel<<<1U, 1U>>>(state->counters, state->render_header_scratch);
-  pack_render_agents_kernel<PopulationKind::Predator><<<predator_blocks == 0U ? 1U : predator_blocks, 256U>>>( state->predator, max_predators, state->render_header_scratch, state->render_predators_scratch);
-  pack_render_agents_kernel<PopulationKind::Prey><<<prey_blocks == 0U ? 1U : prey_blocks, 256U>>>( state->prey, max_prey, state->render_header_scratch, state->render_prey_scratch);
+  return moonai_gpu::synchronize_kernels();
+}
+
+extern "C" std::int32_t dev_pack_render_agents(const DeviceState *state, PopulationKind population_kind, std::uint32_t max_count) {
+  const auto &population = moonai_gpu::population_for_kind(*state, population_kind);
+  auto *scratch = population_kind == PopulationKind::Predator ? state->render_predators_scratch : state->render_prey_scratch;
+  const auto blocks = (population.capacity + 255U) / 256U;
+  if (population_kind == PopulationKind::Predator) {
+    pack_render_agents_kernel<PopulationKind::Predator><<<blocks == 0U ? 1U : blocks, 256U>>>( population, max_count, state->render_header_scratch, scratch);
+  } else {
+    pack_render_agents_kernel<PopulationKind::Prey><<<blocks == 0U ? 1U : blocks, 256U>>>( population, max_count, state->render_header_scratch, scratch);
+  }
+  return moonai_gpu::synchronize_kernels();
+}
+
+extern "C" std::int32_t dev_pack_render_food(const DeviceState *state, std::uint32_t max_food) {
+  const auto food_blocks = (state->food.capacity + 255U) / 256U;
   pack_render_food_kernel<<<food_blocks == 0U ? 1U : food_blocks, 256U>>>(state->food, max_food, state->render_header_scratch, state->render_food_scratch);
-  auto status = moonai_gpu::synchronize_kernels();
-  if (!status) {
-    status = moonai_gpu::copy_compact_device_readback(state->render_header_scratch, out_header, sizeof(*out_header));
-  }
-  if (!status) {
-    if (out_header->returned_predators > max_predators) {
-      out_header->returned_predators = max_predators;
-    }
-    if (out_header->returned_prey > max_prey) {
-      out_header->returned_prey = max_prey;
-    }
-    if (out_header->returned_food > max_food) {
-      out_header->returned_food = max_food;
-    }
-  }
-  if (!status && out_header->returned_predators > 0U) {
-    status = moonai_gpu::copy_compact_device_readback(state->render_predators_scratch, out_predators, sizeof(RenderAgentReadback) * out_header->returned_predators);
-  }
-  if (!status && out_header->returned_prey > 0U) {
-    status = moonai_gpu::copy_compact_device_readback(state->render_prey_scratch, out_prey, sizeof(RenderAgentReadback) * out_header->returned_prey);
-  }
-  if (!status && out_header->returned_food > 0U) {
-    status = moonai_gpu::copy_compact_device_readback(state->render_food_scratch, out_food, sizeof(RenderFoodReadback) * out_header->returned_food);
-  }
-  return status;
+  return moonai_gpu::synchronize_kernels();
 }
