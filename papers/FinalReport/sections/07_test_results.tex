@@ -14,36 +14,41 @@ older implementation plan.
 
 \subsection{Executed Test Cases}
 
-\begin{table}[H]
-  \centering
-  \small
-  \caption{Final executed test cases and outcomes}
-  \begin{tabularx}{\textwidth}{@{}>{\ttfamily}p{1.3cm}X>{\centering\arraybackslash}p{1.5cm}p{4.3cm}@{}}
-    \toprule
-    ID & Test description & Result & Evidence and notes \\
-    \midrule
-    TR-01 & Metrics logger writes expected experiment artifacts. & Pass & Automated unit test in
-    \texttt{src/metrics.rs}; confirms \texttt{stats.csv}, \texttt{species.csv},
-    \texttt{config.json}, and \texttt{genomes.json}. \\
-    TR-02 & Profiler records nested scope trees correctly. & Pass & Automated unit test in
-    \texttt{src/profiler.rs}; confirms hierarchical scope accounting. \\
-    TR-03 & Profiler output rows preserve indentation and formatting rules. & Pass & Automated
-    unit test in \texttt{src/profiler.rs}; confirms readable profiler formatting. \\
-    TR-04 & Vision radius matches world-to-screen projection. & Pass & Automated unit test in
-    \texttt{src/ui/render.rs}; checks selected-agent overlay math. \\
-    TR-05 & Predator and prey triangle geometry remains normalized. & Pass & Automated unit test
-    in \texttt{src/ui/world.rs}; checks renderer geometry scaling. \\
-    TR-06 & Agent selection radius stays within configured bounds. & Pass & Automated unit test
-    in \texttt{src/ui/world.rs}; checks selection interaction limits. \\
-    TR-07 & Food size setting maps correctly into world-space rendering. & Pass & Automated unit
-    test in \texttt{src/ui/world.rs}; confirms UI setting propagation. \\
-    TR-08 & GUI runtime launches and renders a live experiment view. & Pass & Final screenshot
-    evidence in Figure~\ref{fig:app-screen}. \\
-    TR-09 & Analysis report generation produces a usable HTML summary. & Pass & Final screenshot
-    evidence in Figure~\ref{fig:analysis-report}. \\
-    \bottomrule
-  \end{tabularx}
-\end{table}
+\subsubsection{Automated Cases}
+
+\begin{description}[style=nextline,leftmargin=3.2cm,font=\normalfont\ttfamily]
+  \item[TR-01 --- Pass] Metrics logger writes expected experiment artifacts. Evidence:
+  automated unit test in \texttt{src/metrics.rs}; confirms \texttt{stats.csv},
+  \texttt{species.csv}, \texttt{config.json}, and \texttt{genomes.json}.
+
+  \item[TR-02 --- Pass] Profiler records nested scope trees correctly. Evidence: automated unit
+  test in \texttt{src/profiler.rs}; confirms hierarchical scope accounting.
+
+  \item[TR-03 --- Pass] Profiler output rows preserve indentation and formatting rules. Evidence:
+  automated unit test in \texttt{src/profiler.rs}; confirms readable profiler formatting.
+
+  \item[TR-04 --- Pass] Vision radius matches world-to-screen projection. Evidence: automated
+  unit test in \texttt{src/ui/render.rs}; checks selected-agent overlay math.
+
+  \item[TR-05 --- Pass] Predator and prey triangle geometry remains normalized. Evidence:
+  automated unit test in \texttt{src/ui/world.rs}; checks renderer geometry scaling.
+
+  \item[TR-06 --- Pass] Agent selection radius stays within configured bounds. Evidence:
+  automated unit test in \texttt{src/ui/world.rs}; checks selection interaction limits.
+
+  \item[TR-07 --- Pass] Food size setting maps correctly into world-space rendering. Evidence:
+  automated unit test in \texttt{src/ui/world.rs}; confirms UI setting propagation.
+\end{description}
+
+\subsubsection{Manual Cases}
+
+\begin{description}[style=nextline,leftmargin=3.2cm,font=\normalfont\ttfamily]
+  \item[TR-08 --- Pass] GUI runtime launches and renders a live experiment view. Evidence:
+  final screenshot shown in Figure~\ref{fig:app-screen}.
+
+  \item[TR-09 --- Pass] Analysis report generation produces a usable HTML summary. Evidence:
+  final screenshot shown in Figure~\ref{fig:analysis-report}.
+\end{description}
 
 \subsection{Assessment of the Results}
 

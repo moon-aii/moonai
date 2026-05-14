@@ -20,30 +20,30 @@ defines 55 named conditions and applies 5 fixed seeds to each, producing 275 see
 an additional \texttt{default} entry for ad hoc use. The experiment groups cover multiple kinds
 of study rather than only one benchmark dimension.
 
-\begin{table}[H]
-  \centering
-  \caption{Main experiment groups defined in \texttt{experiments.lua}}
-  \begin{tabularx}{\textwidth}{@{}p{3.0cm}p{3.4cm}X@{}}
-    \toprule
-    Group & Main variable & Purpose \\
-    \midrule
-    Baseline sweeps & Mutation, speciation, population size & Compare broad evolutionary behavior
-    under different default-scale pressures. \\
-    Scale experiments & Population and world size & Observe how the runtime and population
-    dynamics behave as density and total counts change. \\
-    Density experiments & World size at fixed population & Study sparse and dense ecological
-    pressure at the same agent count. \\
-    Run-length experiments & \texttt{max\_ticks} & Compare short and long runs under otherwise
-    similar conditions. \\
-    Energy/resource experiments & Food respawn and energy budget & Stress-test survival and
-    reproduction under scarce or abundant resources. \\
-    Perception and mobility & Vision, speed, interaction range & Observe how sensing and
-    movement shape survival strategies. \\
-    Complexity experiments & Add-node, add-connection, hidden-node limits & Study how network
-    growth constraints affect behavior and topology. \\
-    \bottomrule
-  \end{tabularx}
-\end{table}
+The main experiment groups are:
+
+\begin{description}[style=nextline,leftmargin=4.1cm,font=\normalfont\bfseries]
+  \item[Baseline sweeps] Vary mutation, speciation, and population size to compare broad
+  evolutionary behavior under different default-scale pressures.
+
+  \item[Scale experiments] Vary population and world size to observe how runtime behavior and
+  population dynamics change with density and total count.
+
+  \item[Density experiments] Hold population constant while changing world size to study sparse
+  and dense ecological pressure.
+
+  \item[Run-length experiments] Change \texttt{max\_ticks} to compare short and long runs under
+  otherwise similar conditions.
+
+  \item[Energy and resource experiments] Alter food respawn and energy budget parameters to stress
+  survival and reproduction under scarce or abundant resources.
+
+  \item[Perception and mobility experiments] Vary vision, speed, and interaction range to observe
+  how sensing and movement shape survival strategies.
+
+  \item[Complexity experiments] Vary add-node, add-connection, and hidden-node limits to study how
+  network growth constraints affect behavior and topology.
+\end{description}
 
 \subsection{Interactive Runtime Workflow}
 
@@ -87,25 +87,15 @@ control scopes.
 
 \subsection{Output Artifacts and Analysis Pipeline}
 
-Every run writes a structured output bundle under \texttt{output/experiments/}. The most
-important files are listed below.
+Every run writes a structured output bundle under \texttt{output/experiments/}. The primary
+artifacts are:
 
-\begin{table}[H]
-  \centering
-  \caption{Primary experiment output artifacts}
-  \begin{tabularx}{\textwidth}{@{}p{3.0cm}X@{}}
-    \toprule
-    File & Purpose \\
-    \midrule
-    \texttt{config.json} & Full configuration snapshot for the executed run. \\
-    \texttt{stats.csv} & Time-series population and complexity metrics at each report interval.
-    \\
-    \texttt{species.csv} & Species-level population summaries over time. \\
-    \texttt{genomes.json} & Representative genome snapshots including nodes and connections.
-    \\
-    \bottomrule
-  \end{tabularx}
-\end{table}
+\begin{description}[style=nextline,leftmargin=3.5cm,font=\normalfont\ttfamily]
+  \item[config.json] Full configuration snapshot for the executed run.
+  \item[stats.csv] Time-series population and complexity metrics at each report interval.
+  \item[species.csv] Species-level population summaries over time.
+  \item[genomes.json] Representative genome snapshots including nodes and connections.
+\end{description}
 
 Those artifacts feed the Python analysis package. The analysis pipeline discovers valid runs,
 groups them by condition, builds comparison plots, renders representative genomes, and writes a

@@ -9,35 +9,35 @@ to list technologies mechanically, but to explain why they were used.
 
 \subsection{Core Technology Stack}
 
-\begin{table}[H]
-  \centering
-  \caption{Main tools and technologies used in the final implementation}
-  \begin{tabularx}{\textwidth}{@{}p{2.8cm}p{2.8cm}X@{}}
-    \toprule
-    Layer & Technology & Role in MoonAI \\
-    \midrule
-    Systems language & Rust 2024 & Primary implementation language for the runtime, UI,
-    configuration, metrics, and analysis integration points \cite{rust}. \\
-    GPU execution & CUDA via \texttt{build.rs} and \texttt{cc} & Executes the hot simulation,
-    evolution, and readback path on NVIDIA GPUs \cite{cuda}. \\
-    Desktop UI & \texttt{eframe} / \texttt{egui} & Provides the application shell, controls,
-    panels, and interactive runtime workflow \cite{egui}. \\
-    GPU rendering & \texttt{wgpu} & Renders the world view and supports custom population
-    drawing in the UI \cite{wgpu}. \\
-    Runtime configuration & \texttt{mlua} & Loads \texttt{experiments.lua} so simulation
-    presets remain editable without recompilation \cite{mlua}. \\
-    Persistence & \texttt{serde} / \texttt{serde\_json} & Stores settings and exports structured
-    artifacts in JSON form \cite{serde}. \\
-    Analysis & Pandas, Matplotlib, NetworkX, Jinja2 & Loads run artifacts, computes summaries,
-    renders plots and genome diagrams, and builds self-contained HTML reports
-    \cite{pandas,matplotlib,networkx,jinja2}. \\
-    Workflow & \texttt{just}, \texttt{uv} & Standardizes build, test, and analysis commands for
-    the project workflow. \\
-    Documentation & Zensical, GitHub Pages, Mermaid, LaTeX & Publishes docs, renders diagrams,
-    and produces course reports \cite{mermaid}. \\
-    \bottomrule
-  \end{tabularx}
-\end{table}
+\begin{description}[style=nextline,leftmargin=4.0cm,font=\normalfont\bfseries]
+  \item[Systems language] Rust 2024 is the primary implementation language for the runtime, UI,
+  configuration, metrics, and analysis integration points \cite{rust}.
+
+  \item[GPU execution] CUDA via \texttt{build.rs} and \texttt{cc} executes the hot simulation,
+  evolution, and readback path on NVIDIA GPUs \cite{cuda}.
+
+  \item[Desktop UI] \texttt{eframe} and \texttt{egui} provide the application shell, controls,
+  panels, and interactive runtime workflow \cite{egui}.
+
+  \item[GPU rendering] \texttt{wgpu} renders the world view and supports custom population
+  drawing in the UI \cite{wgpu}.
+
+  \item[Runtime configuration] \texttt{mlua} loads \texttt{experiments.lua} so simulation
+  presets remain editable without recompilation \cite{mlua}.
+
+  \item[Persistence] \texttt{serde} and \texttt{serde\_json} store settings and export
+  structured artifacts in JSON form \cite{serde}.
+
+  \item[Analysis] Pandas, Matplotlib, NetworkX, and Jinja2 load run artifacts, compute
+  summaries, render plots and genome diagrams, and build self-contained HTML reports
+  \cite{pandas,matplotlib,networkx,jinja2}.
+
+  \item[Workflow] \texttt{just} and \texttt{uv} standardize build, test, and analysis commands
+  for the project workflow.
+
+  \item[Documentation] Zensical, GitHub Pages, Mermaid, and LaTeX publish docs, render
+  diagrams, and produce course reports \cite{mermaid}.
+\end{description}
 
 \subsection{Why Rust and CUDA Were Used}
 

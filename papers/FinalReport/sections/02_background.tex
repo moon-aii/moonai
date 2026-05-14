@@ -87,6 +87,45 @@ idea that verification must be treated as a first-class deliverable. The final r
 builds on those earlier documents while updating them to match the final Rust and CUDA
 implementation.
 
+\subsection{Comparable Platforms and Research Context}
+
+MoonAI was also informed by existing artificial life, digital evolution, and environment-platform
+projects. These systems are not direct predecessors of MoonAI, but they provide useful context
+for understanding what kind of contribution MoonAI makes.
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{PolyWorld.} PolyWorld is an early artificial-life ecology in which agents with
+  neural controllers evolve in a world that supports behaviors such as movement, attack, mating,
+  and feeding \cite{polyworld}. It is highly relevant to MoonAI because it demonstrates how rich,
+  emergent behavior can arise from ecological pressure and evolving neural control.
+
+  \item \textbf{Framsticks.} Framsticks is a versatile platform for modeling, simulating, and
+  evolving three-dimensional agents and their controllers \cite{framsticks}. It is broader than
+  MoonAI in embodiment and morphology, but it shares the idea that a simulation environment can
+  be a reusable research product in its own right.
+
+  \item \textbf{Avida.} Avida is one of the most influential digital evolution platforms,
+  focusing on self-replicating computer programs and controlled evolutionary experiments
+  \cite{avida}. It differs from MoonAI in substrate and task style, but it is a strong reference
+  point for how a research platform can structure experiments, measurements, and reproducibility.
+
+  \item \textbf{MABE.} MABE emphasizes modular composition of worlds, brains, genomes,
+  optimizers, and archivists \cite{mabe}. This is relevant to MoonAI because it reinforces the
+  engineering value of reusable interfaces and the idea that evolutionary computation frameworks
+  should shorten the path from hypothesis to experiment.
+
+  \item \textbf{Gymnasium and PettingZoo.} These platforms are not neuroevolution systems, but
+  they are important modern examples of environment standardization for single-agent and
+  multi-agent research \cite{gymnasium,pettingzoo}. They show the value of making environments
+  easy to use, interoperable, and reproducible. MoonAI shares that motivation, but it couples the
+  environment with a specialized GPU runtime, interactive visualization, and built-in analysis.
+\end{itemize}
+
+Looking across these systems clarifies MoonAI's niche. It is not trying to be a general API for
+all learning environments, and it is not trying to be a full morphology-evolution platform. Its
+main contribution is a focused predator-prey neuroevolution environment with integrated runtime
+inspection, exported metrics, and post-run analysis.
+
 \subsection{Research Inputs Used During the Course}
 
 The final implementation was shaped by several categories of research input.
