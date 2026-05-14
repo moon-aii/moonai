@@ -120,11 +120,6 @@ uint32_t allocate_food_buffers(FoodBuffer &food, std::uint32_t capacity) {
   return 0;
 }
 
-void free_interaction_buffers(DeviceState &state) {
-  moonai_gpu::free_array(state.food_claimed_by);
-  moonai_gpu::free_array(state.prey_claimed_by);
-}
-
 void free_spatial_grid_buffers(DeviceState &state) {
   moonai_gpu::free_array(state.predator_cell_counts);
   moonai_gpu::free_array(state.predator_cell_offsets);
@@ -228,45 +223,6 @@ uint32_t ensure_spatial_grid_buffers(DeviceState &state, std::uint32_t cell_coun
 
   state.grid_cell_capacity = cell_count;
   return 0;
-}
-
-void destroy_state(DeviceState *state) {
-  if (state == nullptr) {
-    return;
-  }
-
-  moonai_gpu::free_array(food.pos_x);
-  moonai_gpu::free_array(food.pos_y);
-  moonai_gpu::free_array(food.active);
-  food.capacity = 0U;
-
-  free_population_buffers(state->predator);
-  free_population_buffers(state->prey);
-  moonai_gpu::free_array(state->innovation);
-  moonai_gpu::free_array(state->next_entity_id);
-  moonai_gpu::free_array(state->counters);
-  moonai_gpu::free_array(state->predator_free_list);
-  moonai_gpu::free_array(state->prey_free_list);
-  moonai_gpu::free_array(state->predator_free_len);
-  moonai_gpu::free_array(state->prey_free_len);
-  free_reproduction_buffers(*state);
-  free_interaction_buffers(*state);
-  moonai_gpu::free_array(state->population_live_count_scratch);
-  moonai_gpu::free_array(state->ui_stats_scratch);
-  moonai_gpu::free_array(state->free_list_state_scratch);
-  moonai_gpu::free_array(state->sensor_snapshot_scratch);
-  moonai_gpu::free_array(state->compiled_header_scratch);
-  moonai_gpu::free_array(state->selected_network_scratch);
-  moonai_gpu::free_array(state->metrics_summary);
-  moonai_gpu::free_array(state->metrics_reduce_scratch);
-  moonai_gpu::free_array(state->species_summaries_scratch);
-  moonai_gpu::free_array(state->representative_headers_scratch);
-  moonai_gpu::free_array(state->species_count_scratch);
-  moonai_gpu::free_array(state->render_header_scratch);
-  moonai_gpu::free_array(state->render_predators_scratch);
-  moonai_gpu::free_array(state->render_prey_scratch);
-  moonai_gpu::free_array(state->render_food_scratch);
-  free_spatial_grid_buffers(*state);
 }
 
 uint32_t device_copy_bytes(void *dst, const void *src, std::size_t size) {

@@ -1,8 +1,0 @@
-flowchart LR
-    A[Thermal or RGB Frame] --> B[Scout\nYOLOv8 Detector]
-    B -->|Bounding boxes and labels| C[ROI Cropper\nOpenCV]
-    C --> D[Analyst\nQwen2-VL]
-    D --> E[Fusion Layer]
-    E --> F[Structured JSON Output]
-    E --> G[Local Dashboard]
-    E --> H[Mission Logs]

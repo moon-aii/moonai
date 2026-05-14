@@ -61,7 +61,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .include(&out_dir)
         .flag("-arch=native")
         .flag("-O2")
-        .files(&["src/sim/kernel.cu", "src/sim/crossover.cu", "src/sim/mutation.cu", "src/sim/network_compilation.cu"])
+        .files(&[
+            "src/sim/kernel.cu",
+            "src/sim/crossover.cu",
+            "src/sim/mutation.cu",
+            "src/sim/network_compilation.cu",
+            "src/sim/helpers.cu",
+        ])
         .compile("moonai_cuda");
 
     Ok(())
