@@ -1,0 +1,8 @@
+flowchart LR
+    A[experiments.lua] --> C[MoonAI executable]
+    B[settings.json] --> C
+    C --> D[UI shell and run queue]
+    D --> E[GPU simulation session]
+    E --> F[Metrics and exported artifacts]
+    F --> G[Python analysis pipeline]
+    G --> H[HTML analysis report]

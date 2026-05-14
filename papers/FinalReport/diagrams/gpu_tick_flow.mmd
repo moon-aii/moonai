@@ -1,0 +1,10 @@
+flowchart LR
+    A[Tick start] --> B[Build<br/>spatial grid]
+    B --> C[Compute<br/>sensor inputs]
+    C --> D[Run predator and prey<br/>inference]
+    D --> E[Update energy, age,<br/>and vitals]
+    E --> F[Apply<br/>movement]
+    F --> G[Resolve food and<br/>combat interactions]
+    G --> H[Select reproduction<br/>candidates]
+    H --> I[Crossover, mutate,<br/>and compile offspring]
+    I --> J[Advance counters<br/>and finish tick]

@@ -10,82 +10,144 @@ future research and productization work.
 
 \subsection{Final Status Overview}
 
-\begin{table}[H]
-  \centering
-  \caption{Final status by work package}
-  \begin{tabularx}{\textwidth}{@{}p{5.0cm}p{2.0cm}X@{}}
-    \toprule
-    Work package & Status & Notes \\
-    \midrule
-    GPU-first simulation runtime & Complete & Core tick execution, readback, and evolution path
-    are implemented. \\
-    Interactive desktop application & Complete & Experiment selection, queueing, run
-    replacement, settings control, and live inspection are implemented. \\
-    Experiment configuration system & Complete & Runtime loading from \texttt{experiments.lua}
-    and validation through \texttt{SimulationConfig} are implemented. \\
-    Output artifact generation & Complete & Configuration, metrics, species, and genome exports
-    are implemented. \\
-    Analysis and reporting pipeline & Complete & HTML analysis generation from run artifacts is
-    implemented. \\
-    Documentation website & Complete & GitHub Pages site and project documentation are
-    available. \\
-    Broad end-to-end automation & Partial & Automated unit coverage exists, but wider system
-    smoke automation can still be improved. \\
-    \bottomrule
-  \end{tabularx}
-\end{table}
+The final status of the project is best understood as a delivered platform with a few clearly
+identified extension points, rather than as a partially assembled prototype. The following work
+packages are complete in the final repository snapshot.
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{GPU-first simulation runtime --- Complete.} Core tick execution, readback,
+  evolution, and export refresh logic are implemented.
+
+  \item \textbf{Interactive desktop application --- Complete.} Experiment selection, queueing,
+  run replacement, settings control, and selected-agent inspection are implemented.
+
+  \item \textbf{Experiment configuration system --- Complete.} Runtime loading from
+  \texttt{experiments.lua}, injected defaults, and validation through
+  \texttt{SimulationConfig} are implemented.
+
+  \item \textbf{Output artifact generation --- Complete.} Configuration, metrics, species, and
+  genome exports are implemented.
+
+  \item \textbf{Analysis and reporting pipeline --- Complete.} HTML analysis generation from run
+  artifacts is implemented.
+
+  \item \textbf{Documentation website --- Complete.} The GitHub Pages site and linked project
+  reports are available.
+
+  \item \textbf{Broad end-to-end automation --- Partial.} Automated unit coverage exists, but
+  wider system smoke automation can still be improved.
+\end{itemize}
+
+An important status point is that the final project is centered on the simulation environment.
+The success criterion is therefore not only whether one evolved agent looks good in one run. The
+success criterion is whether the platform supports repeatable experimentation, observation,
+artifact generation, and analysis. On that criterion, the project is complete.
+
+\subsection{Delivered Capabilities}
+
+The final delivered capabilities can be summarized as follows:
+
+\begin{itemize}[nosep]
+  \item configurable experiment definitions with large prebuilt condition sets,
+  \item live simulation viewing with interactive controls,
+  \item queue-based run management inside the application,
+  \item structured export of run data for later comparison,
+  \item post-run HTML analysis generation,
+  \item public source and documentation availability.
+\end{itemize}
+
+These capabilities are important because they show that the final product is more than a code
+demo. It is a usable experimentation workflow with a documented runtime and a reproducible output
+format.
 
 \subsection{Project Availability}
 
 The project is publicly available through both its source repository and its documentation site.
 
-\begin{table}[H]
-  \centering
-  \caption{Project URLs required for the final report}
-  \begin{tabularx}{\textwidth}{@{}p{4.0cm}X@{}}
-    \toprule
-    Item & URL \\
-    \midrule
-    GitHub repository & \url{https://github.com/moon-aii/moonai} \\
-    GitHub Pages documentation & \url{https://moon-aii.github.io/moonai/} \\
-    \bottomrule
-  \end{tabularx}
-\end{table}
+\begin{itemize}[leftmargin=*]
+  \item \textbf{GitHub repository:} \url{https://github.com/moon-aii/moonai}
+  \item \textbf{GitHub Pages documentation:} \url{https://moon-aii.github.io/moonai/}
+\end{itemize}
 
 These links provide access to the source code, documentation, and report artifacts published by
-the team.
+the team. They also make the project easier to continue after the course because future users can
+trace both the implementation and the associated documentation from one public location.
+
+\subsection{Submission and Distribution Materials}
+
+The final project package now consists of more than the executable source code. The practical
+submission value comes from the combination of:
+
+\begin{itemize}[nosep]
+  \item the Rust and CUDA codebase,
+  \item runtime assets such as \texttt{experiments.lua} and \texttt{settings.json},
+  \item documentation under \texttt{docs/},
+  \item the Python analysis package,
+  \item the course report set under \texttt{papers/}.
+\end{itemize}
+
+This package is useful because it preserves not only the final program, but also the context
+required to understand, run, and extend it.
 
 \subsection{Current Limitations}
 
 The final project still has several clear limitations.
 
-\begin{itemize}[nosep]
-  \item The runtime currently depends on CUDA-capable NVIDIA hardware for its intended hot-path
-    execution model.
-  \item The automated test suite is useful, but still lighter on full end-to-end GPU validation
-    than on host-side logic.
-  \item The project is optimized for local execution and study, not for distributed experiment
-    scheduling or multi-user orchestration.
-  \item The project's main focus is the simulation environment, so conclusions about the quality
-    of individual evolved behaviors must remain conservative.
+\begin{itemize}[leftmargin=*]
+  \item \textbf{CUDA hardware dependence.} The runtime currently depends on CUDA-capable NVIDIA
+  hardware for its intended hot-path execution model. This is consistent with the design goal,
+  but it limits portability.
+
+  \item \textbf{Verification depth.} The automated test suite is useful, but still lighter on full
+  end-to-end GPU validation than on host-side logic and output formatting.
+
+  \item \textbf{Single-machine workflow.} The project is optimized for local execution and study,
+  not for distributed experiment scheduling, cluster orchestration, or shared remote services.
+
+  \item \textbf{Benchmark interpretation.} The project's main focus is the simulation
+  environment, so conclusions about the quality of individual evolved behaviors must remain
+  conservative and environment-specific.
 \end{itemize}
+
+These limitations are important to state clearly because they define the maturity of the current
+system. The project is strong as a research platform and capstone deliverable, but it is not yet
+trying to solve every deployment scenario.
 
 \subsection{Future Work}
 
-The most valuable future extensions are:
+The most valuable future extensions are listed below, with each item corresponding to an actual
+engineering direction rather than a generic wish list.
 
-\begin{enumerate}[nosep]
-  \item add stronger end-to-end GPU invariant and determinism tests,
-  \item extend artifact comparison and regression tooling across experiment batches,
-  \item improve automation for long-running experiment suites,
-  \item expand interactive analysis features for selected agents and species trends,
-  \item investigate additional evolutionary strategies and environment variants on top of the
-    current runtime.
+\begin{enumerate}[leftmargin=*]
+  \item \textbf{Stronger GPU-side verification.} Add end-to-end invariant checks and
+  determinism-oriented regression tests for compact readbacks.
+
+  \item \textbf{Artifact comparison and regression tooling.} Extend analysis support so whole
+  experiment batches can be compared and regression-checked more automatically.
+
+  \item \textbf{Long-running suite automation.} Improve the workflow around repeated seeded runs,
+  especially when many conditions must be executed and summarized together.
+
+  \item \textbf{Richer interactive inspection.} Expand the UI and analysis features for selected
+  agents, species history, and population trend exploration.
+
+  \item \textbf{Extended environment variants.} Investigate additional evolutionary strategies,
+  agent roles, or environmental rules on top of the current runtime.
 \end{enumerate}
+
+Each of these directions builds on the existing platform rather than replacing it. That is a good
+sign for the final architecture: the current implementation is stable enough to serve as a base
+for later work.
 
 \subsection{Overall Final Assessment}
 
 The overall final assessment of MoonAI is positive. The project successfully delivered a
 high-performance simulation platform for studying neuroevolution in a predator-prey world,
-along with an interactive UI, structured artifacts, and analysis tooling. The final result is a
-useful experimental environment and a credible engineering capstone product.
+along with an interactive UI, structured artifacts, and analysis tooling. Just as importantly,
+the final result is coherent: the runtime, exports, documentation, and reports all support the
+same central purpose.
+
+For a senior project, that coherence matters. MoonAI does not present a disconnected collection
+of technical pieces. It presents a complete experimental environment for studying machine
+learning through simulation. That is the main reason the project should be considered a
+successful final capstone outcome.

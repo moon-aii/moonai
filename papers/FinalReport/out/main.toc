@@ -5,47 +5,60 @@
 \contentsline {subsection}{\numberline {1.3}Project Context}{4}{subsection.1.3}%
 \contentsline {subsection}{\numberline {1.4}Scope of This Report}{4}{subsection.1.4}%
 \contentsline {section}{\numberline {2}Background, Related Work, and Research Inputs}{4}{section.2}%
-\contentsline {subsection}{\numberline {2.1}Neuroevolution and Predator-Prey Simulation}{4}{subsection.2.1}%
-\contentsline {subsection}{\numberline {2.2}Why a Synthetic Environment Matters}{5}{subsection.2.2}%
-\contentsline {subsection}{\numberline {2.3}Related Engineering Inputs}{5}{subsection.2.3}%
-\contentsline {subsection}{\numberline {2.4}Use of Library and Internet Resources}{5}{subsection.2.4}%
-\contentsline {section}{\numberline {3}Requirements, Constraints, and Final Scope}{6}{section.3}%
-\contentsline {subsection}{\numberline {3.1}Functional Requirements}{6}{subsection.3.1}%
-\contentsline {subsection}{\numberline {3.2}Non-Functional Requirements}{6}{subsection.3.2}%
-\contentsline {subsection}{\numberline {3.3}Project Constraints}{7}{subsection.3.3}%
-\contentsline {subsection}{\numberline {3.4}Final Scope Boundaries}{7}{subsection.3.4}%
-\contentsline {section}{\numberline {4}Final System Architecture and Design}{7}{section.4}%
-\contentsline {subsection}{\numberline {4.1}Architecture Overview}{7}{subsection.4.1}%
-\contentsline {subsection}{\numberline {4.2}Module Decomposition}{8}{subsection.4.2}%
-\contentsline {subsection}{\numberline {4.3}GPU-First Tick Flow}{9}{subsection.4.3}%
-\contentsline {subsection}{\numberline {4.4}Design Rationale}{10}{subsection.4.4}%
-\contentsline {section}{\numberline {5}Simulation Environment, Experiment Workflow, and Outputs}{10}{section.5}%
-\contentsline {subsection}{\numberline {5.1}Experiment Definition and Parameter Space}{10}{subsection.5.1}%
-\contentsline {subsection}{\numberline {5.2}Interactive Runtime Workflow}{11}{subsection.5.2}%
-\contentsline {subsection}{\numberline {5.3}Selected-Agent Inspection and Observability}{12}{subsection.5.3}%
-\contentsline {subsection}{\numberline {5.4}Output Artifacts and Analysis Pipeline}{12}{subsection.5.4}%
-\contentsline {section}{\numberline {6}Implementation, Tools, and Technologies}{13}{section.6}%
-\contentsline {subsection}{\numberline {6.1}Core Technology Stack}{14}{subsection.6.1}%
-\contentsline {subsection}{\numberline {6.2}Why Rust and CUDA Were Used}{14}{subsection.6.2}%
-\contentsline {subsection}{\numberline {6.3}Why the UI Stack Matters}{14}{subsection.6.3}%
-\contentsline {subsection}{\numberline {6.4}Why the Analysis Stack Matters}{15}{subsection.6.4}%
-\contentsline {subsection}{\numberline {6.5}Supporting Engineering Tools Used During the Course}{15}{subsection.6.5}%
-\contentsline {section}{\numberline {7}Test Results}{15}{section.7}%
-\contentsline {subsection}{\numberline {7.1}Executed Test Cases}{16}{subsection.7.1}%
-\contentsline {subsection}{\numberline {7.2}Assessment of the Results}{16}{subsection.7.2}%
-\contentsline {subsection}{\numberline {7.3}Bugs, Risks, and Potential Enhancements}{17}{subsection.7.3}%
-\contentsline {section}{\numberline {8}Engineering Impact, Ethics, and Contemporary Issues}{17}{section.8}%
-\contentsline {subsection}{\numberline {8.1}Global Impact}{17}{subsection.8.1}%
-\contentsline {subsection}{\numberline {8.2}Economic Impact}{17}{subsection.8.2}%
-\contentsline {subsection}{\numberline {8.3}Environmental Impact}{18}{subsection.8.3}%
-\contentsline {subsection}{\numberline {8.4}Societal and Ethical Impact}{18}{subsection.8.4}%
-\contentsline {subsection}{\numberline {8.5}Contemporary Issues Related to the Project Topic}{18}{subsection.8.5}%
-\contentsline {subsection}{\numberline {8.6}Professional Responsibility}{19}{subsection.8.6}%
-\contentsline {section}{\numberline {9}Final Project Status, Availability, and Future Work}{19}{section.9}%
-\contentsline {subsection}{\numberline {9.1}Final Status Overview}{19}{subsection.9.1}%
-\contentsline {subsection}{\numberline {9.2}Project Availability}{19}{subsection.9.2}%
-\contentsline {subsection}{\numberline {9.3}Current Limitations}{20}{subsection.9.3}%
-\contentsline {subsection}{\numberline {9.4}Future Work}{20}{subsection.9.4}%
-\contentsline {subsection}{\numberline {9.5}Overall Final Assessment}{20}{subsection.9.5}%
-\contentsline {section}{\numberline {10}Glossary}{21}{section.10}%
-\contentsline {section}{References}{22}{section*.13}%
+\contentsline {subsection}{\numberline {2.1}Neuroevolution, Complexification, and Speciation}{4}{subsection.2.1}%
+\contentsline {subsection}{\numberline {2.2}Predator-Prey Worlds as Research Testbeds}{5}{subsection.2.2}%
+\contentsline {subsection}{\numberline {2.3}Why a Synthetic Environment Matters}{5}{subsection.2.3}%
+\contentsline {subsection}{\numberline {2.4}Related Work and Design Perspective}{6}{subsection.2.4}%
+\contentsline {subsection}{\numberline {2.5}Research Inputs Used During the Course}{6}{subsection.2.5}%
+\contentsline {subsection}{\numberline {2.6}Use of Library and Internet Resources}{6}{subsection.2.6}%
+\contentsline {section}{\numberline {3}Requirements, Constraints, and Final Scope}{7}{section.3}%
+\contentsline {subsection}{\numberline {3.1}Functional Requirements}{7}{subsection.3.1}%
+\contentsline {subsection}{\numberline {3.2}Non-Functional Requirements}{8}{subsection.3.2}%
+\contentsline {subsection}{\numberline {3.3}Project Constraints}{8}{subsection.3.3}%
+\contentsline {subsection}{\numberline {3.4}Final Scope Boundaries}{8}{subsection.3.4}%
+\contentsline {section}{\numberline {4}Final System Architecture and Design}{9}{section.4}%
+\contentsline {subsection}{\numberline {4.1}High-Level Architecture}{9}{subsection.4.1}%
+\contentsline {subsection}{\numberline {4.2}Runtime Control and Run Lifecycle}{9}{subsection.4.2}%
+\contentsline {subsection}{\numberline {4.3}Module Responsibilities}{10}{subsection.4.3}%
+\contentsline {subsection}{\numberline {4.4}GPU Tick Execution}{10}{subsection.4.4}%
+\contentsline {subsection}{\numberline {4.5}Export and Analysis Flow}{11}{subsection.4.5}%
+\contentsline {subsection}{\numberline {4.6}Design Rationale}{11}{subsection.4.6}%
+\contentsline {section}{\numberline {5}Simulation Environment, Experiment Workflow, and Outputs}{11}{section.5}%
+\contentsline {subsection}{\numberline {5.1}Experiment Definition and Parameter Space}{12}{subsection.5.1}%
+\contentsline {subsection}{\numberline {5.2}Interactive Runtime Workflow}{12}{subsection.5.2}%
+\contentsline {subsection}{\numberline {5.3}Selected-Agent Inspection and Observability}{13}{subsection.5.3}%
+\contentsline {subsection}{\numberline {5.4}Output Artifacts and Analysis Pipeline}{14}{subsection.5.4}%
+\contentsline {section}{\numberline {6}Implementation, Tools, and Technologies}{15}{section.6}%
+\contentsline {subsection}{\numberline {6.1}Core Technology Stack}{16}{subsection.6.1}%
+\contentsline {subsection}{\numberline {6.2}Why Rust and CUDA Were Used}{16}{subsection.6.2}%
+\contentsline {subsection}{\numberline {6.3}Why the UI Stack Matters}{16}{subsection.6.3}%
+\contentsline {subsection}{\numberline {6.4}Why the Analysis Stack Matters}{17}{subsection.6.4}%
+\contentsline {subsection}{\numberline {6.5}Supporting Engineering Tools Used During the Course}{17}{subsection.6.5}%
+\contentsline {section}{\numberline {7}Test Results}{17}{section.7}%
+\contentsline {subsection}{\numberline {7.1}Executed Test Cases}{18}{subsection.7.1}%
+\contentsline {subsection}{\numberline {7.2}Assessment of the Results}{18}{subsection.7.2}%
+\contentsline {subsection}{\numberline {7.3}Bugs, Risks, and Potential Enhancements}{19}{subsection.7.3}%
+\contentsline {section}{\numberline {8}Engineering Impact, Ethics, and Contemporary Issues}{19}{section.8}%
+\contentsline {subsection}{\numberline {8.1}Global Impact}{19}{subsection.8.1}%
+\contentsline {subsection}{\numberline {8.2}Economic Impact}{20}{subsection.8.2}%
+\contentsline {subsection}{\numberline {8.3}Environmental Impact}{20}{subsection.8.3}%
+\contentsline {subsection}{\numberline {8.4}Societal and Ethical Impact}{21}{subsection.8.4}%
+\contentsline {subsection}{\numberline {8.5}Contemporary Issues Related to the Project Topic}{21}{subsection.8.5}%
+\contentsline {subsubsection}{\numberline {8.5.1}Reproducibility in AI Research}{21}{subsubsection.8.5.1}%
+\contentsline {subsubsection}{\numberline {8.5.2}Simulation-to-Reality Gap}{21}{subsubsection.8.5.2}%
+\contentsline {subsubsection}{\numberline {8.5.3}Compute Concentration and Access Inequality}{22}{subsubsection.8.5.3}%
+\contentsline {subsubsection}{\numberline {8.5.4}Open-Source Governance}{22}{subsubsection.8.5.4}%
+\contentsline {subsubsection}{\numberline {8.5.5}Explainability of Adaptive Systems}{22}{subsubsection.8.5.5}%
+\contentsline {subsection}{\numberline {8.6}Professional Responsibility}{22}{subsection.8.6}%
+\contentsline {section}{\numberline {9}Final Project Status, Availability, and Future Work}{22}{section.9}%
+\contentsline {subsection}{\numberline {9.1}Final Status Overview}{22}{subsection.9.1}%
+\contentsline {subsection}{\numberline {9.2}Delivered Capabilities}{23}{subsection.9.2}%
+\contentsline {subsection}{\numberline {9.3}Project Availability}{23}{subsection.9.3}%
+\contentsline {subsection}{\numberline {9.4}Submission and Distribution Materials}{24}{subsection.9.4}%
+\contentsline {subsection}{\numberline {9.5}Current Limitations}{24}{subsection.9.5}%
+\contentsline {subsection}{\numberline {9.6}Future Work}{24}{subsection.9.6}%
+\contentsline {subsection}{\numberline {9.7}Overall Final Assessment}{25}{subsection.9.7}%
+\contentsline {section}{\numberline {10}Glossary}{25}{section.10}%
+\contentsline {subsection}{\numberline {10.1}Evolution Terms}{25}{subsection.10.1}%
+\contentsline {subsection}{\numberline {10.2}Runtime and Analysis Terms}{26}{subsection.10.2}%
+\contentsline {section}{References}{27}{section*.11}%

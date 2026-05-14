@@ -4,70 +4,139 @@
 % -----------------------------------------------------------------------------
 
 MoonAI sits at the intersection of neuroevolution, artificial life simulation, GPU computing,
-and interactive experiment tooling. The final design was shaped by both academic background
-and practical engineering references.
+and experiment tooling. The final design did not come from a single paper or a single existing
+application. Instead, it emerged from a combination of academic ideas, internal project design
+iterations, and practical software engineering references.
 
-\subsection{Neuroevolution and Predator-Prey Simulation}
+\subsection{Neuroevolution, Complexification, and Speciation}
 
-The underlying learning approach is NeuroEvolution of Augmenting Topologies (NEAT), which
-evolves both neural network weights and network structure over time \cite{neat2002}. NEAT is
-relevant to MoonAI because the project is concerned with adaptation under pressure, not only
-with parameter fitting inside a fixed model architecture.
+The core learning approach is NeuroEvolution of Augmenting Topologies (NEAT), which evolves
+both neural network weights and network structure over time \cite{neat2002}. This matters for
+MoonAI because the project is not trying to optimize a fixed neural model for a static labeled
+dataset. It is trying to observe how behavior changes when agents must survive in a dynamic
+environment and when the network itself is allowed to become more or less complex.
 
-Predator-prey worlds are a natural fit for this kind of study. They create coevolutionary
-pressure, local competition, and non-stationary behavior: the quality of a strategy depends on
-what other agents are doing at the same time. This makes the environment useful for observing
-emergent behavior, species diversity, and topology growth under changing conditions.
+Two NEAT ideas are especially relevant to the final system. The first is
+\emph{complexification}: networks do not need to start large. They can start from simpler forms
+and gain structure through mutation when the environment rewards it. The second is
+\emph{speciation}: structurally different genomes can be grouped so that new innovations are not
+immediately eliminated by competition with already-optimized lineages. In MoonAI, these ideas
+are important because predator and prey populations are both adapting at the same time. Without
+some form of innovation protection, short-term pressure could dominate the experiment and reduce
+the value of the platform as a research environment.
+
+\subsection{Predator-Prey Worlds as Research Testbeds}
+
+Predator-prey worlds are attractive research testbeds because they produce continual selective
+pressure. Agents do not merely solve one puzzle and stop. They must keep responding to other
+agents, resource availability, and reproduction constraints. The quality of a strategy is
+therefore relational and time-dependent. A behavior that is strong under one ecological balance
+may become weak after another species or another lineage adapts.
+
+This makes the environment useful for studying:
+
+\begin{itemize}[nosep]
+  \item emergent behavior rather than hard-coded policy scripts,
+  \item species diversity and compatibility effects,
+  \item topology growth under ecological pressure,
+  \item long-horizon adaptation instead of single-step optimization,
+  \item how parameter changes alter population-level outcomes over repeated runs.
+\end{itemize}
+
+For the purposes of this project, that is more important than reporting one headline machine
+learning score. MoonAI is intended to be a controlled environment for observing adaptive
+processes, not merely a showcase for one evolved agent.
 
 \subsection{Why a Synthetic Environment Matters}
 
-The project deliberately prioritizes a synthetic environment over a pre-collected dataset.
-That decision has several research advantages:
+The project deliberately prioritizes a synthetic environment over a pre-collected supervised
+dataset. That choice shapes the entire engineering direction of the final system. In a dataset-
+driven project, the main engineering effort often goes toward training pipelines, evaluation
+metrics, and model selection for one external task. In MoonAI, the engineering effort instead
+goes toward world rules, runtime scalability, observability, and experiment management.
+
+This choice has several research advantages:
 
 \begin{itemize}[nosep]
   \item the environment generates its own behavior traces and metrics,
   \item experiments can be rerun with fixed seeds and controlled parameter sweeps,
   \item selective pressure is explicit and configurable,
-  \item the benchmark can be extended without collecting external labeled data.
+  \item the benchmark can be extended without collecting external labeled data,
+  \item the same runtime can be used to study many conditions instead of one frozen scenario.
 \end{itemize}
 
-This does not make synthetic environments universally superior to real data. Instead, it makes
-them appropriate for a different class of questions: questions about adaptation, dynamics,
-policy diversity, and algorithmic behavior under repeated interaction.
+At the same time, the synthetic-environment approach also creates a responsibility: results must
+be interpreted in the context of the environment assumptions. A successful lineage in MoonAI is
+evidence about behavior under the rules of MoonAI. It is not automatically evidence about some
+different real-world task. This limitation does not weaken the project; it clarifies what kind
+of scientific and engineering claim the system is designed to support.
 
-\subsection{Related Engineering Inputs}
+\subsection{Related Work and Design Perspective}
 
-The final implementation was also shaped by practical design inputs rather than by a single
-prior system. The team relied on official documentation and mature open-source ecosystems for:
+From a design perspective, MoonAI is closer to a research platform than to a narrow predictive
+service. It combines a simulation runtime, an evolution engine, an interactive user interface,
+structured data export, and a post-run analysis pipeline. Many projects use one or two of these
+elements in isolation. MoonAI brings them together so experiments can be configured, executed,
+observed, exported, and compared inside one coherent workflow.
+
+The internal reports produced earlier in the course were also important research inputs. The
+project proposal established the motivation for a simulation-based learning environment. The
+high-level and low-level design reports helped define module boundaries and data flow. The test
+plan report, even though parts of the implementation changed later, still helped preserve the
+idea that verification must be treated as a first-class deliverable. The final report therefore
+builds on those earlier documents while updating them to match the final Rust and CUDA
+implementation.
+
+\subsection{Research Inputs Used During the Course}
+
+The final implementation was shaped by several categories of research input.
+
+\begin{itemize}[nosep]
+  \item \textbf{Academic input.} The main academic input was the NEAT literature and the broader
+    study of adaptive multi-agent behavior in evolving environments.
+  \item \textbf{Internal design input.} Earlier project reports and the repository documentation
+    under \texttt{docs/} were used to preserve architectural intent and keep later code changes
+    aligned with the project's original goals.
+  \item \textbf{Engineering documentation.} Official documentation was used to evaluate and
+    integrate the final technology stack.
+  \item \textbf{Code-level exploration.} The final codebase itself served as a research artifact;
+    it exposed what information needed to be exported, which parts of the system needed user
+    control, and where runtime complexity was concentrated.
+\end{itemize}
+
+This mixture of sources is typical for a senior design project. The final product is not only a
+translation of theory into code; it is also the result of iterative design decisions made under
+real implementation constraints.
+
+\subsection{Use of Library and Internet Resources}
+
+Library and Internet resources were used in several concrete ways during the course.
+
+\begin{enumerate}[nosep]
+  \item to study background concepts such as neuroevolution, speciation, and evolutionary
+    computation,
+  \item to evaluate technology choices for GPU execution, UI rendering, serialization, and
+    report generation,
+  \item to check component APIs, version compatibility, and workflow constraints,
+  \item to examine examples and recommended patterns for graphics, configuration, and analysis
+    tooling,
+  \item to document and visualize the final system using GitHub Pages, LaTeX, and Mermaid
+    diagrams \cite{mermaid}.
+\end{enumerate}
+
+In practice, the team relied on official documentation and mature open-source ecosystems for:
 
 \begin{itemize}[nosep]
   \item Rust systems programming and package management \cite{rust},
   \item CUDA kernel programming and host-device orchestration \cite{cuda},
-  \item immediate-mode desktop UI and GPU rendering through \texttt{egui}, \texttt{eframe},
-    and \texttt{wgpu} \cite{egui,wgpu},
+  \item immediate-mode desktop UI and GPU rendering through \texttt{egui}, \texttt{eframe}, and
+    \texttt{wgpu} \cite{egui,wgpu},
   \item Lua-based runtime configuration through \texttt{mlua} \cite{mlua},
   \item JSON serialization and persistence through \texttt{serde} \cite{serde},
   \item post-run analysis and report generation through Pandas, Matplotlib, NetworkX, and
     Jinja2 \cite{pandas,matplotlib,networkx,jinja2}.
 \end{itemize}
 
-These sources were used to understand component behavior, data handling, rendering patterns,
-and reporting workflows. They informed the project architecture, but the final integration and
-runtime behavior are specific to MoonAI.
-
-\subsection{Use of Library and Internet Resources}
-
-Library and Internet resources were used in four main ways during the course:
-
-\begin{enumerate}[nosep]
-  \item to study background concepts such as NEAT and evolutionary computation,
-  \item to evaluate technology choices for GPU execution, UI rendering, serialization, and
-    report generation,
-  \item to check component APIs, version compatibility, and workflow constraints,
-  \item to document and visualize the final system using GitHub Pages, LaTeX, and Mermaid
-    diagrams \cite{mermaid}.
-\end{enumerate}
-
 The project therefore depends on both academic references and engineering documentation. The
-academic literature explains why the problem is interesting; the technical references explain
-how the system can be implemented reliably.
+academic literature explains why the problem is worth studying; the technical references explain
+how to build the environment in a way that is robust, inspectable, and repeatable.

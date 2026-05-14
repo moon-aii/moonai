@@ -1,0 +1,16 @@
+flowchart LR
+    A[Launch application] --> B[Load experiments and settings]
+    B --> C[Open UI shell]
+    C --> D[Select preset and edit draft]
+    D --> E{Start now or queue?}
+    E -->|Start now| F[Create or replace run session]
+    E -->|Queue| G[Append queued run]
+    G --> H{Active run exists?}
+    H -->|No| F
+    H -->|Yes| I[Wait in queue]
+    F --> J[Drive ticks and render frames]
+    J --> K{Run finished, stopped, or replaced?}
+    K -->|Yes| L[Record run history and output path]
+    L --> M{More queued runs?}
+    M -->|Yes| F
+    M -->|No| N[Idle until next request]

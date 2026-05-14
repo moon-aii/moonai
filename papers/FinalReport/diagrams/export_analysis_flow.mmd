@@ -1,0 +1,8 @@
+flowchart LR
+    A[Report interval reached] --> B[Refresh GPU-side<br/>metric summaries]
+    B --> C[Read compact export<br/>data to host]
+    C --> D[Write config, stats,<br/>species, and genome artifacts]
+    D --> E[Discover valid<br/>run directories]
+    E --> F[Group runs<br/>by condition]
+    F --> G[Generate plots and<br/>representative genome views]
+    G --> H[Render self-contained<br/>HTML report]
