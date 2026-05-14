@@ -9,7 +9,6 @@
 using moonai_gpu::DeviceInnovationState;
 using moonai_gpu::DevicePopulationBuffers;
 using moonai_gpu::FoodBuffer;
-using moonai_gpu::GpuEvolutionConfig;
 using moonai_gpu::DeviceState;
 using moonai_gpu::PopulationKind;
 using moonai_gpu::RenderAgentReadback;
@@ -1349,8 +1348,8 @@ uint32_t read_device_u32(const std::uint32_t *device_ptr, std::uint32_t &host_va
 
 extern "C" std::int32_t dev_create(DeviceState *state) {
   for (auto status : {
-           allocate_population_buffers(state->predator, state->simulation.predator_count, state->config.num_inputs, state->config.node_stride, state->config.connection_stride, state->config.num_outputs),
-           allocate_population_buffers(state->prey, state->simulation.prey_count, state->config.num_inputs, state->config.node_stride, state->config.connection_stride, state->config.num_outputs),
+           allocate_population_buffers(state->predator, state->simulation.predator_count, state->num_inputs, state->node_stride, state->connection_stride, state->num_outputs),
+           allocate_population_buffers(state->prey, state->simulation.prey_count, state->num_inputs, state->node_stride, state->connection_stride, state->num_outputs),
            moonai_gpu::alloc_array(&state->innovation, 1U),
            moonai_gpu::alloc_array(&state->next_entity_id, 1U),
            moonai_gpu::alloc_array(&state->population_live_count_scratch, 1U),
@@ -1369,7 +1368,7 @@ extern "C" std::int32_t dev_create(DeviceState *state) {
            moonai_gpu::alloc_array(&state->render_prey_scratch, state->simulation.prey_count),
          }) {
     if (status) {
-      // destroy_state(state);
+      destroy_state(state);
       return status;
     }
   }
@@ -1380,12 +1379,12 @@ extern "C" std::int32_t dev_create(DeviceState *state) {
 extern "C" std::int32_t dev_seed_initial_population(DeviceState *state) {
   const auto predator_blocks = (state->predator.capacity + 255U) / 256U;
   const auto prey_blocks = (state->prey.capacity + 255U) / 256U;
-  seed_population_kernel<<<predator_blocks == 0U ? 1U : predator_blocks, 256U>>>(state->predator, state->simulation.predator_count, 1U, state->config.seed, state->config.num_inputs, state->config.num_outputs, state->config.world_size, state->config.initial_energy, state->config.max_energy, PopulationKind::Predator);
-  seed_population_kernel<<<prey_blocks == 0U ? 1U : prey_blocks, 256U>>>(state->prey, state->simulation.prey_count, state->simulation.predator_count + 1U, state->config.seed ^ 0x9e3779b97f4a7c15ULL, state->config.num_inputs, state->config.num_outputs, state->config.world_size, state->config.initial_energy, state->config.max_energy, PopulationKind::Prey);
+  seed_population_kernel<<<predator_blocks == 0U ? 1U : predator_blocks, 256U>>>(state->predator, state->simulation.predator_count, 1U, state->simulation.seed, state->num_inputs, state->num_outputs, state->simulation.grid_size, state->simulation.initial_energy, state->simulation.max_energy, PopulationKind::Predator);
+  seed_population_kernel<<<prey_blocks == 0U ? 1U : prey_blocks, 256U>>>(state->prey, state->simulation.prey_count, state->simulation.predator_count + 1U, state->simulation.seed ^ 0x9e3779b97f4a7c15ULL, state->num_inputs, state->num_outputs, state->simulation.grid_size, state->simulation.initial_energy, state->simulation.max_energy, PopulationKind::Prey);
   auto status = moonai_gpu::synchronize_kernels();
   if (status) return status;
 
-  const DeviceInnovationState innovation_state{(state->config.num_inputs + 1U) * state->config.num_outputs, state->config.num_inputs + state->config.num_outputs + 1U};
+  const DeviceInnovationState innovation_state{(state->num_inputs + 1U) * state->num_outputs, state->num_inputs + state->num_outputs + 1U};
   status = moonai_gpu::copy_host_data_to_device(state->innovation, &innovation_state, sizeof(innovation_state));
   if (status) return status;
 
@@ -1528,12 +1527,12 @@ extern "C" std::int32_t dev_compute_sensor_inputs(DeviceState *state) {
   compute_sensor_inputs_kernel<true><<<predator_blocks == 0U ? 1U : predator_blocks, 256U>>>(
       state->predator, state->predator_cell_offsets, state->predator_grid_entries, state->prey_cell_offsets,
       state->prey_grid_entries, state->food_cell_offsets, state->food_grid_entries, state->grid_cols, state->grid_rows,
-      state->grid_cell_size, state->config.num_inputs, state->simulation.vision_range, state->simulation.max_energy,
+      state->grid_cell_size, state->num_inputs, state->simulation.vision_range, state->simulation.max_energy,
       state->simulation.predator_speed, state->simulation.grid_size);
   compute_sensor_inputs_kernel<false><<<prey_blocks == 0U ? 1U : prey_blocks, 256U>>>(
       state->prey, state->predator_cell_offsets, state->predator_grid_entries, state->prey_cell_offsets,
       state->prey_grid_entries, state->food_cell_offsets, state->food_grid_entries, state->grid_cols, state->grid_rows,
-      state->grid_cell_size, state->config.num_inputs, state->simulation.vision_range, state->simulation.max_energy,
+      state->grid_cell_size, state->num_inputs, state->simulation.vision_range, state->simulation.max_energy,
       state->simulation.prey_speed, state->simulation.grid_size);
   return static_cast<std::int32_t>(moonai_gpu::synchronize_kernels());
 }
@@ -1541,7 +1540,7 @@ extern "C" std::int32_t dev_compute_sensor_inputs(DeviceState *state) {
 extern "C" std::int32_t dev_infer_population(DeviceState *state, PopulationKind population_kind) {
   auto &population = moonai_gpu::population_for_kind(*state, population_kind);
   const auto blocks = (population.capacity + 255U) / 256U;
-  infer_population_kernel<<<blocks == 0U ? 1U : blocks, 256U>>>(population, state->config.num_inputs);
+  infer_population_kernel<<<blocks == 0U ? 1U : blocks, 256U>>>(population, state->num_inputs);
   return static_cast<std::int32_t>(moonai_gpu::synchronize_kernels());
 }
 
@@ -1665,15 +1664,15 @@ extern "C" std::int32_t dev_expand_population(DeviceState *state, PopulationKind
   }
 
   DevicePopulationBuffers replacement{};
-  auto status = allocate_population_buffers(replacement, new_capacity, state->config.num_inputs, population.genome.node_stride, population.genome.connection_stride, population.compiled.output_stride);
+  auto status = allocate_population_buffers(replacement, new_capacity, state->num_inputs, population.genome.node_stride, population.genome.connection_stride, population.compiled.output_stride);
   if (status) return status;
 
-  status = copy_population_buffers(population, replacement, state->config.num_inputs);
+  status = copy_population_buffers(population, replacement, state->num_inputs);
   if (status) {
     free_population_buffers(replacement);
     return status;
   }
-  status = replace_population_buffers(population, replacement, state->config.num_inputs);
+  status = replace_population_buffers(population, replacement, state->num_inputs);
   if (status) return status;
 
   const auto grid_cols = state->grid_cols;
@@ -1770,7 +1769,7 @@ extern "C" std::int32_t dev_refresh_reports(DeviceState *state) {
 
 extern "C" std::int32_t dev_sensor_snapshot(const DeviceState *state, PopulationKind population_kind, std::uint32_t slot, SensorSnapshotReadback *out_snapshot) {
   const auto &population = moonai_gpu::population_for_kind(*state, population_kind);
-  sensor_snapshot_kernel<<<1U, 1U>>>(population, population_kind, slot, state->config.num_inputs, state->sensor_snapshot_scratch);
+  sensor_snapshot_kernel<<<1U, 1U>>>(population, population_kind, slot, state->num_inputs, state->sensor_snapshot_scratch);
   auto status = moonai_gpu::synchronize_kernels();
   if (!status) {
     status = moonai_gpu::copy_compact_device_readback(state->sensor_snapshot_scratch, out_snapshot, sizeof(*out_snapshot));

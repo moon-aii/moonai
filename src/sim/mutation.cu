@@ -2,7 +2,6 @@
 
 using moonai_gpu::DeviceInnovationState;
 using moonai_gpu::DevicePopulationBuffers;
-using moonai_gpu::GpuEvolutionConfig;
 using moonai_gpu::DeviceState;
 using moonai_gpu::GpuMutationConfig;
 using moonai_gpu::PopulationKind;

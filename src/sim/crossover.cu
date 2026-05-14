@@ -188,7 +188,7 @@ __global__ void crossover_kernel(DevicePopulationBuffers population, const std::
 
 extern "C" std::int32_t dev_crossover(DeviceState *state, PopulationKind population_kind, std::uint32_t parent_a_slot, std::uint32_t parent_b_slot, std::uint32_t offspring_slot) {
   auto &population = moonai_gpu::population_for_kind(*state, population_kind);
-  const auto offspring_energy = state->simulation.offspring_initial_energy > 0.0F ? state->simulation.offspring_initial_energy : state->config.initial_energy;
+  const auto offspring_energy = state->simulation.offspring_initial_energy > 0.0F ? state->simulation.offspring_initial_energy : state->simulation.initial_energy;
   crossover_kernel<<<1U, 1U>>>(population, state->next_entity_id, population_kind, parent_a_slot, parent_b_slot, offspring_slot, offspring_energy);
   return moonai_gpu::synchronize_kernels();
 }

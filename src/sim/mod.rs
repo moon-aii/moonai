@@ -164,7 +164,6 @@ pub struct FoodBuffer {
 #[repr(C)]
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub struct DeviceState {
-    config: GpuEvolutionConfig,
     simulation: SimulationConfig,
     predator: DevicePopulationBuffers,
     prey: DevicePopulationBuffers,
@@ -211,6 +210,10 @@ pub struct DeviceState {
     food_grid_entries: *mut FoodGridEntry,
     food_claimed_by: *mut u32,
     prey_claimed_by: *mut u32,
+    num_inputs: u32,
+    num_outputs: u32,
+    node_stride: u32,
+    connection_stride: u32,
     grid_cols: u32,
     grid_rows: u32,
     grid_cell_capacity: u32,
@@ -412,19 +415,6 @@ pub enum PopulationKind {
 }
 
 #[repr(C)]
-#[derive(Debug, Default, Clone, Copy, PartialEq)]
-pub struct GpuEvolutionConfig {
-    pub world_size: f32,
-    pub initial_energy: f32,
-    pub max_energy: f32,
-    pub seed: u64,
-    pub num_inputs: u32,
-    pub num_outputs: u32,
-    pub node_stride: u32,
-    pub connection_stride: u32,
-}
-
-#[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct GpuMutationConfig {
     pub mutation_rate: f32,
@@ -490,16 +480,10 @@ impl Simulation {
             .checked_add(extra_connection_capacity)
             .context("phase-3 connection stride overflowed")?;
 
-        self.device_state.config = GpuEvolutionConfig {
-            world_size: self.config.grid_size,
-            initial_energy: self.config.initial_energy,
-            max_energy: self.config.max_energy,
-            seed: self.config.seed,
-            num_inputs: SENSOR_COUNT,
-            num_outputs: OUTPUT_COUNT,
-            node_stride,
-            connection_stride,
-        };
+        self.device_state.num_inputs = SENSOR_COUNT;
+        self.device_state.num_outputs = OUTPUT_COUNT;
+        self.device_state.node_stride = node_stride;
+        self.device_state.connection_stride = connection_stride;
 
         check_cuda_status(unsafe { dev_create(self.get_dev_state()) }, "dev_evolution_create")?;
         check_cuda_status(unsafe { dev_seed_initial_population(self.get_dev_state()) }, "dev_seed_initial_population")?;

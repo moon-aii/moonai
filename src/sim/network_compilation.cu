@@ -306,10 +306,10 @@ extern "C" std::int32_t dev_compile_population(DeviceState *state, PopulationKin
   auto &population = moonai_gpu::population_for_kind(*state, population_kind);
 
   const auto blocks = (population.capacity + 255U) / 256U;
-  compile_population_kernel<<<blocks == 0U ? 1U : blocks, 256U>>>(population, state->config.num_outputs);
+  compile_population_kernel<<<blocks == 0U ? 1U : blocks, 256U>>>(population, state->num_outputs);
   auto status = moonai_gpu::synchronize_kernels();
   if (!status) {
-    compiled_header_kernel<<<1U, 1U>>>(population, population_kind, inspected_slot, state->config.num_outputs, state->compiled_header_scratch);
+    compiled_header_kernel<<<1U, 1U>>>(population, population_kind, inspected_slot, state->num_outputs, state->compiled_header_scratch);
     status = moonai_gpu::synchronize_kernels();
   }
   if (!status) {
@@ -322,10 +322,10 @@ extern "C" std::int32_t dev_compile_slot(DeviceState *state, PopulationKind popu
                                                              std::uint32_t slot,
                                                              CompiledNetworkReadbackHeader *out_header) {
   auto &population = moonai_gpu::population_for_kind(*state, population_kind);
-  compile_single_slot_kernel<<<1U, 1U>>>(population, slot, state->config.num_outputs);
+  compile_single_slot_kernel<<<1U, 1U>>>(population, slot, state->num_outputs);
   auto status = moonai_gpu::synchronize_kernels();
   if (!status) {
-    compiled_header_kernel<<<1U, 1U>>>(population, population_kind, slot, state->config.num_outputs, state->compiled_header_scratch);
+    compiled_header_kernel<<<1U, 1U>>>(population, population_kind, slot, state->num_outputs, state->compiled_header_scratch);
     status = moonai_gpu::synchronize_kernels();
   }
   if (!status) {
@@ -336,7 +336,7 @@ extern "C" std::int32_t dev_compile_slot(DeviceState *state, PopulationKind popu
 
 extern "C" std::int32_t dev_selected_agent_network(const DeviceState *state, PopulationKind population_kind, std::uint32_t slot, SelectedAgentNetworkReadback *out_network) {
   const auto &population = moonai_gpu::population_for_kind(*state, population_kind);
-  selected_agent_network_kernel<<<1U, 1U>>>(population, population_kind, slot, state->config.num_inputs, state->selected_network_scratch);
+  selected_agent_network_kernel<<<1U, 1U>>>(population, population_kind, slot, state->num_inputs, state->selected_network_scratch);
   auto status = moonai_gpu::synchronize_kernels();
   if (!status) {
     status = moonai_gpu::copy_compact_device_readback(state->selected_network_scratch, out_network, sizeof(*out_network));
