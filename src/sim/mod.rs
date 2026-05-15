@@ -368,6 +368,20 @@ pub struct UiStatsReduceScratch {
 }
 
 #[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SpeciesReduceScratch {
+    sizes: [u32; 64],
+    complexity_sums: [f32; 64],
+    representative_slots: [u32; 64],
+}
+
+impl Default for SpeciesReduceScratch {
+    fn default() -> Self {
+        Self { sizes: [0; 64], complexity_sums: [0.0; 64], representative_slots: [0; 64] }
+    }
+}
+
+#[repr(C)]
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub struct FoodBuffer {
     pos_x: *mut f32,
@@ -434,6 +448,7 @@ pub struct DeviceState {
     selected_network_scratch: *mut SelectedAgentNetworkReadback,
     metrics_summary: *mut MetricsSummaryReadback,
     metrics_reduce_scratch: *mut MetricsReduceScratch,
+    species_reduce_scratch: *mut SpeciesReduceScratch,
     species_summaries_scratch: *mut SpeciesSummaryReadback,
     representative_headers_scratch: *mut RepresentativeGenomeHeader,
     species_count_scratch: *mut u32,
@@ -618,6 +633,25 @@ pub struct RenderSnapshotReadback {
     pub food: Vec<RenderFoodReadback>,
 }
 
+impl RenderSnapshotReadback {
+    pub const fn empty() -> Self {
+        Self {
+            header: RenderSnapshotHeader {
+                tick: 0,
+                total_predators: 0,
+                total_prey: 0,
+                total_food: 0,
+                returned_predators: 0,
+                returned_prey: 0,
+                returned_food: 0,
+            },
+            predators: Vec::new(),
+            prey: Vec::new(),
+            food: Vec::new(),
+        }
+    }
+}
+
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CompiledNetworkReadbackHeader {
@@ -758,6 +792,16 @@ impl Simulation {
         max_food: u32,
     ) -> Result<RenderSnapshotReadback> {
         self.read_render_snapshot(max_predators, max_prey, max_food)
+    }
+
+    pub fn render_snapshot_into(
+        &mut self,
+        max_predators: u32,
+        max_prey: u32,
+        max_food: u32,
+        snapshot: &mut RenderSnapshotReadback,
+    ) -> Result<()> {
+        self.read_render_snapshot_into(max_predators, max_prey, max_food, snapshot)
     }
 
     pub fn selected_agent_network(

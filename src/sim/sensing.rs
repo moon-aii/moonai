@@ -5,8 +5,8 @@ use anyhow::Result;
 impl Simulation {
     pub(super) fn compute_sensor_inputs(&mut self) -> Result<()> {
         profile_scope!("sensor_inputs");
-        let status = unsafe { dev_compute_sensor_inputs(self.get_dev_state()) };
-        check_cuda_status(status, "moonai_gpu_simulation_compute_sensor_inputs")
+        // Inference now computes sensors inline to avoid a global write/read round-trip.
+        Ok(())
     }
 
     pub(super) fn read_sensor_snapshot(
@@ -21,6 +21,5 @@ impl Simulation {
 }
 
 unsafe extern "C" {
-    fn dev_compute_sensor_inputs(state: *mut DeviceState) -> i32;
     fn dev_write_sensor_snapshot(state: *mut DeviceState, population_kind: PopulationKind, slot: u32) -> i32;
 }

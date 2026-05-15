@@ -30,62 +30,69 @@ const AGENT_INSTANCE_ATTRIBUTES: [wgpu::VertexAttribute; 4] = [
     wgpu::VertexAttribute { format: wgpu::VertexFormat::Float32x4, offset: 20, shader_location: 4 },
 ];
 
+#[derive(Clone)]
 pub struct WorldFrame {
-    pub snapshot: Arc<RenderSnapshotReadback>,
+    pub snapshot: RenderSnapshotReadback,
     food_instances: Vec<FoodInstance>,
     prey_instances: Vec<AgentInstance>,
     predator_instances: Vec<AgentInstance>,
 }
 
 impl WorldFrame {
+    pub const fn empty() -> Self {
+        Self {
+            snapshot: RenderSnapshotReadback::empty(),
+            food_instances: Vec::new(),
+            prey_instances: Vec::new(),
+            predator_instances: Vec::new(),
+        }
+    }
+
     pub fn from_snapshot(snapshot: RenderSnapshotReadback, ui_config: &UiConfig) -> Self {
-        let snapshot = Arc::new(snapshot);
+        let mut frame = Self::empty();
+        frame.snapshot = snapshot;
+        frame.rebuild_instances(ui_config);
+        frame
+    }
+
+    pub fn rebuild_instances(&mut self, ui_config: &UiConfig) {
         let food_color = rgba_with_alpha(ui_config.food_color, alpha_to_unit(ui_config.food_alpha));
         let prey_color = rgba_with_alpha(ui_config.prey_color, 1.0);
         let predator_color = rgba_with_alpha(ui_config.predator_color, 1.0);
 
-        let food_instances = snapshot
-            .food
-            .iter()
-            .map(|entry| FoodInstance {
-                pos: [entry.pos_x, entry.pos_y],
-                radius: ui_config.food_size * 0.5,
-                color: food_color,
-            })
-            .collect();
-        let prey_instances = snapshot
-            .prey
-            .iter()
-            .map(|entry| {
-                AgentInstance::from_readback(
-                    entry.pos_x,
-                    entry.pos_y,
-                    entry.dir_x,
-                    entry.dir_y,
-                    ui_config.prey_size,
-                    prey_color,
-                )
-            })
-            .collect();
-        let predator_instances = snapshot
-            .predators
-            .iter()
-            .map(|entry| {
-                AgentInstance::from_readback(
-                    entry.pos_x,
-                    entry.pos_y,
-                    entry.dir_x,
-                    entry.dir_y,
-                    ui_config.predator_size,
-                    predator_color,
-                )
-            })
-            .collect();
+        self.food_instances.clear();
+        self.food_instances.extend(self.snapshot.food.iter().map(|entry| FoodInstance {
+            pos: [entry.pos_x, entry.pos_y],
+            radius: ui_config.food_size * 0.5,
+            color: food_color,
+        }));
 
-        Self { snapshot, food_instances, prey_instances, predator_instances }
+        self.prey_instances.clear();
+        self.prey_instances.extend(self.snapshot.prey.iter().map(|entry| {
+            AgentInstance::from_readback(
+                entry.pos_x,
+                entry.pos_y,
+                entry.dir_x,
+                entry.dir_y,
+                ui_config.prey_size,
+                prey_color,
+            )
+        }));
+
+        self.predator_instances.clear();
+        self.predator_instances.extend(self.snapshot.predators.iter().map(|entry| {
+            AgentInstance::from_readback(
+                entry.pos_x,
+                entry.pos_y,
+                entry.dir_x,
+                entry.dir_y,
+                ui_config.predator_size,
+                predator_color,
+            )
+        }));
     }
 
-    pub fn active_food_count(&self) -> u32 {
+    pub const fn active_food_count(&self) -> u32 {
         self.snapshot.header.returned_food
     }
 }

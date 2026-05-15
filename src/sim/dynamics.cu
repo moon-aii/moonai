@@ -23,14 +23,29 @@ __global__ void advance_tick_kernel(SimulationCounters *counters) {
   }
 }
 
-__global__ void infer_population_kernel(DevicePopulationBuffers population, std::uint32_t num_inputs) {
+template <bool SelfIsPredator>
+__global__ void infer_population_kernel(DeviceState *state) {
+  auto &population = SelfIsPredator ? state->predator : state->prey;
   const auto idx = (blockIdx.x * blockDim.x) + threadIdx.x;
   if (idx >= population.capacity || population.alive[idx] == 0U) {
     return;
   }
 
   float activations[moonai_gpu::kCompileScratchNodeLimit]{};
-  const auto node_count = moonai_gpu::evaluate_compiled_network(population, idx, num_inputs, activations);
+  static_cast<void>(moonai_gpu::compute_sensor_inputs_for_slot<SelfIsPredator>(
+      population, idx, state->predator_cell_offsets, state->predator_grid_entries, state->prey_cell_offsets,
+      state->prey_grid_entries, state->food_cell_offsets, state->food_grid_entries, state->grid_cols, state->grid_rows,
+      state->grid_cell_size, state->num_inputs, state->simulation.vision_range, state->simulation.max_energy,
+      SelfIsPredator ? state->simulation.predator_speed : state->simulation.prey_speed, state->simulation.grid_size,
+      activations));
+  if (population.sensor_inputs != nullptr) {
+    const auto sensor_base = static_cast<std::size_t>(idx) * state->num_inputs;
+    for (std::uint32_t input = 0; input < state->num_inputs; ++input) {
+      population.sensor_inputs[sensor_base + input] = activations[input];
+    }
+  }
+
+  const auto node_count = moonai_gpu::evaluate_compiled_network_seeded(population, idx, state->num_inputs, activations);
   if (node_count == 0U) {
     population.vel_x[idx] = 0.0F;
     population.vel_y[idx] = 0.0F;
@@ -82,7 +97,11 @@ __global__ void apply_movement_kernel(DevicePopulationBuffers population, float 
 extern "C" std::int32_t dev_infer_population(DeviceState *state, PopulationKind population_kind) {
   auto &population = moonai_gpu::population_for_kind(*state, population_kind);
   const auto blocks = (population.capacity + 255U) / 256U;
-  infer_population_kernel<<<blocks == 0U ? 1U : blocks, 256U>>>(population, state->num_inputs);
+  if (population_kind == PopulationKind::Predator) {
+    infer_population_kernel<true><<<blocks == 0U ? 1U : blocks, 256U>>>(state);
+  } else {
+    infer_population_kernel<false><<<blocks == 0U ? 1U : blocks, 256U>>>(state);
+  }
   return static_cast<std::int32_t>(moonai_gpu::launch_status());
 }
 
@@ -110,5 +129,5 @@ extern "C" std::int32_t dev_apply_movement(DeviceState *state, PopulationKind po
 
 extern "C" std::int32_t dev_advance_tick(DeviceState *state) {
   advance_tick_kernel<<<1U, 1U>>>(state->counters);
-  return moonai_gpu::synchronize_kernels();
+  return moonai_gpu::launch_status();
 }

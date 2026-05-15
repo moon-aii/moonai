@@ -30,6 +30,7 @@ impl Simulation {
         cuda_malloc(&mut self.device_state.selected_network_scratch, 1)?;
         cuda_malloc(&mut self.device_state.metrics_summary, 1)?;
         cuda_malloc(&mut self.device_state.metrics_reduce_scratch, 1)?;
+        cuda_malloc(&mut self.device_state.species_reduce_scratch, 1)?;
         cuda_malloc(&mut self.device_state.species_summaries_scratch, MAX_SPECIES_SUMMARIES as usize)?;
         cuda_malloc(&mut self.device_state.representative_headers_scratch, MAX_SPECIES_SUMMARIES as usize)?;
         cuda_malloc(&mut self.device_state.species_count_scratch, 1)?;
@@ -208,6 +209,7 @@ impl Simulation {
         cuda_free(&mut self.device_state.selected_network_scratch)?;
         cuda_free(&mut self.device_state.metrics_summary)?;
         cuda_free(&mut self.device_state.metrics_reduce_scratch)?;
+        cuda_free(&mut self.device_state.species_reduce_scratch)?;
         cuda_free(&mut self.device_state.species_summaries_scratch)?;
         cuda_free(&mut self.device_state.representative_headers_scratch)?;
         cuda_free(&mut self.device_state.species_count_scratch)?;

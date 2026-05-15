@@ -39,6 +39,10 @@ inline uint32_t launch_status() {
   return cudaPeekAtLastError();
 }
 
+__device__ inline float clamp_range(float value, float min_value, float max_value) {
+  return fminf(fmaxf(value, min_value), max_value);
+}
+
 inline const DevicePopulationBuffers &population_for_kind(const DeviceState &state, PopulationKind population_kind) {
   return population_kind == PopulationKind::Predator ? state.predator : state.prey;
 }
@@ -62,6 +66,68 @@ __device__ inline bool cell_may_intersect_radius(std::uint32_t cx, std::uint32_t
   const auto nearest_x = fmaxf(fabsf(dx) - half_size, 0.0F);
   const auto nearest_y = fmaxf(fabsf(dy) - half_size, 0.0F);
   return (nearest_x * nearest_x) + (nearest_y * nearest_y) <= radius * radius;
+}
+
+template <std::uint32_t N>
+__device__ inline void insert_nearest_candidate(float dx, float dy, float dist_sq, float (&best_dx)[N],
+                                                float (&best_dy)[N], float (&best_dist_sq)[N]) {
+  if (dist_sq >= best_dist_sq[N - 1U]) {
+    return;
+  }
+
+  std::uint32_t insert_at = N - 1U;
+  while (insert_at > 0U && dist_sq < best_dist_sq[insert_at - 1U]) {
+    best_dist_sq[insert_at] = best_dist_sq[insert_at - 1U];
+    best_dx[insert_at] = best_dx[insert_at - 1U];
+    best_dy[insert_at] = best_dy[insert_at - 1U];
+    --insert_at;
+  }
+
+  best_dist_sq[insert_at] = dist_sq;
+  best_dx[insert_at] = dx;
+  best_dy[insert_at] = dy;
+}
+
+template <std::uint32_t N>
+__device__ inline void encode_nearest_targets(const float (&best_dx)[N], const float (&best_dy)[N],
+                                              const float (&best_dist_sq)[N], float vision_range, float *out,
+                                              std::uint32_t output_capacity) {
+  for (std::uint32_t idx = 0; idx < N; ++idx) {
+    const auto offset = idx * 2U;
+    if (offset + 1U >= output_capacity) {
+      return;
+    }
+    if (best_dist_sq[idx] == INFINITY) {
+      out[offset] = 0.0F;
+      out[offset + 1U] = 0.0F;
+      continue;
+    }
+
+    const auto dist = sqrtf(best_dist_sq[idx]);
+    if (dist <= 1e-6F) {
+      out[offset] = 0.0F;
+      out[offset + 1U] = 0.0F;
+      continue;
+    }
+
+    const auto proximity = clamp_range(1.0F - (dist / vision_range), 0.0F, 1.0F);
+    const auto inv_dist = 1.0F / dist;
+    out[offset] = clamp_range(best_dx[idx] * inv_dist * proximity, -1.0F, 1.0F);
+    out[offset + 1U] = clamp_range(best_dy[idx] * inv_dist * proximity, -1.0F, 1.0F);
+  }
+}
+
+__device__ inline float encode_axis_wall_sensor(float negative_side_dist, float positive_side_dist,
+                                                float vision_range) {
+  const auto negative_in_range = negative_side_dist < vision_range;
+  const auto positive_in_range = positive_side_dist < vision_range;
+  if (!negative_in_range && !positive_in_range) {
+    return 0.0F;
+  }
+  if (negative_in_range && (!positive_in_range || negative_side_dist <= positive_side_dist)) {
+    return -(1.0F - (negative_side_dist / vision_range));
+  }
+  return 1.0F - (positive_side_dist / vision_range);
 }
 
 __device__ inline std::uint64_t splitmix64(std::uint64_t state) {
@@ -96,20 +162,154 @@ __device__ inline std::uint16_t count_enabled_connections(const DevicePopulation
   return enabled_count;
 }
 
-__device__ inline std::uint16_t evaluate_compiled_network(const DevicePopulationBuffers &population,
-                                                          std::uint32_t slot, std::uint32_t num_inputs,
-                                                          float (&activations)[kCompileScratchNodeLimit]) {
+template <bool SelfIsPredator>
+__device__ inline bool compute_sensor_inputs_for_slot(const DevicePopulationBuffers &self_population,
+                                                      std::uint32_t idx,
+                                                      const std::uint32_t *predator_cell_offsets,
+                                                      const PopulationGridEntry *predator_entries,
+                                                      const std::uint32_t *prey_cell_offsets,
+                                                      const PopulationGridEntry *prey_entries,
+                                                      const std::uint32_t *food_cell_offsets,
+                                                      const FoodGridEntry *food_entries,
+                                                      std::uint32_t grid_cols, std::uint32_t grid_rows,
+                                                      float grid_cell_size, std::uint32_t num_inputs,
+                                                      float vision_range, float max_energy, float agent_speed,
+                                                      float world_size, float *out) {
+  const auto output_count = num_inputs < kSensorInputCount ? num_inputs : kSensorInputCount;
+  for (std::uint32_t sensor_idx = 0; sensor_idx < output_count; ++sensor_idx) {
+    out[sensor_idx] = 0.0F;
+  }
+
+  if (idx >= self_population.capacity || self_population.alive[idx] == 0U) {
+    return false;
+  }
+
+  const auto px = self_population.pos_x[idx];
+  const auto py = self_population.pos_y[idx];
+  const auto vision_sq = vision_range * vision_range;
+  const auto cells_to_check = static_cast<std::int32_t>(vision_range / grid_cell_size) + 1;
+  const auto base_cx = static_cast<std::int32_t>(cell_coord(px, grid_cell_size, grid_cols));
+  const auto base_cy = static_cast<std::int32_t>(cell_coord(py, grid_cell_size, grid_rows));
+  float predator_dx[kNearestTargetsPerType];
+  float predator_dy[kNearestTargetsPerType];
+  float predator_dist_sq[kNearestTargetsPerType];
+  float prey_dx[kNearestTargetsPerType];
+  float prey_dy[kNearestTargetsPerType];
+  float prey_dist_sq[kNearestTargetsPerType];
+  float food_dx[kNearestTargetsPerType];
+  float food_dy[kNearestTargetsPerType];
+  float food_dist_sq[kNearestTargetsPerType];
+  for (std::uint32_t nearest_idx = 0; nearest_idx < kNearestTargetsPerType; ++nearest_idx) {
+    predator_dx[nearest_idx] = 0.0F;
+    predator_dy[nearest_idx] = 0.0F;
+    predator_dist_sq[nearest_idx] = INFINITY;
+    prey_dx[nearest_idx] = 0.0F;
+    prey_dy[nearest_idx] = 0.0F;
+    prey_dist_sq[nearest_idx] = INFINITY;
+    food_dx[nearest_idx] = 0.0F;
+    food_dy[nearest_idx] = 0.0F;
+    food_dist_sq[nearest_idx] = INFINITY;
+  }
+
+  for (auto dy_cell = -cells_to_check; dy_cell <= cells_to_check; ++dy_cell) {
+    const auto cy = base_cy + dy_cell;
+    if (cy < 0 || cy >= static_cast<std::int32_t>(grid_rows)) {
+      continue;
+    }
+    for (auto dx_cell = -cells_to_check; dx_cell <= cells_to_check; ++dx_cell) {
+      const auto cx = base_cx + dx_cell;
+      if (cx < 0 || cx >= static_cast<std::int32_t>(grid_cols)) {
+        continue;
+      }
+      if (!cell_may_intersect_radius(static_cast<std::uint32_t>(cx), static_cast<std::uint32_t>(cy), grid_cell_size,
+                                     px, py, vision_range)) {
+        continue;
+      }
+
+      const auto cell = (static_cast<std::uint32_t>(cy) * grid_cols) + static_cast<std::uint32_t>(cx);
+      for (auto slot = predator_cell_offsets[cell]; slot < predator_cell_offsets[cell + 1U]; ++slot) {
+        const auto entry = predator_entries[slot];
+        if (SelfIsPredator && entry.slot == idx) {
+          continue;
+        }
+        const auto dx = entry.pos_x - px;
+        const auto dy = entry.pos_y - py;
+        const auto dist_sq = (dx * dx) + (dy * dy);
+        if (dist_sq > vision_sq || dist_sq <= 0.0F) {
+          continue;
+        }
+        insert_nearest_candidate(dx, dy, dist_sq, predator_dx, predator_dy, predator_dist_sq);
+      }
+
+      for (auto slot = prey_cell_offsets[cell]; slot < prey_cell_offsets[cell + 1U]; ++slot) {
+        const auto entry = prey_entries[slot];
+        if (!SelfIsPredator && entry.slot == idx) {
+          continue;
+        }
+        const auto dx = entry.pos_x - px;
+        const auto dy = entry.pos_y - py;
+        const auto dist_sq = (dx * dx) + (dy * dy);
+        if (dist_sq > vision_sq || dist_sq <= 0.0F) {
+          continue;
+        }
+        insert_nearest_candidate(dx, dy, dist_sq, prey_dx, prey_dy, prey_dist_sq);
+      }
+
+      for (auto slot = food_cell_offsets[cell]; slot < food_cell_offsets[cell + 1U]; ++slot) {
+        const auto entry = food_entries[slot];
+        const auto dx = entry.pos_x - px;
+        const auto dy = entry.pos_y - py;
+        const auto dist_sq = (dx * dx) + (dy * dy);
+        if (dist_sq > vision_sq || dist_sq <= 0.0F) {
+          continue;
+        }
+        insert_nearest_candidate(dx, dy, dist_sq, food_dx, food_dy, food_dist_sq);
+      }
+    }
+  }
+
+  if (output_count > 0U) {
+    encode_nearest_targets(predator_dx, predator_dy, predator_dist_sq, vision_range, out,
+                           output_count < kPerTypeSensorCount ? output_count : kPerTypeSensorCount);
+  }
+  if (output_count > kPerTypeSensorCount) {
+    const auto prey_output_capacity = output_count - kPerTypeSensorCount;
+    encode_nearest_targets(prey_dx, prey_dy, prey_dist_sq, vision_range, out + kPerTypeSensorCount,
+                           prey_output_capacity < kPerTypeSensorCount ? prey_output_capacity : kPerTypeSensorCount);
+  }
+  if (output_count > (2U * kPerTypeSensorCount)) {
+    const auto food_output_capacity = output_count - (2U * kPerTypeSensorCount);
+    encode_nearest_targets(food_dx, food_dy, food_dist_sq, vision_range, out + (2U * kPerTypeSensorCount),
+                           food_output_capacity < kPerTypeSensorCount ? food_output_capacity : kPerTypeSensorCount);
+  }
+  if (output_count > kSelfEnergyInputIndex) {
+    out[kSelfEnergyInputIndex] =
+        max_energy <= 0.0F ? 0.0F : clamp_range(self_population.energy[idx] / max_energy, 0.0F, 1.0F);
+  }
+  if (agent_speed > 0.0F && output_count > kVelocityXInputIndex) {
+    out[kVelocityXInputIndex] = clamp_range(self_population.vel_x[idx] / agent_speed, -1.0F, 1.0F);
+  }
+  if (agent_speed > 0.0F && output_count > kVelocityYInputIndex) {
+    out[kVelocityYInputIndex] = clamp_range(self_population.vel_y[idx] / agent_speed, -1.0F, 1.0F);
+  }
+  if (output_count > kWallXInputIndex) {
+    out[kWallXInputIndex] = encode_axis_wall_sensor(px, world_size - px, vision_range);
+  }
+  if (output_count > kWallYInputIndex) {
+    out[kWallYInputIndex] = encode_axis_wall_sensor(py, world_size - py, vision_range);
+  }
+
+  return true;
+}
+
+__device__ inline std::uint16_t evaluate_compiled_network_seeded(const DevicePopulationBuffers &population,
+                                                                 std::uint32_t slot, std::uint32_t num_inputs,
+                                                                 float (&activations)[kCompileScratchNodeLimit]) {
   const auto node_count = population.compiled.node_counts[slot];
   if (node_count == 0U || node_count > kCompileScratchNodeLimit) {
     return 0U;
   }
 
-  if (population.sensor_inputs != nullptr) {
-    const auto sensor_base = static_cast<std::size_t>(slot) * num_inputs;
-    for (std::uint32_t input = 0; input < num_inputs && input < node_count; ++input) {
-      activations[input] = population.sensor_inputs[sensor_base + input];
-    }
-  }
   if (num_inputs < node_count) {
     activations[num_inputs] = 1.0F;
   }
@@ -136,6 +336,18 @@ __device__ inline std::uint16_t evaluate_compiled_network(const DevicePopulation
   }
 
   return node_count;
+}
+
+__device__ inline std::uint16_t evaluate_compiled_network(const DevicePopulationBuffers &population,
+                                                          std::uint32_t slot, std::uint32_t num_inputs,
+                                                          float (&activations)[kCompileScratchNodeLimit]) {
+  if (population.sensor_inputs != nullptr) {
+    const auto sensor_base = static_cast<std::size_t>(slot) * num_inputs;
+    for (std::uint32_t input = 0; input < num_inputs && input < kCompileScratchNodeLimit; ++input) {
+      activations[input] = population.sensor_inputs[sensor_base + input];
+    }
+  }
+  return evaluate_compiled_network_seeded(population, slot, num_inputs, activations);
 }
 
 __device__ inline float compiled_output_activation(const DevicePopulationBuffers &population, std::uint32_t slot,

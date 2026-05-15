@@ -60,7 +60,8 @@ impl RunSession {
         let mut state = Simulation::init(&queued_run.simulation_config)?;
         let logger = Logger::new(&output_dir, &queued_run.simulation_config)?;
         let camera = render::default_camera(queued_run.simulation_config.grid_size);
-        let (ui_stats, metrics_summary, world_frame) = load_world_frame(&mut state, &ui_config)?;
+        let mut world_frame = Arc::new(WorldFrame::empty());
+        let (ui_stats, metrics_summary) = load_world_frame(&mut state, &ui_config, &mut world_frame)?;
         let initial_overlay =
             OverlayStats::from_snapshot(ui_stats, metrics_summary, world_frame.active_food_count(), 1, false, 0.0);
         let mut overlay_history = OverlayHistory::default();
@@ -143,10 +144,9 @@ impl RunSession {
         self.ui_config = ui_config;
         self.ui_state.speed_multiplier =
             self.ui_state.speed_multiplier.clamp(self.ui_config.speed_min, self.ui_config.speed_max);
-        let (ui_stats, metrics_summary, world_frame) = load_world_frame(&mut self.state, &self.ui_config)?;
+        let (ui_stats, metrics_summary) = load_world_frame(&mut self.state, &self.ui_config, &mut self.world_frame)?;
         self.ui_stats = ui_stats;
         self.metrics_summary = metrics_summary;
-        self.world_frame = world_frame;
         render::clamp_camera(&mut self.camera, self.config.grid_size, &self.ui_config);
         Ok(())
     }
@@ -197,10 +197,9 @@ impl RunSession {
             return Ok(());
         }
 
-        let (ui_stats, metrics_summary, world_frame) = load_world_frame(&mut self.state, &self.ui_config)?;
+        let (ui_stats, metrics_summary) = load_world_frame(&mut self.state, &self.ui_config, &mut self.world_frame)?;
         self.ui_stats = ui_stats;
         self.metrics_summary = metrics_summary;
-        self.world_frame = world_frame;
         let overlay = self.overlay_stats();
         self.overlay_history.push(&overlay);
         self.sync_selected_agent()?;
@@ -320,7 +319,7 @@ impl RunSession {
         };
 
         let Some(agent) =
-            find_agent_by_entity(self.world_frame.snapshot.as_ref(), selected.population_kind, selected.entity_id)
+            find_agent_by_entity(&self.world_frame.snapshot, selected.population_kind, selected.entity_id)
         else {
             self.selected = None;
             self.selected_data = None;
@@ -727,14 +726,21 @@ fn log_report_snapshot(state: &mut Simulation, logger: &mut Logger) -> Result<u3
 fn load_world_frame(
     state: &mut Simulation,
     ui_config: &UiConfig,
-) -> Result<(UiStatsReadback, MetricsSummaryReadback, Arc<WorldFrame>)> {
+    world_frame: &mut Arc<WorldFrame>,
+) -> Result<(UiStatsReadback, MetricsSummaryReadback)> {
     profile_scope!("world_frame");
 
     let ui_stats = state.ui_stats()?;
     let metrics_summary = state.metrics_summary()?;
-    let snapshot = state.render_snapshot(ui_stats.predator_count, ui_stats.prey_count, state.config.food_count)?;
-    let world_frame = Arc::new(WorldFrame::from_snapshot(snapshot, ui_config));
-    Ok((ui_stats, metrics_summary, world_frame))
+    let frame = Arc::make_mut(world_frame);
+    state.render_snapshot_into(
+        ui_stats.predator_count,
+        ui_stats.prey_count,
+        state.config.food_count,
+        &mut frame.snapshot,
+    )?;
+    frame.rebuild_instances(ui_config);
+    Ok((ui_stats, metrics_summary))
 }
 
 fn find_agent_by_entity(

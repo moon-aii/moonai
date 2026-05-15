@@ -48,6 +48,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "FoodGridEntry".to_owned(),
                 "MetricsReduceScratch".to_owned(),
                 "UiStatsReduceScratch".to_owned(),
+                "SpeciesReduceScratch".to_owned(),
                 "DeviceState".to_owned(),
             ],
             item_types: vec![cbindgen::ItemType::Enums, cbindgen::ItemType::Structs],

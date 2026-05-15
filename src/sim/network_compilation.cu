@@ -7,6 +7,7 @@ using moonai_gpu::PopulationKind;
 using moonai_gpu::RepresentativeGenomeHeader;
 using moonai_gpu::SelectedAgentNetworkReadback;
 using moonai_gpu::SpeciesBatchReadbackHeader;
+using moonai_gpu::SpeciesReduceScratch;
 using moonai_gpu::SpeciesSummaryReadback;
 
 namespace {
@@ -258,57 +259,57 @@ __global__ void selected_agent_network_kernel(const DevicePopulationBuffers popu
   out_network->output_1 = moonai_gpu::compiled_output_activation(population, slot, node_count, activations, 1U);
 }
 
-__global__ void classify_species_batch_kernel(DevicePopulationBuffers population, PopulationKind population_kind,
-                                              SpeciesSummaryReadback *out_summaries,
-                                              RepresentativeGenomeHeader *out_headers,
-                                              std::uint32_t *out_species_count) {
-  if (blockIdx.x != 0U || threadIdx.x != 0U) {
+__global__ void reset_species_reduce_scratch_kernel(SpeciesReduceScratch *scratch, std::uint32_t *out_species_count) {
+  const auto idx = (blockIdx.x * blockDim.x) + threadIdx.x;
+  if (idx < moonai_gpu::kSpeciesBucketCount) {
+    scratch->sizes[idx] = 0U;
+    scratch->complexity_sums[idx] = 0.0F;
+    scratch->representative_slots[idx] = 0xFFFF'FFFFU;
+  }
+  if (idx == 0U) {
+    *out_species_count = 0U;
+  }
+}
+
+template <PopulationKind Kind>
+__global__ void accumulate_species_kernel(DevicePopulationBuffers population, SpeciesReduceScratch *scratch) {
+  const auto idx = (blockIdx.x * blockDim.x) + threadIdx.x;
+  if (idx >= population.capacity || population.alive[idx] == 0U) {
     return;
   }
 
-  std::uint32_t species_sizes[moonai_gpu::kSpeciesBucketCount]{};
-  float complexity_sums[moonai_gpu::kSpeciesBucketCount]{};
-  std::uint32_t representative_slots[moonai_gpu::kSpeciesBucketCount]{};
-  bool representative_seen[moonai_gpu::kSpeciesBucketCount]{};
+  const auto node_count = population.genome.num_nodes[idx];
+  const auto connection_count = population.genome.num_connections[idx];
+  const auto enabled_count = moonai_gpu::count_enabled_connections(population, idx, connection_count);
+  const auto species_id = species_bucket(population, idx, node_count, connection_count);
+  const auto complexity = static_cast<float>(node_count + enabled_count);
+  population.species_id[idx] = species_id;
+  atomicAdd(&scratch->sizes[species_id], 1U);
+  atomicAdd(&scratch->complexity_sums[species_id], complexity);
+  atomicMin(&scratch->representative_slots[species_id], idx);
+}
 
-  for (std::uint32_t idx = 0; idx < population.capacity; ++idx) {
-    if (population.alive[idx] == 0U) {
-      continue;
-    }
-
-    const auto node_count = population.genome.num_nodes[idx];
-    const auto connection_count = population.genome.num_connections[idx];
-    const auto enabled_count = moonai_gpu::count_enabled_connections(population, idx, connection_count);
-    const auto species_id = species_bucket(population, idx, node_count, connection_count);
-    population.species_id[idx] = species_id;
-
-    if (!representative_seen[species_id]) {
-      representative_slots[species_id] = idx;
-      representative_seen[species_id] = true;
-    }
-
-    ++species_sizes[species_id];
-    complexity_sums[species_id] += static_cast<float>(node_count + enabled_count);
+__global__ void write_species_summaries_kernel(DevicePopulationBuffers population, PopulationKind population_kind,
+                                               const SpeciesReduceScratch *scratch,
+                                               SpeciesSummaryReadback *out_summaries,
+                                               RepresentativeGenomeHeader *out_headers,
+                                               std::uint32_t *out_species_count) {
+  const auto species_id = (blockIdx.x * blockDim.x) + threadIdx.x;
+  if (species_id >= moonai_gpu::kSpeciesBucketCount) {
+    return;
   }
 
-  std::uint32_t dense_count = 0U;
-  for (std::uint32_t species_id = 0; species_id < moonai_gpu::kSpeciesBucketCount; ++species_id) {
-    if (species_sizes[species_id] == 0U) {
-      continue;
-    }
-
-    const auto representative_slot = representative_slots[species_id];
-    out_summaries[dense_count] = SpeciesSummaryReadback{population_kind,
-                                                        species_id,
-                                                        species_sizes[species_id],
-                                                        representative_slot,
-                                                        complexity_sums[species_id] /
-                                                            static_cast<float>(species_sizes[species_id])};
-    build_representative_header(population, population_kind, representative_slot, &out_headers[dense_count]);
-    ++dense_count;
+  const auto size = scratch->sizes[species_id];
+  if (size == 0U) {
+    return;
   }
 
-  *out_species_count = dense_count;
+  const auto dense_index = atomicAdd(out_species_count, 1U);
+  const auto representative_slot = scratch->representative_slots[species_id];
+  out_summaries[dense_index] = SpeciesSummaryReadback{population_kind, species_id, size, representative_slot,
+                                                      scratch->complexity_sums[species_id] /
+                                                          static_cast<float>(size)};
+  build_representative_header(population, population_kind, representative_slot, &out_headers[dense_index]);
 }
 
 } // namespace
@@ -355,6 +356,20 @@ extern "C" std::int32_t dev_write_selected_agent_network(const DeviceState *stat
 
 extern "C" std::int32_t dev_classify_species_summaries(DeviceState *state, PopulationKind population_kind) {
   auto &population = moonai_gpu::population_for_kind(*state, population_kind);
-  classify_species_batch_kernel<<<1U, 1U>>>(population, population_kind, state->species_summaries_scratch, state->representative_headers_scratch, state->species_count_scratch);
-  return moonai_gpu::synchronize_kernels();
+  reset_species_reduce_scratch_kernel<<<1U, moonai_gpu::kSpeciesBucketCount>>>(state->species_reduce_scratch,
+                                                                                state->species_count_scratch);
+  const auto blocks = (population.capacity + 255U) / 256U;
+  if (population_kind == PopulationKind::Predator) {
+    accumulate_species_kernel<PopulationKind::Predator><<<blocks == 0U ? 1U : blocks, 256U>>>(population,
+                                                                                                 state->species_reduce_scratch);
+  } else {
+    accumulate_species_kernel<PopulationKind::Prey><<<blocks == 0U ? 1U : blocks, 256U>>>(population,
+                                                                                             state->species_reduce_scratch);
+  }
+  write_species_summaries_kernel<<<1U, moonai_gpu::kSpeciesBucketCount>>>(population, population_kind,
+                                                                           state->species_reduce_scratch,
+                                                                           state->species_summaries_scratch,
+                                                                           state->representative_headers_scratch,
+                                                                           state->species_count_scratch);
+  return moonai_gpu::launch_status();
 }

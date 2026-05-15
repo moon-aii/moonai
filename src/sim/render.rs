@@ -1,6 +1,6 @@
 use super::*;
 
-use anyhow::{Context as _, Result, bail};
+use anyhow::{Context as _, Result};
 
 impl Simulation {
     pub(super) fn read_render_snapshot(
@@ -9,9 +9,18 @@ impl Simulation {
         max_prey: u32,
         max_food: u32,
     ) -> Result<RenderSnapshotReadback> {
-        let predator_capacity = usize::try_from(max_predators).context("predator render capacity overflowed")?;
-        let prey_capacity = usize::try_from(max_prey).context("prey render capacity overflowed")?;
-        let food_capacity = usize::try_from(max_food).context("food render capacity overflowed")?;
+        let mut snapshot = RenderSnapshotReadback::empty();
+        self.read_render_snapshot_into(max_predators, max_prey, max_food, &mut snapshot)?;
+        Ok(snapshot)
+    }
+
+    pub(super) fn read_render_snapshot_into(
+        &mut self,
+        max_predators: u32,
+        max_prey: u32,
+        max_food: u32,
+        snapshot: &mut RenderSnapshotReadback,
+    ) -> Result<()> {
         let empty_predator = RenderAgentReadback {
             population_kind: PopulationKind::Predator,
             slot: 0,
@@ -27,9 +36,6 @@ impl Simulation {
         };
         let empty_prey = RenderAgentReadback { population_kind: PopulationKind::Prey, ..empty_predator };
         let empty_food = RenderFoodReadback { slot: 0, active: 0, reserved0: 0, reserved1: 0, pos_x: 0.0, pos_y: 0.0 };
-        let mut predators = vec![empty_predator; predator_capacity];
-        let mut prey = vec![empty_prey; prey_capacity];
-        let mut food = vec![empty_food; food_capacity];
         check_cuda_status(
             unsafe { dev_initialize_render_snapshot(self.get_dev_state()) },
             "moonai_gpu_simulation_initialize_render_snapshot",
@@ -61,42 +67,35 @@ impl Simulation {
             usize::try_from(header.returned_predators).context("predator render length overflowed")?;
         let returned_prey = usize::try_from(header.returned_prey).context("prey render length overflowed")?;
         let returned_food = usize::try_from(header.returned_food).context("food render length overflowed")?;
-        if returned_predators > predators.len() || returned_prey > prey.len() || returned_food > food.len() {
-            bail!(
-                "render snapshot returned more entries than allocated: predators {} / {}, prey {} / {}, food {} / {}",
-                returned_predators,
-                predators.len(),
-                returned_prey,
-                prey.len(),
-                returned_food,
-                food.len()
-            );
-        }
+
+        snapshot.header = header;
+        snapshot.predators.resize(returned_predators, empty_predator);
+        snapshot.prey.resize(returned_prey, empty_prey);
+        snapshot.food.resize(returned_food, empty_food);
+
         if returned_predators > 0 {
             device_read_slice(
                 "moonai_gpu_simulation_render_snapshot_predators",
                 self.device_state.render_predators_scratch,
-                &mut predators[..returned_predators],
+                &mut snapshot.predators,
             )?;
         }
         if returned_prey > 0 {
             device_read_slice(
                 "moonai_gpu_simulation_render_snapshot_prey",
                 self.device_state.render_prey_scratch,
-                &mut prey[..returned_prey],
+                &mut snapshot.prey,
             )?;
         }
         if returned_food > 0 {
             device_read_slice(
                 "moonai_gpu_simulation_render_snapshot_food",
                 self.device_state.render_food_scratch,
-                &mut food[..returned_food],
+                &mut snapshot.food,
             )?;
         }
-        predators.truncate(returned_predators);
-        prey.truncate(returned_prey);
-        food.truncate(returned_food);
-        Ok(RenderSnapshotReadback { header, predators, prey, food })
+
+        Ok(())
     }
 }
 
