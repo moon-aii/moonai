@@ -24,7 +24,7 @@ build:
 # Run the release build with bundled runtime files
 [default]
 [group('run')]
-run: build
+run:
   target/release/moonai
 
 # Run the debug build with bundled runtime files
