@@ -175,8 +175,8 @@ impl Simulation {
         self.crossover_batch(population_kind, births_applied, free_slot_base)?;
         self.mutate_batch(population_kind, births_applied, free_slot_base, mutation_config)?;
         self.compile_slots_batch(population_kind, births_applied, free_slot_base)?;
-
-        self.apply_reproduction_energy(population_kind, births_applied, free_slot_base)
+        self.apply_reproduction_energy(population_kind, births_applied, free_slot_base)?;
+        cuda_synchronize("moonai_gpu_simulation_run_reproduction")
     }
 
     fn apply_reproduction_energy(

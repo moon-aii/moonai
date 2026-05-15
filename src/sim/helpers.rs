@@ -92,6 +92,10 @@ pub fn cuda_dev_to_dev<T>(dst_ptr: *mut T, src_ptr: *const T, count: usize) -> R
     )
 }
 
+pub fn cuda_synchronize(context: &str) -> Result<()> {
+    check_cuda_status(unsafe { c_cuda_synchronize() }, context)
+}
+
 unsafe extern "C" {
     fn c_cuda_malloc(ptr: *mut *mut c_void, size: usize) -> i32;
     fn c_cuda_free(ptr: *mut c_void) -> i32;
@@ -100,4 +104,5 @@ unsafe extern "C" {
     fn c_cuda_dev_to_host(dev_ptr: *const c_void, host_ptr: *mut c_void, size: usize) -> i32;
     fn c_cuda_host_to_dev(dev_ptr: *mut c_void, host_ptr: *const c_void, size: usize) -> i32;
     fn c_cuda_dev_to_dev(dst_ptr: *mut c_void, src_ptr: *const c_void, size: usize) -> i32;
+    fn c_cuda_synchronize() -> i32;
 }

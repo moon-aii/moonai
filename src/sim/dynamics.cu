@@ -83,7 +83,7 @@ extern "C" std::int32_t dev_infer_population(DeviceState *state, PopulationKind 
   auto &population = moonai_gpu::population_for_kind(*state, population_kind);
   const auto blocks = (population.capacity + 255U) / 256U;
   infer_population_kernel<<<blocks == 0U ? 1U : blocks, 256U>>>(population, state->num_inputs);
-  return static_cast<std::int32_t>(moonai_gpu::synchronize_kernels());
+  return static_cast<std::int32_t>(moonai_gpu::launch_status());
 }
 
 extern "C" std::int32_t dev_update_vitals(DeviceState *state, PopulationKind population_kind) {
@@ -96,7 +96,7 @@ extern "C" std::int32_t dev_update_vitals(DeviceState *state, PopulationKind pop
   update_vitals_kernel<<<blocks == 0U ? 1U : blocks, 256U>>>(population, state->simulation.energy_drain_per_tick,
                                                               state->simulation.max_age, free_list, free_len,
                                                               death_counter);
-  return static_cast<std::int32_t>(moonai_gpu::synchronize_kernels());
+  return static_cast<std::int32_t>(moonai_gpu::launch_status());
 }
 
 extern "C" std::int32_t dev_apply_movement(DeviceState *state, PopulationKind population_kind) {
@@ -105,7 +105,7 @@ extern "C" std::int32_t dev_apply_movement(DeviceState *state, PopulationKind po
       population_kind == PopulationKind::Predator ? state->simulation.predator_speed : state->simulation.prey_speed;
   const auto blocks = (population.capacity + 255U) / 256U;
   apply_movement_kernel<<<blocks == 0U ? 1U : blocks, 256U>>>(population, speed, state->simulation.grid_size);
-  return moonai_gpu::synchronize_kernels();
+  return moonai_gpu::launch_status();
 }
 
 extern "C" std::int32_t dev_advance_tick(DeviceState *state) {

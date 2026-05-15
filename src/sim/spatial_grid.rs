@@ -145,7 +145,8 @@ impl Simulation {
             "moonai_gpu_simulation_scatter_prey_cells",
         )?;
         let status = unsafe { dev_scatter_food_cells(self.get_dev_state()) };
-        check_cuda_status(status, "moonai_gpu_simulation_scatter_food_cells")
+        check_cuda_status(status, "moonai_gpu_simulation_scatter_food_cells")?;
+        cuda_synchronize("moonai_gpu_simulation_build_spatial_grid")
     }
 }
 

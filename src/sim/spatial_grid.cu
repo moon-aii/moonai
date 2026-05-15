@@ -82,7 +82,7 @@ extern "C" std::int32_t dev_count_population_cells(const DeviceState *state, Pop
   const auto blocks = (population.capacity + 255U) / 256U;
   count_population_cells_kernel<<<blocks == 0U ? 1U : blocks, 256U>>>(population, cell_counts, state->grid_cols,
                                                                        state->grid_rows, state->grid_cell_size);
-  return moonai_gpu::synchronize_kernels();
+  return moonai_gpu::launch_status();
 }
 
 extern "C" std::int32_t dev_count_food_cells(const DeviceState *state) {
@@ -90,7 +90,7 @@ extern "C" std::int32_t dev_count_food_cells(const DeviceState *state) {
   count_food_cells_kernel<<<food_blocks == 0U ? 1U : food_blocks, 256U>>>(state->food, state->food_cell_counts,
                                                                             state->grid_cols, state->grid_rows,
                                                                             state->grid_cell_size);
-  return moonai_gpu::synchronize_kernels();
+  return moonai_gpu::launch_status();
 }
 
 extern "C" std::int32_t dev_exclusive_scan_u32(const std::uint32_t *input, std::uint32_t count,
@@ -100,7 +100,7 @@ extern "C" std::int32_t dev_exclusive_scan_u32(const std::uint32_t *input, std::
   }
 
   thrust::exclusive_scan(thrust::device, input, input + count, output);
-  return moonai_gpu::synchronize_kernels();
+  return moonai_gpu::launch_status();
 }
 
 extern "C" std::int32_t dev_finalize_population_cell_offsets(const DeviceState *state, PopulationKind population_kind,
@@ -112,7 +112,7 @@ extern "C" std::int32_t dev_finalize_population_cell_offsets(const DeviceState *
   const auto cell_blocks = (cell_count + 255U) / 256U;
   finalize_cell_offsets_kernel<<<cell_blocks == 0U ? 1U : cell_blocks, 256U>>>(cell_counts, cell_offsets,
                                                                                  cell_write_offsets, cell_count);
-  return moonai_gpu::synchronize_kernels();
+  return moonai_gpu::launch_status();
 }
 
 extern "C" std::int32_t dev_finalize_food_cell_offsets(const DeviceState *state, std::uint32_t cell_count) {
@@ -121,7 +121,7 @@ extern "C" std::int32_t dev_finalize_food_cell_offsets(const DeviceState *state,
                                                                                  state->food_cell_offsets,
                                                                                  state->food_cell_write_offsets,
                                                                                  cell_count);
-  return moonai_gpu::synchronize_kernels();
+  return moonai_gpu::launch_status();
 }
 
 extern "C" std::int32_t dev_scatter_population_cells(const DeviceState *state, PopulationKind population_kind) {
@@ -133,7 +133,7 @@ extern "C" std::int32_t dev_scatter_population_cells(const DeviceState *state, P
   scatter_population_cells_kernel<<<blocks == 0U ? 1U : blocks, 256U>>>(population, cell_write_offsets, grid_entries,
                                                                          state->grid_cols, state->grid_rows,
                                                                          state->grid_cell_size);
-  return moonai_gpu::synchronize_kernels();
+  return moonai_gpu::launch_status();
 }
 
 extern "C" std::int32_t dev_scatter_food_cells(const DeviceState *state) {
@@ -143,5 +143,5 @@ extern "C" std::int32_t dev_scatter_food_cells(const DeviceState *state) {
                                                                               state->food_grid_entries,
                                                                               state->grid_cols, state->grid_rows,
                                                                               state->grid_cell_size);
-  return moonai_gpu::synchronize_kernels();
+  return moonai_gpu::launch_status();
 }

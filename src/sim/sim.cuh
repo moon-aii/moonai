@@ -35,6 +35,10 @@ inline uint32_t synchronize_kernels() {
   return cudaDeviceSynchronize();
 }
 
+inline uint32_t launch_status() {
+  return cudaPeekAtLastError();
+}
+
 inline const DevicePopulationBuffers &population_for_kind(const DeviceState &state, PopulationKind population_kind) {
   return population_kind == PopulationKind::Predator ? state.predator : state.prey;
 }

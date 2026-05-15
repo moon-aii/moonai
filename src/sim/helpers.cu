@@ -52,3 +52,7 @@ extern "C" uint32_t c_cuda_dev_to_dev(void *dst_ptr, const void *src_ptr, std::s
 
   return cudaMemcpy(dst_ptr, src_ptr, size, cudaMemcpyDeviceToDevice);
 }
+
+extern "C" uint32_t c_cuda_synchronize() {
+  return cudaDeviceSynchronize();
+}

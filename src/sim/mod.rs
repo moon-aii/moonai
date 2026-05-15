@@ -360,6 +360,15 @@ pub struct MetricsReduceScratch {
 
 #[repr(C)]
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
+pub struct UiStatsReduceScratch {
+    predator_energy_sum: f32,
+    prey_energy_sum: f32,
+    predator_count: u32,
+    prey_count: u32,
+}
+
+#[repr(C)]
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub struct FoodBuffer {
     pos_x: *mut f32,
     pos_y: *mut f32,
@@ -418,6 +427,7 @@ pub struct DeviceState {
     prey_pair_count: *mut u32,
     population_live_count_scratch: *mut u32,
     ui_stats_scratch: *mut UiStatsReadback,
+    ui_stats_reduce_scratch: *mut UiStatsReduceScratch,
     free_list_state_scratch: *mut FreeListStateReadback,
     sensor_snapshot_scratch: *mut SensorSnapshotReadback,
     compiled_header_scratch: *mut CompiledNetworkReadbackHeader,
@@ -695,17 +705,14 @@ impl Simulation {
         Ok(simulation)
     }
 
-    pub fn tick(&mut self) -> Result<UiStatsReadback> {
+    pub fn tick(&mut self) -> Result<()> {
         profile_scope!("tick");
 
         self.build_spatial_grid()?;
         self.compute_sensor_inputs()?;
-        self.infer_population(PopulationKind::Predator)?;
-        self.infer_population(PopulationKind::Prey)?;
-        self.update_vitals(PopulationKind::Predator)?;
-        self.update_vitals(PopulationKind::Prey)?;
-        self.apply_movement(PopulationKind::Predator)?;
-        self.apply_movement(PopulationKind::Prey)?;
+        self.infer_populations()?;
+        self.update_population_vitals()?;
+        self.apply_population_movement()?;
         self.build_spatial_grid()?;
         self.resolve_food()?;
         self.resolve_combat()?;
@@ -721,11 +728,7 @@ impl Simulation {
         self.run_reproduction(PopulationKind::Prey, prey_births)?;
         self.advance_tick()?;
 
-        let ui_stats = self.read_ui_stats()?;
-        if self.config.report_interval_ticks > 0 && ui_stats.tick % self.config.report_interval_ticks == 0 {
-            self.refresh_reports_impl()?;
-        }
-        Ok(ui_stats)
+        Ok(())
     }
 
     pub fn ui_stats(&mut self) -> Result<UiStatsReadback> {

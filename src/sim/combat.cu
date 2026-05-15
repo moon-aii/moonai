@@ -101,7 +101,7 @@ extern "C" std::int32_t dev_resolve_combat_claims(DeviceState *state) {
   resolve_combat_kernel<<<predator_blocks == 0U ? 1U : predator_blocks, 256U>>>(
       state->predator, state->prey, state->prey_claimed_by, state->prey_cell_offsets, state->prey_grid_entries,
       state->grid_cols, state->grid_rows, state->grid_cell_size, state->simulation.interaction_range);
-  return moonai_gpu::synchronize_kernels();
+  return moonai_gpu::launch_status();
 }
 
 extern "C" std::int32_t dev_finalize_combat(DeviceState *state) {
@@ -112,5 +112,5 @@ extern "C" std::int32_t dev_finalize_combat(DeviceState *state) {
   finalize_combat_kernel<<<prey_blocks == 0U ? 1U : prey_blocks, 256U>>>(
       state->predator, state->prey, state->counters, state->prey_free_list, state->prey_free_len,
       state->prey_claimed_by, state->simulation.energy_gain_from_kill, state->simulation.max_energy);
-  return moonai_gpu::synchronize_kernels();
+  return moonai_gpu::launch_status();
 }

@@ -202,5 +202,5 @@ extern "C" std::int32_t dev_mutate_batch(DeviceState *state, PopulationKind popu
   const auto blocks = (births_applied + 255U) / 256U;
   mutate_batch_kernel<<<blocks == 0U ? 1U : blocks, 256U>>>(population, state->innovation, *config, free_list,
                                                              free_slot_base, births_applied);
-  return moonai_gpu::synchronize_kernels();
+  return moonai_gpu::launch_status();
 }

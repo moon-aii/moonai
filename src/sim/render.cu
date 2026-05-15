@@ -70,7 +70,7 @@ __global__ void pack_render_food_kernel(FoodBuffer food, std::uint32_t max_food,
 
 extern "C" std::int32_t dev_initialize_render_snapshot(const DeviceState *state) {
   initialize_render_snapshot_kernel<<<1U, 1U>>>(state->counters, state->render_header_scratch);
-  return moonai_gpu::synchronize_kernels();
+  return moonai_gpu::launch_status();
 }
 
 extern "C" std::int32_t dev_pack_render_agents(const DeviceState *state, PopulationKind population_kind,
@@ -86,7 +86,7 @@ extern "C" std::int32_t dev_pack_render_agents(const DeviceState *state, Populat
                                                                                             state->render_header_scratch,
                                                                                             scratch);
   }
-  return moonai_gpu::synchronize_kernels();
+  return moonai_gpu::launch_status();
 }
 
 extern "C" std::int32_t dev_pack_render_food(const DeviceState *state, std::uint32_t max_food) {
@@ -94,5 +94,5 @@ extern "C" std::int32_t dev_pack_render_food(const DeviceState *state, std::uint
   pack_render_food_kernel<<<food_blocks == 0U ? 1U : food_blocks, 256U>>>(state->food, max_food,
                                                                             state->render_header_scratch,
                                                                             state->render_food_scratch);
-  return moonai_gpu::synchronize_kernels();
+  return moonai_gpu::launch_status();
 }

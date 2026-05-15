@@ -60,8 +60,7 @@ impl RunSession {
         let mut state = Simulation::init(&queued_run.simulation_config)?;
         let logger = Logger::new(&output_dir, &queued_run.simulation_config)?;
         let camera = render::default_camera(queued_run.simulation_config.grid_size);
-        let initial_ui_stats = state.ui_stats()?;
-        let (ui_stats, metrics_summary, world_frame) = load_world_frame(&mut state, initial_ui_stats, &ui_config)?;
+        let (ui_stats, metrics_summary, world_frame) = load_world_frame(&mut state, &ui_config)?;
         let initial_overlay =
             OverlayStats::from_snapshot(ui_stats, metrics_summary, world_frame.active_food_count(), 1, false, 0.0);
         let mut overlay_history = OverlayHistory::default();
@@ -144,8 +143,7 @@ impl RunSession {
         self.ui_config = ui_config;
         self.ui_state.speed_multiplier =
             self.ui_state.speed_multiplier.clamp(self.ui_config.speed_min, self.ui_config.speed_max);
-        let (ui_stats, metrics_summary, world_frame) =
-            load_world_frame(&mut self.state, self.ui_stats, &self.ui_config)?;
+        let (ui_stats, metrics_summary, world_frame) = load_world_frame(&mut self.state, &self.ui_config)?;
         self.ui_stats = ui_stats;
         self.metrics_summary = metrics_summary;
         self.world_frame = world_frame;
@@ -179,9 +177,12 @@ impl RunSession {
                 break;
             }
 
-            self.ui_stats = self.state.tick()?;
+            self.state.tick()?;
+            self.ui_stats.tick = self.ui_stats.tick.saturating_add(1);
             advanced = true;
-            if self.ui_stats.tick.is_multiple_of(self.config.report_interval_ticks) {
+            if self.config.report_interval_ticks > 0
+                && self.ui_stats.tick.is_multiple_of(self.config.report_interval_ticks)
+            {
                 self.last_logged_tick = log_report_snapshot(&mut self.state, &mut self.logger)?;
             }
             if let Some(limit) = limit
@@ -196,8 +197,7 @@ impl RunSession {
             return Ok(());
         }
 
-        let (ui_stats, metrics_summary, world_frame) =
-            load_world_frame(&mut self.state, self.ui_stats, &self.ui_config)?;
+        let (ui_stats, metrics_summary, world_frame) = load_world_frame(&mut self.state, &self.ui_config)?;
         self.ui_stats = ui_stats;
         self.metrics_summary = metrics_summary;
         self.world_frame = world_frame;
@@ -726,11 +726,11 @@ fn log_report_snapshot(state: &mut Simulation, logger: &mut Logger) -> Result<u3
 
 fn load_world_frame(
     state: &mut Simulation,
-    ui_stats: UiStatsReadback,
     ui_config: &UiConfig,
 ) -> Result<(UiStatsReadback, MetricsSummaryReadback, Arc<WorldFrame>)> {
     profile_scope!("world_frame");
 
+    let ui_stats = state.ui_stats()?;
     let metrics_summary = state.metrics_summary()?;
     let snapshot = state.render_snapshot(ui_stats.predator_count, ui_stats.prey_count, state.config.food_count)?;
     let world_frame = Arc::new(WorldFrame::from_snapshot(snapshot, ui_config));

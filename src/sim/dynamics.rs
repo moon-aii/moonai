@@ -3,22 +3,43 @@ use super::*;
 use anyhow::Result;
 
 impl Simulation {
-    pub(super) fn infer_population(&mut self, population_kind: PopulationKind) -> Result<()> {
+    pub(super) fn infer_populations(&mut self) -> Result<()> {
         profile_scope!("inference");
-        let status = unsafe { dev_infer_population(self.get_dev_state(), population_kind) };
-        check_cuda_status(status, "moonai_gpu_simulation_infer_population")
+        check_cuda_status(
+            unsafe { dev_infer_population(self.get_dev_state(), PopulationKind::Predator) },
+            "moonai_gpu_simulation_infer_predator_population",
+        )?;
+        check_cuda_status(
+            unsafe { dev_infer_population(self.get_dev_state(), PopulationKind::Prey) },
+            "moonai_gpu_simulation_infer_prey_population",
+        )?;
+        cuda_synchronize("moonai_gpu_simulation_infer_populations")
     }
 
-    pub(super) fn update_vitals(&mut self, population_kind: PopulationKind) -> Result<()> {
+    pub(super) fn update_population_vitals(&mut self) -> Result<()> {
         profile_scope!("update_vitals");
-        let status = unsafe { dev_update_vitals(self.get_dev_state(), population_kind) };
-        check_cuda_status(status, "moonai_gpu_simulation_update_vitals")
+        check_cuda_status(
+            unsafe { dev_update_vitals(self.get_dev_state(), PopulationKind::Predator) },
+            "moonai_gpu_simulation_update_predator_vitals",
+        )?;
+        check_cuda_status(
+            unsafe { dev_update_vitals(self.get_dev_state(), PopulationKind::Prey) },
+            "moonai_gpu_simulation_update_prey_vitals",
+        )?;
+        cuda_synchronize("moonai_gpu_simulation_update_population_vitals")
     }
 
-    pub(super) fn apply_movement(&mut self, population_kind: PopulationKind) -> Result<()> {
+    pub(super) fn apply_population_movement(&mut self) -> Result<()> {
         profile_scope!("apply_movement");
-        let status = unsafe { dev_apply_movement(self.get_dev_state(), population_kind) };
-        check_cuda_status(status, "moonai_gpu_simulation_apply_movement")
+        check_cuda_status(
+            unsafe { dev_apply_movement(self.get_dev_state(), PopulationKind::Predator) },
+            "moonai_gpu_simulation_apply_predator_movement",
+        )?;
+        check_cuda_status(
+            unsafe { dev_apply_movement(self.get_dev_state(), PopulationKind::Prey) },
+            "moonai_gpu_simulation_apply_prey_movement",
+        )?;
+        cuda_synchronize("moonai_gpu_simulation_apply_population_movement")
     }
 
     pub(super) fn advance_tick(&mut self) -> Result<()> {

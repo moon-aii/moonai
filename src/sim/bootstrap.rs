@@ -23,6 +23,7 @@ impl Simulation {
         cuda_malloc(&mut self.device_state.next_entity_id, 1)?;
         cuda_malloc(&mut self.device_state.population_live_count_scratch, 1)?;
         cuda_malloc(&mut self.device_state.ui_stats_scratch, 1)?;
+        cuda_malloc(&mut self.device_state.ui_stats_reduce_scratch, 1)?;
         cuda_malloc(&mut self.device_state.free_list_state_scratch, 1)?;
         cuda_malloc(&mut self.device_state.sensor_snapshot_scratch, 1)?;
         cuda_malloc(&mut self.device_state.compiled_header_scratch, 1)?;
@@ -200,6 +201,7 @@ impl Simulation {
         cuda_free(&mut self.device_state.food_claimed_by)?;
         cuda_free(&mut self.device_state.population_live_count_scratch)?;
         cuda_free(&mut self.device_state.ui_stats_scratch)?;
+        cuda_free(&mut self.device_state.ui_stats_reduce_scratch)?;
         cuda_free(&mut self.device_state.free_list_state_scratch)?;
         cuda_free(&mut self.device_state.sensor_snapshot_scratch)?;
         cuda_free(&mut self.device_state.compiled_header_scratch)?;

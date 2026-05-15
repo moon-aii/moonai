@@ -112,7 +112,7 @@ extern "C" std::int32_t dev_resolve_food_claims(DeviceState *state) {
       state->prey, state->food, state->counters, state->food_cell_offsets, state->food_grid_entries,
       state->food_claimed_by, state->grid_cols, state->grid_rows, state->grid_cell_size,
       state->simulation.interaction_range);
-  return moonai_gpu::synchronize_kernels();
+  return moonai_gpu::launch_status();
 }
 
 extern "C" std::int32_t dev_finalize_food(DeviceState *state) {
@@ -123,7 +123,7 @@ extern "C" std::int32_t dev_finalize_food(DeviceState *state) {
   finalize_food_kernel<<<food_blocks == 0U ? 1U : food_blocks, 256U>>>(
       state->prey, state->food, state->counters, state->food_claimed_by, state->simulation.energy_gain_from_food,
       state->simulation.max_energy);
-  return moonai_gpu::synchronize_kernels();
+  return moonai_gpu::launch_status();
 }
 
 extern "C" std::int32_t dev_respawn_food(DeviceState *state) {
@@ -134,5 +134,5 @@ extern "C" std::int32_t dev_respawn_food(DeviceState *state) {
   respawn_food_kernel<<<food_blocks == 0U ? 1U : food_blocks, 256U>>>(
       state->food, state->counters, state->simulation.seed ^ 0xC0FFEEULL, state->simulation.food_respawn_rate,
       state->simulation.grid_size);
-  return moonai_gpu::synchronize_kernels();
+  return moonai_gpu::launch_status();
 }

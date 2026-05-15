@@ -16,7 +16,8 @@ impl Simulation {
             "moonai_gpu_simulation_resolve_combat_claims",
         )?;
         let status = unsafe { dev_finalize_combat(self.get_dev_state()) };
-        check_cuda_status(status, "moonai_gpu_simulation_finalize_combat")
+        check_cuda_status(status, "moonai_gpu_simulation_finalize_combat")?;
+        cuda_synchronize("moonai_gpu_simulation_resolve_combat")
     }
 }
 

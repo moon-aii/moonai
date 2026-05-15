@@ -5,8 +5,20 @@ use anyhow::{Context as _, Result};
 impl Simulation {
     pub(super) fn read_ui_stats(&mut self) -> Result<UiStatsReadback> {
         profile_scope!("ui_stats");
-        let status = unsafe { dev_write_ui_stats(self.get_dev_state()) };
-        check_cuda_status(status, "moonai_gpu_simulation_ui_stats")?;
+        cuda_memset_zero(self.device_state.ui_stats_reduce_scratch, 1)
+            .context("moonai_gpu_simulation_zero_ui_stats_reduce_scratch")?;
+        check_cuda_status(
+            unsafe { dev_accumulate_ui_stats(self.get_dev_state(), PopulationKind::Predator) },
+            "moonai_gpu_simulation_accumulate_predator_ui_stats",
+        )?;
+        check_cuda_status(
+            unsafe { dev_accumulate_ui_stats(self.get_dev_state(), PopulationKind::Prey) },
+            "moonai_gpu_simulation_accumulate_prey_ui_stats",
+        )?;
+        check_cuda_status(
+            unsafe { dev_finalize_ui_stats(self.get_dev_state()) },
+            "moonai_gpu_simulation_finalize_ui_stats",
+        )?;
         device_read("moonai_gpu_simulation_ui_stats_readback", self.device_state.ui_stats_scratch)
     }
 
@@ -36,13 +48,17 @@ impl Simulation {
             unsafe { dev_accumulate_metrics(self.get_dev_state(), PopulationKind::Prey) },
             "moonai_gpu_simulation_accumulate_prey_metrics",
         )?;
-        let status = unsafe { dev_finalize_metrics_summary(self.get_dev_state()) };
-        check_cuda_status(status, "moonai_gpu_simulation_finalize_metrics_summary")
+        check_cuda_status(
+            unsafe { dev_finalize_metrics_summary(self.get_dev_state()) },
+            "moonai_gpu_simulation_finalize_metrics_summary",
+        )?;
+        cuda_synchronize("moonai_gpu_simulation_refresh_reports")
     }
 }
 
 unsafe extern "C" {
-    fn dev_write_ui_stats(state: *mut DeviceState) -> i32;
+    fn dev_accumulate_ui_stats(state: *mut DeviceState, population_kind: PopulationKind) -> i32;
+    fn dev_finalize_ui_stats(state: *mut DeviceState) -> i32;
     fn dev_write_free_list_state(state: *mut DeviceState) -> i32;
     fn dev_accumulate_metrics(state: *mut DeviceState, population_kind: PopulationKind) -> i32;
     fn dev_finalize_metrics_summary(state: *mut DeviceState) -> i32;

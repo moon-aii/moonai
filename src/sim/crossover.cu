@@ -226,5 +226,5 @@ extern "C" std::int32_t dev_crossover_batch(DeviceState *state, PopulationKind p
   const auto blocks = (births_applied + 255U) / 256U;
   crossover_batch_kernel<<<blocks == 0U ? 1U : blocks, 256U>>>(population, state->next_entity_id, pairs, free_list,
                                                                 free_slot_base, births_applied, offspring_energy);
-  return moonai_gpu::synchronize_kernels();
+  return moonai_gpu::launch_status();
 }

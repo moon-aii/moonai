@@ -148,7 +148,7 @@ extern "C" std::int32_t dev_reset_population_reproduction_state(DeviceState *sta
   auto *pair_count = population_kind == PopulationKind::Predator ? state->predator_pair_count : state->prey_pair_count;
   const auto blocks = (population.capacity + 255U) / 256U;
   reset_reproduction_state_kernel<<<blocks == 0U ? 1U : blocks, 256U>>>(mate_claims, population.capacity, pair_count);
-  return moonai_gpu::synchronize_kernels();
+  return moonai_gpu::launch_status();
 }
 
 extern "C" std::int32_t dev_find_reproduction_pairs(DeviceState *state, PopulationKind population_kind) {
@@ -164,7 +164,7 @@ extern "C" std::int32_t dev_find_reproduction_pairs(DeviceState *state, Populati
       population, cell_offsets, entries, state->grid_cols, state->grid_rows, state->grid_cell_size,
       state->simulation.mate_range, state->simulation.reproduction_energy_threshold, mate_claims, pair_buffer,
       pair_count_ptr);
-  return moonai_gpu::synchronize_kernels();
+  return moonai_gpu::launch_status();
 }
 
 extern "C" std::int32_t dev_apply_reproduction_energy_kernel(DeviceState *state, PopulationKind population_kind,
@@ -200,5 +200,5 @@ extern "C" std::int32_t dev_apply_reproduction_energy_kernel(DeviceState *state,
   apply_reproduction_costs_kernel<<<population_blocks == 0U ? 1U : population_blocks, 256U>>>(
       population, reproduction_counts, state->simulation.reproduction_energy_cost, death_counter, free_list,
       free_len);
-  return moonai_gpu::synchronize_kernels();
+  return moonai_gpu::launch_status();
 }

@@ -17,7 +17,8 @@ impl Simulation {
         )?;
         check_cuda_status(unsafe { dev_finalize_food(self.get_dev_state()) }, "moonai_gpu_simulation_finalize_food")?;
         let status = unsafe { dev_respawn_food(self.get_dev_state()) };
-        check_cuda_status(status, "moonai_gpu_simulation_respawn_food")
+        check_cuda_status(status, "moonai_gpu_simulation_respawn_food")?;
+        cuda_synchronize("moonai_gpu_simulation_resolve_food")
     }
 }
 

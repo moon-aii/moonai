@@ -338,7 +338,7 @@ extern "C" std::int32_t dev_compile_slots(DeviceState *state, PopulationKind pop
   const auto blocks = (births_applied + 255U) / 256U;
   compile_slots_kernel<<<blocks == 0U ? 1U : blocks, 256U>>>(population, free_list, free_slot_base, births_applied,
                                                               state->num_outputs);
-  return moonai_gpu::synchronize_kernels();
+  return moonai_gpu::launch_status();
 }
 
 extern "C" std::int32_t dev_write_compiled_header(const DeviceState *state, PopulationKind population_kind, std::uint32_t slot) {
