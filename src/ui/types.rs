@@ -11,11 +11,18 @@ pub struct UiState {
     pub tick_requested: bool,
     pub speed_multiplier: u32,
     pub selected_agent_id: Option<u32>,
+    pub follow_selected_agent: bool,
 }
 
 impl Default for UiState {
     fn default() -> Self {
-        Self { paused: false, tick_requested: false, speed_multiplier: 1, selected_agent_id: None }
+        Self {
+            paused: false,
+            tick_requested: false,
+            speed_multiplier: 1,
+            selected_agent_id: None,
+            follow_selected_agent: false,
+        }
     }
 }
 

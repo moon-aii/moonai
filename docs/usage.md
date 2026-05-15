@@ -114,17 +114,17 @@ UI settings can be changed live from the Settings tab and saved back to disk wit
 
 ## Visualization Controls
 
-| Key                    | Action                                        |
-| ---------------------- | --------------------------------------------- |
-| `Space`                | Pause / resume                                |
-| `↑` / `↓` or `+` / `-` | Increase / decrease simulation speed          |
-| `.`                    | Step one tick (while paused)                  |
-| `Esc`                  | Quit                                          |
-| Left-click             | Select an agent (shows stats + live NN panel) |
-| Middle-click drag      | Pan camera                                    |
-| Right-click drag       | Pan camera                                    |
-| Scroll wheel           | Zoom                                          |
-| Home                   | Reset camera to default zoom and center       |
+| Key                    | Action                                               |
+| ---------------------- | ---------------------------------------------------- |
+| `Space`                | Pause / resume                                       |
+| `↑` / `↓` or `+` / `-` | Increase / decrease simulation speed                 |
+| `.`                    | Step one tick (while paused)                         |
+| `Esc`                  | Quit                                                 |
+| Left-click             | Select an agent and start camera follow              |
+| Middle-click drag      | Pan camera and stop follow                           |
+| Right-click drag       | Pan camera and stop follow                           |
+| Scroll wheel           | Zoom                                                 |
+| Home                   | Reset camera to default zoom and center; stop follow |
 
 The main scene always renders the full active population: all predators, prey, and food with current positions, plus predator/prey movement directions and population overlay statistics.
 
@@ -137,7 +137,7 @@ Visualization speed is separate from report export cadence:
 - `8x` means the UI refreshes every 8 ticks
 - `report_interval_ticks` in `experiments.lua` controls when `stats.csv`, `species.csv`, `genomes.json`, and related artifacts are written
 
-When an agent is selected, its **vision range** (semi-transparent circle), **sensor lines** (connections to nearby agents and food), and **stats panel** are automatically displayed on top of the normal full-population view. The agent controller receives 35 inputs: the 5 closest predators, prey, and food items as signed proximity-weighted `dx, dy` pairs, plus self energy, velocity `x/y`, and signed wall proximity on `x/y`. Missing targets are encoded as `0`, and closer objects produce larger absolute values in `[-1, 1]`. The **Network panel** shows its neural network topology with edges colored by weight value: blue (positive) -> gray (near zero) -> orange (negative).
+When an agent is selected, the camera automatically follows it until follow is disabled, the selection is cleared, or the agent disappears. Its **vision range** (semi-transparent circle), **sensor lines** (connections to nearby agents and food), and **stats panel** are automatically displayed on top of the normal full-population view. The agent controller receives 35 inputs: the 5 closest predators, prey, and food items as signed proximity-weighted `dx, dy` pairs, plus self energy, velocity `x/y`, and signed wall proximity on `x/y`. Missing targets are encoded as `0`, and closer objects produce larger absolute values in `[-1, 1]`. The **Network panel** shows its neural network topology with edges colored by weight value: blue (positive) -> gray (near zero) -> orange (negative).
 
 ## Analysis
 

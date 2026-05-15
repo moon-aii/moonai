@@ -204,6 +204,7 @@ impl RunSession {
         let overlay = self.overlay_stats();
         self.overlay_history.push(&overlay);
         self.sync_selected_agent()?;
+        self.follow_selected_agent();
         Ok(())
     }
 
@@ -254,6 +255,7 @@ impl RunSession {
         }
         if ctx.input(|input| input.key_pressed(Key::Home)) {
             self.camera = render::default_camera(self.config.grid_size);
+            self.ui_state.follow_selected_agent = false;
         }
         if ctx.input(|input| input.key_pressed(Key::Escape)) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
@@ -313,6 +315,7 @@ impl RunSession {
         let Some(selected) = self.selected else {
             self.selected_data = None;
             self.ui_state.selected_agent_id = None;
+            self.ui_state.follow_selected_agent = false;
             return Ok(());
         };
 
@@ -322,6 +325,7 @@ impl RunSession {
             self.selected = None;
             self.selected_data = None;
             self.ui_state.selected_agent_id = None;
+            self.ui_state.follow_selected_agent = false;
             return Ok(());
         };
 
@@ -346,6 +350,21 @@ impl RunSession {
             }
         }
         Ok(())
+    }
+
+    const fn follow_selected_agent(&mut self) {
+        if !self.ui_state.follow_selected_agent {
+            return;
+        }
+
+        let Some(selected) = &self.selected_data else {
+            self.ui_state.follow_selected_agent = false;
+            return;
+        };
+
+        self.camera.center_x = selected.agent.pos_x;
+        self.camera.center_y = selected.agent.pos_y;
+        render::clamp_camera(&mut self.camera, self.config.grid_size, &self.ui_config);
     }
 
     fn update_fps(&mut self) {
@@ -395,8 +414,8 @@ impl RunSession {
                     ui.label(".: single tick while paused");
                     ui.label("Home: reset camera");
                     ui.label("Scroll: zoom");
-                    ui.label("Middle/right drag: pan");
-                    ui.label("Left click: select agent");
+                    ui.label("Middle/right drag: pan (stops follow)");
+                    ui.label("Left click: select agent and follow");
 
                     if let Some(message) = &self.status_message {
                         ui.separator();
@@ -421,6 +440,7 @@ impl RunSession {
                     if let Some(selected) = &self.selected_data {
                         ui.separator();
                         ui.heading("Selected Agent");
+                        ui.checkbox(&mut self.ui_state.follow_selected_agent, "Follow selected agent");
                         ui.label(format!("Population: {:?}", selected.agent.population_kind));
                         ui.label(format!("Entity: {}", selected.agent.entity_id));
                         ui.label(format!("Slot: {}", selected.agent.slot));
@@ -576,6 +596,7 @@ impl RunSession {
         egui::CentralPanel::default().show_inside(ui, |ui| {
             let (rect, response) = world::allocate_world_rect(ui);
             self.handle_view_input(ui.ctx(), response.rect, &response);
+            self.follow_selected_agent();
             world::paint_world(
                 ui,
                 rect,
@@ -616,6 +637,7 @@ impl RunSession {
             self.camera.center_x -= delta.x / scale;
             self.camera.center_y += delta.y / scale;
             render::clamp_camera(&mut self.camera, self.config.grid_size, &self.ui_config);
+            self.ui_state.follow_selected_agent = false;
         }
 
         if response.clicked_by(egui::PointerButton::Primary)
@@ -645,13 +667,16 @@ impl RunSession {
         if let Some((agent, _)) = closest {
             self.selected = Some(SelectedAgent::from_render_agent(agent));
             self.ui_state.selected_agent_id = Some(agent.entity_id);
+            self.ui_state.follow_selected_agent = true;
             if let Err(error) = self.sync_selected_agent() {
                 self.error_message = Some(error.to_string());
             }
+            self.follow_selected_agent();
         } else {
             self.selected = None;
             self.selected_data = None;
             self.ui_state.selected_agent_id = None;
+            self.ui_state.follow_selected_agent = false;
         }
     }
 }
