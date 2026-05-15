@@ -39,19 +39,9 @@ impl Simulation {
         let status = unsafe { dev_finalize_metrics_summary(self.get_dev_state()) };
         check_cuda_status(status, "moonai_gpu_simulation_finalize_metrics_summary")
     }
-
-    pub(super) fn population_live_count(&mut self, population_kind: PopulationKind) -> Result<u32> {
-        let status = unsafe { dev_write_population_live_count(self.get_dev_state(), population_kind) };
-        check_cuda_status(status, "moonai_gpu_evolution_population_live_count")?;
-        device_read(
-            "moonai_gpu_evolution_population_live_count_readback",
-            self.device_state.population_live_count_scratch,
-        )
-    }
 }
 
 unsafe extern "C" {
-    fn dev_write_population_live_count(state: *mut DeviceState, population_kind: PopulationKind) -> i32;
     fn dev_write_ui_stats(state: *mut DeviceState) -> i32;
     fn dev_write_free_list_state(state: *mut DeviceState) -> i32;
     fn dev_accumulate_metrics(state: *mut DeviceState, population_kind: PopulationKind) -> i32;

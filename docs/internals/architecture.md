@@ -40,7 +40,9 @@ MoonAI follows a **GPU-first execution model**.
 - FPS target: 120fps. Speed multiplier: 1x-1024x ticks per frame. Every frame renders everything live.
 - Selected-agent inspection is additive: the main view always renders the full population, and selection only requests extra vision/sensor/network data for that one agent.
 - UI needs fresh data every UI refresh: population counts, positions, and movement directions for all visible agents.
-- Verification must rely on GPU-side invariants, fixed-seed determinism, readback schema checks, and end-to-end runtime tests. There is no CPU reference implementation for algorithm validation.
+- Verification must rely on GPU-side invariants, readback schema checks, fixed-seed regression
+  checks where kernel ordering remains stable, and end-to-end runtime tests. There is no CPU
+  reference implementation for algorithm validation.
 
 ## Technology Choices
 

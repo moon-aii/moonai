@@ -29,7 +29,8 @@ HTML analysis pipeline.
 
 ### Reproducible Experiments
 
-Seeded RNG with deterministic behavior on a fixed runtime environment
+Seeded runs provide comparable experiment setup and initial conditions. Exact lineage ordering may
+still vary with highly parallel GPU evolution steps.
 
 ### Real-Time Analytics
 
@@ -54,7 +55,11 @@ To achieve high-performance execution, MoonAI uses a CUDA for all of the simulat
 
 ### Simulation Environment
 
-The simulation operates within a deterministic, time-ticked 2D world. This virtual ecosystem imposes selective pressures on agents—predators and prey—with configurable attributes including speed, vision, stamina, and reproduction rates. Each agent is controlled by a neural network that reads 35 local inputs: the 5 closest predators, prey, and food items as signed proximity-weighted dx and dy pairs, plus self energy, velocity x/y, and signed wall proximity x/y.
+The simulation operates within a time-ticked 2D world. This virtual ecosystem imposes selective
+pressures on agents—predators and prey—with configurable attributes including speed, vision,
+stamina, and reproduction rates. Each agent is controlled by a neural network that reads 35 local
+inputs: the 5 closest predators, prey, and food items as signed proximity-weighted dx and dy
+pairs, plus self energy, velocity x/y, and signed wall proximity x/y.
 
 The purpose of this environment is not only to animate agents, but to create repeatable pressure
 under which adaptation, diversity, topology growth, and ecological balance can be studied across

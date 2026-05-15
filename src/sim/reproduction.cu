@@ -5,6 +5,7 @@ using moonai_gpu::DeviceState;
 using moonai_gpu::PopulationGridEntry;
 using moonai_gpu::PopulationKind;
 using moonai_gpu::ReproductionPairReadback;
+using moonai_gpu::SimulationCounters;
 
 namespace {
 
@@ -88,28 +89,55 @@ __global__ void find_reproduction_pairs_kernel(DevicePopulationBuffers populatio
   out_pairs[pair_index] = ReproductionPairReadback{idx, best_mate};
 }
 
-__global__ void apply_reproduction_energy_kernel(DevicePopulationBuffers population,
-                                                 const ReproductionPairReadback *pairs,
-                                                 std::uint32_t pair_count, float energy_cost,
-                                                 std::uint32_t *birth_counter, std::uint32_t *death_counter) {
+__global__ void prepare_reproduction_free_len_kernel(std::uint32_t *free_len, std::uint32_t free_slot_base) {
+  if (blockIdx.x == 0U && threadIdx.x == 0U) {
+    *free_len = free_slot_base;
+  }
+}
+
+__global__ void accumulate_reproduction_costs_kernel(const ReproductionPairReadback *pairs, std::uint32_t pair_count,
+                                                     std::uint32_t *reproduction_counts,
+                                                     std::uint32_t *birth_counter) {
   const auto idx = (blockIdx.x * blockDim.x) + threadIdx.x;
   if (idx >= pair_count) {
     return;
   }
 
   const auto pair = pairs[idx];
-  for (const auto slot : {pair.parent_a_slot, pair.parent_b_slot}) {
-    population.energy[slot] -= energy_cost;
-    if (population.energy[slot] <= 0.0F) {
-      population.energy[slot] = 0.0F;
-      population.alive[slot] = 0U;
-      population.vel_x[slot] = 0.0F;
-      population.vel_y[slot] = 0.0F;
-      atomicAdd(death_counter, 1U);
-    }
+  atomicAdd(&reproduction_counts[pair.parent_a_slot], 1U);
+  atomicAdd(&reproduction_counts[pair.parent_b_slot], 1U);
+  atomicAdd(birth_counter, 1U);
+}
+
+__global__ void apply_reproduction_costs_kernel(DevicePopulationBuffers population,
+                                                const std::uint32_t *reproduction_counts,
+                                                float energy_cost, std::uint32_t *death_counter,
+                                                std::uint32_t *free_list, std::uint32_t *free_len) {
+  const auto idx = (blockIdx.x * blockDim.x) + threadIdx.x;
+  if (idx >= population.capacity || population.alive[idx] == 0U) {
+    return;
   }
 
-  atomicAdd(birth_counter, 1U);
+  const auto reproduction_count = reproduction_counts[idx];
+  if (reproduction_count == 0U) {
+    return;
+  }
+
+  const auto remaining_energy = population.energy[idx] - (energy_cost * static_cast<float>(reproduction_count));
+  if (remaining_energy > 0.0F) {
+    population.energy[idx] = remaining_energy;
+    return;
+  }
+
+  population.energy[idx] = 0.0F;
+  population.alive[idx] = 0U;
+  population.vel_x[idx] = 0.0F;
+  population.vel_y[idx] = 0.0F;
+  const auto free_index = atomicAdd(free_len, 1U);
+  if (free_index < population.capacity) {
+    free_list[free_index] = idx;
+  }
+  atomicAdd(death_counter, 1U);
 }
 
 } // namespace
@@ -140,10 +168,19 @@ extern "C" std::int32_t dev_find_reproduction_pairs(DeviceState *state, Populati
 }
 
 extern "C" std::int32_t dev_apply_reproduction_energy_kernel(DeviceState *state, PopulationKind population_kind,
-                                                              std::uint32_t births_applied) {
+                                                              std::uint32_t births_applied,
+                                                              std::uint32_t free_slot_base) {
   auto &population = moonai_gpu::population_for_kind(*state, population_kind);
   if (births_applied == 0U) {
     return 0;
+  }
+
+  auto *reproduction_counts = population_kind == PopulationKind::Predator ? state->predator_mate_claims
+                                                                          : state->prey_mate_claims;
+  const auto reset_status =
+      cudaMemset(reproduction_counts, 0, static_cast<std::size_t>(population.capacity) * sizeof(std::uint32_t));
+  if (reset_status != cudaSuccess) {
+    return static_cast<std::int32_t>(reset_status);
   }
 
   auto *pair_buffer =
@@ -152,9 +189,16 @@ extern "C" std::int32_t dev_apply_reproduction_energy_kernel(DeviceState *state,
       population_kind == PopulationKind::Predator ? &state->counters->predator_births : &state->counters->prey_births;
   auto *death_counter =
       population_kind == PopulationKind::Predator ? &state->counters->predator_deaths : &state->counters->prey_deaths;
-  const auto blocks = (births_applied + 255U) / 256U;
-  apply_reproduction_energy_kernel<<<blocks == 0U ? 1U : blocks, 256U>>>(
-      population, pair_buffer, births_applied, state->simulation.reproduction_energy_cost, birth_counter,
-      death_counter);
+  auto *free_list = population_kind == PopulationKind::Predator ? state->predator_free_list : state->prey_free_list;
+  auto *free_len = population_kind == PopulationKind::Predator ? state->predator_free_len : state->prey_free_len;
+  const auto pair_blocks = (births_applied + 255U) / 256U;
+  const auto population_blocks = (population.capacity + 255U) / 256U;
+  accumulate_reproduction_costs_kernel<<<pair_blocks == 0U ? 1U : pair_blocks, 256U>>>(
+      pair_buffer, births_applied, reproduction_counts, birth_counter);
+  // Births consume slots from the tail so the remaining free-list prefix stays valid.
+  prepare_reproduction_free_len_kernel<<<1U, 1U>>>(free_len, free_slot_base);
+  apply_reproduction_costs_kernel<<<population_blocks == 0U ? 1U : population_blocks, 256U>>>(
+      population, reproduction_counts, state->simulation.reproduction_energy_cost, death_counter, free_list,
+      free_len);
   return moonai_gpu::synchronize_kernels();
 }

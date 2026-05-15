@@ -709,12 +709,16 @@ impl Simulation {
         self.build_spatial_grid()?;
         self.resolve_food()?;
         self.resolve_combat()?;
-        let predator_births = self.reproduction_candidate_count(PopulationKind::Predator)?;
-        self.ensure_birth_capacity(PopulationKind::Predator, predator_births)?;
-        self.run_reproduction(PopulationKind::Predator)?;
-        let prey_births = self.reproduction_candidate_count(PopulationKind::Prey)?;
-        self.ensure_birth_capacity(PopulationKind::Prey, prey_births)?;
-        self.run_reproduction(PopulationKind::Prey)?;
+        let mut predator_births = self.reproduction_candidate_count(PopulationKind::Predator)?;
+        if self.ensure_birth_capacity(PopulationKind::Predator, predator_births)? {
+            predator_births = self.reproduction_candidate_count(PopulationKind::Predator)?;
+        }
+        self.run_reproduction(PopulationKind::Predator, predator_births)?;
+        let mut prey_births = self.reproduction_candidate_count(PopulationKind::Prey)?;
+        if self.ensure_birth_capacity(PopulationKind::Prey, prey_births)? {
+            prey_births = self.reproduction_candidate_count(PopulationKind::Prey)?;
+        }
+        self.run_reproduction(PopulationKind::Prey, prey_births)?;
         self.advance_tick()?;
 
         let ui_stats = self.read_ui_stats()?;

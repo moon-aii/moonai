@@ -1,6 +1,6 @@
 use super::*;
 
-use anyhow::{Context as _, Result};
+use anyhow::Result;
 
 impl Simulation {
     pub(super) fn allocate_reproduction_buffers(&mut self) -> Result<()> {
@@ -35,23 +35,23 @@ impl Simulation {
         Ok(())
     }
 
-    pub(super) fn ensure_birth_capacity(&mut self, population_kind: PopulationKind, births_pending: u32) -> Result<()> {
+    pub(super) fn ensure_birth_capacity(
+        &mut self,
+        population_kind: PopulationKind,
+        births_pending: u32,
+    ) -> Result<bool> {
         profile_scope!("birth_cap");
 
         if births_pending == 0 {
-            return Ok(());
+            return Ok(false);
         }
 
-        let live_count = self.population_live_count(population_kind)?;
-        let free_list_state = self.read_free_list_state()?;
-        let free_slots = match population_kind {
-            PopulationKind::Predator => free_list_state.predator_free_slots,
-            PopulationKind::Prey => free_list_state.prey_free_slots,
-        };
+        let free_slots = self.population_free_slot_count(population_kind)?;
         let capacity = self.population_capacity(population_kind);
+        let live_count = capacity.saturating_sub(free_slots);
         let required_live = live_count.saturating_add(births_pending);
         if free_slots >= births_pending && required_live <= ((capacity * 9) / 10) {
-            return Ok(());
+            return Ok(false);
         }
 
         let mut new_capacity = if capacity == 0 { 1 } else { capacity };
@@ -60,7 +60,17 @@ impl Simulation {
         }
         self.expand_population(population_kind, new_capacity)?;
         self.build_spatial_grid()?;
-        Ok(())
+        Ok(true)
+    }
+
+    fn population_free_slot_count(&mut self, population_kind: PopulationKind) -> Result<u32> {
+        device_read(
+            "moonai_gpu_simulation_population_free_slot_count",
+            match population_kind {
+                PopulationKind::Predator => self.device_state.predator_free_len,
+                PopulationKind::Prey => self.device_state.prey_free_len,
+            },
+        )
     }
 
     pub(super) fn reset_reproduction_state(&mut self, population_kind: PopulationKind) -> Result<()> {
@@ -148,95 +158,44 @@ impl Simulation {
         check_cuda_status(status, "moonai_gpu_simulation_initialize_prey_free_list")
     }
 
-    pub(super) fn run_reproduction(&mut self, population_kind: PopulationKind) -> Result<()> {
+    pub(super) fn run_reproduction(&mut self, population_kind: PopulationKind, pair_count: u32) -> Result<()> {
         profile_scope!("run_reprod");
-        let pair_count = self.reproduction_candidate_count(population_kind)?;
         if pair_count == 0 {
             return Ok(());
         }
 
-        let free_slots = self.reproduction_free_slots(population_kind, pair_count)?;
-        if free_slots.is_empty() {
+        let free_slots = self.population_free_slot_count(population_kind)?;
+        let births_applied = pair_count.min(free_slots);
+        if births_applied == 0 {
             return Ok(());
         }
 
-        let pairs = self.reproduction_pairs(population_kind, pair_count)?;
         let mutation_config = self.mutation_config()?;
-        let births_applied = pairs.len().min(free_slots.len());
-        for index in 0..births_applied {
-            let pair = pairs[index];
-            let offspring_slot = free_slots[index];
-            self.crossover_slot(population_kind, pair.parent_a_slot, pair.parent_b_slot, offspring_slot)?;
-            self.mutate_slot(population_kind, offspring_slot, mutation_config)?;
-            let _ = self.compile_slot(population_kind, offspring_slot)?;
-        }
+        let free_slot_base = free_slots.saturating_sub(births_applied);
+        self.crossover_batch(population_kind, births_applied, free_slot_base)?;
+        self.mutate_batch(population_kind, births_applied, free_slot_base, mutation_config)?;
+        self.compile_slots_batch(population_kind, births_applied, free_slot_base)?;
 
-        self.apply_reproduction_energy(population_kind, births_applied as u32)
+        self.apply_reproduction_energy(population_kind, births_applied, free_slot_base)
     }
 
-    fn reproduction_pairs(
+    fn apply_reproduction_energy(
         &mut self,
         population_kind: PopulationKind,
-        pair_count: u32,
-    ) -> Result<Vec<ReproductionPairReadback>> {
-        let returned_pairs = device_read::<u32>(
-            "moonai_gpu_simulation_read_reproduction_pair_count",
-            match population_kind {
-                PopulationKind::Predator => self.device_state.predator_pair_count,
-                PopulationKind::Prey => self.device_state.prey_pair_count,
+        births_applied: u32,
+        free_slot_base: u32,
+    ) -> Result<()> {
+        check_cuda_status(
+            unsafe {
+                dev_apply_reproduction_energy_kernel(
+                    self.get_dev_state(),
+                    population_kind,
+                    births_applied,
+                    free_slot_base,
+                )
             },
-        )?
-        .min(pair_count);
-        let returned_pairs = usize::try_from(returned_pairs).context("reproduction pair length overflowed")?;
-        let mut pairs = vec![ReproductionPairReadback { parent_a_slot: 0, parent_b_slot: 0 }; returned_pairs];
-        if returned_pairs > 0 {
-            device_read_slice(
-                "moonai_gpu_simulation_read_reproduction_pairs",
-                match population_kind {
-                    PopulationKind::Predator => self.device_state.predator_reproduction_pairs,
-                    PopulationKind::Prey => self.device_state.prey_reproduction_pairs,
-                },
-                &mut pairs,
-            )?;
-        }
-        pairs.truncate(returned_pairs);
-        Ok(pairs)
-    }
-
-    fn reproduction_free_slots(&mut self, population_kind: PopulationKind, slot_count: u32) -> Result<Vec<u32>> {
-        let returned_slots = device_read::<u32>(
-            "moonai_gpu_simulation_read_free_slot_count",
-            match population_kind {
-                PopulationKind::Predator => self.device_state.predator_free_len,
-                PopulationKind::Prey => self.device_state.prey_free_len,
-            },
-        )?
-        .min(slot_count);
-        let returned_slots = usize::try_from(returned_slots).context("free-slot length overflowed")?;
-        let mut slots = vec![0_u32; returned_slots];
-        if returned_slots > 0 {
-            device_read_slice(
-                "moonai_gpu_simulation_read_free_slots",
-                match population_kind {
-                    PopulationKind::Predator => self.device_state.predator_free_list,
-                    PopulationKind::Prey => self.device_state.prey_free_list,
-                },
-                &mut slots,
-            )?;
-        }
-        slots.truncate(returned_slots);
-        Ok(slots)
-    }
-
-    fn apply_reproduction_energy(&mut self, population_kind: PopulationKind, births_applied: u32) -> Result<()> {
-        if births_applied > 0 {
-            check_cuda_status(
-                unsafe { dev_apply_reproduction_energy_kernel(self.get_dev_state(), population_kind, births_applied) },
-                "moonai_gpu_simulation_apply_reproduction_energy",
-            )?;
-        }
-        let status = unsafe { dev_initialize_population_free_list(self.get_dev_state(), population_kind) };
-        check_cuda_status(status, "moonai_gpu_simulation_rebuild_free_list")
+            "moonai_gpu_simulation_apply_reproduction_energy",
+        )
     }
 }
 
@@ -247,6 +206,7 @@ unsafe extern "C" {
         state: *mut DeviceState,
         population_kind: PopulationKind,
         births_applied: u32,
+        free_slot_base: u32,
     ) -> i32;
     fn dev_initialize_population_free_list(state: *mut DeviceState, population_kind: PopulationKind) -> i32;
 }

@@ -170,11 +170,37 @@ __global__ void mutate_single_slot_kernel(DevicePopulationBuffers population, De
   mutate_single_agent(population, slot, innovation, config);
 }
 
+__global__ void mutate_batch_kernel(DevicePopulationBuffers population, DeviceInnovationState *innovation,
+                                    GpuMutationConfig config, const std::uint32_t *free_list,
+                                    std::uint32_t free_slot_base, std::uint32_t births_applied) {
+  const auto idx = (blockIdx.x * blockDim.x) + threadIdx.x;
+  if (idx >= births_applied) {
+    return;
+  }
+
+  mutate_single_agent(population, free_list[free_slot_base + idx], innovation, config);
+}
+
 } // namespace
 
 extern "C" std::int32_t dev_mutate_slot(DeviceState *state, PopulationKind population_kind, uint32_t slot, const GpuMutationConfig *config) {
   auto &population = moonai_gpu::population_for_kind(*state, population_kind);
 
   mutate_single_slot_kernel<<<1U, 1U>>>(population, state->innovation, *config, slot);
+  return moonai_gpu::synchronize_kernels();
+}
+
+extern "C" std::int32_t dev_mutate_batch(DeviceState *state, PopulationKind population_kind,
+                                          std::uint32_t births_applied, std::uint32_t free_slot_base,
+                                          const GpuMutationConfig *config) {
+  if (births_applied == 0U) {
+    return 0;
+  }
+
+  auto &population = moonai_gpu::population_for_kind(*state, population_kind);
+  auto *free_list = population_kind == PopulationKind::Predator ? state->predator_free_list : state->prey_free_list;
+  const auto blocks = (births_applied + 255U) / 256U;
+  mutate_batch_kernel<<<blocks == 0U ? 1U : blocks, 256U>>>(population, state->innovation, *config, free_list,
+                                                             free_slot_base, births_applied);
   return moonai_gpu::synchronize_kernels();
 }

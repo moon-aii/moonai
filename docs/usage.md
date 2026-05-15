@@ -66,7 +66,8 @@ It includes 55 named condition groups with 5 fixed seeds each, plus a `default` 
 use. Presets can be selected, edited, queued, and run from the UI, but the Lua file itself is not
 hot-reloaded during the session.
 
-Set `seed` to `0` for random seed, or a fixed value for reproducible runs.
+Set `seed` to `0` for random seed, or a fixed value for comparable runs with the same initial
+conditions.
 
 ### `settings.json`
 

@@ -212,6 +212,17 @@ __global__ void compile_single_slot_kernel(DevicePopulationBuffers population, s
   compile_slot_device(population, slot, output_stride);
 }
 
+__global__ void compile_slots_kernel(DevicePopulationBuffers population, const std::uint32_t *free_list,
+                                     std::uint32_t free_slot_base, std::uint32_t births_applied,
+                                     std::uint32_t output_stride) {
+  const auto idx = (blockIdx.x * blockDim.x) + threadIdx.x;
+  if (idx >= births_applied) {
+    return;
+  }
+
+  compile_slot_device(population, free_list[free_slot_base + idx], output_stride);
+}
+
 __global__ void compiled_header_kernel(const DevicePopulationBuffers population, PopulationKind population_kind,
                                        std::uint32_t slot, std::uint32_t output_stride,
                                        CompiledNetworkReadbackHeader *out_header) {
@@ -313,6 +324,20 @@ extern "C" std::int32_t dev_compile_population(DeviceState *state, PopulationKin
 extern "C" std::int32_t dev_compile_slot(DeviceState *state, PopulationKind population_kind, std::uint32_t slot) {
   auto &population = moonai_gpu::population_for_kind(*state, population_kind);
   compile_single_slot_kernel<<<1U, 1U>>>(population, slot, state->num_outputs);
+  return moonai_gpu::synchronize_kernels();
+}
+
+extern "C" std::int32_t dev_compile_slots(DeviceState *state, PopulationKind population_kind,
+                                           std::uint32_t births_applied, std::uint32_t free_slot_base) {
+  if (births_applied == 0U) {
+    return 0;
+  }
+
+  auto &population = moonai_gpu::population_for_kind(*state, population_kind);
+  auto *free_list = population_kind == PopulationKind::Predator ? state->predator_free_list : state->prey_free_list;
+  const auto blocks = (births_applied + 255U) / 256U;
+  compile_slots_kernel<<<blocks == 0U ? 1U : blocks, 256U>>>(population, free_list, free_slot_base, births_applied,
+                                                              state->num_outputs);
   return moonai_gpu::synchronize_kernels();
 }
 

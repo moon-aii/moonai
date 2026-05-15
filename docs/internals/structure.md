@@ -65,8 +65,8 @@ src/
 │   ├── food.cu                 # Food claim, finalize, and respawn kernels
 │   ├── combat.rs               # Rust-side combat resolution orchestration + FFI
 │   ├── combat.cu               # Predator-prey combat claim/finalize kernels
-│   ├── reproduction.rs         # Rust-side reproduction orchestration, expansion, and pair readback
-│   ├── reproduction.cu         # Reproduction reset, pair search, and parent-energy kernels
+│   ├── reproduction.rs         # Rust-side reproduction orchestration, expansion, and batched GPU dispatch
+│   ├── reproduction.cu         # Reproduction reset, pair search, free-list, and parent-energy kernels
 │   ├── metrics.rs              # Rust-side live-count, UI stats, and report-refresh entrypoints
 │   ├── metrics.cu              # Metrics reduction, UI stats, and free-list-state kernels
 │   ├── render.rs               # Rust-side render snapshot readback entrypoints

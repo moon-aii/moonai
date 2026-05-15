@@ -22,20 +22,15 @@ impl Simulation {
         )
     }
 
-    pub(super) fn compile_slot(
+    pub(super) fn compile_slots_batch(
         &mut self,
         population_kind: PopulationKind,
-        slot: u32,
-    ) -> Result<CompiledNetworkReadbackHeader> {
-        check_cuda_status(
-            unsafe { dev_compile_slot(self.get_dev_state(), population_kind, slot) },
-            "moonai_gpu_evolution_compile_slot",
-        )?;
-        check_cuda_status(
-            unsafe { dev_write_compiled_header(self.get_dev_state(), population_kind, slot) },
-            "moonai_gpu_evolution_compile_slot_header",
-        )?;
-        device_read("moonai_gpu_evolution_compile_slot_header_readback", self.device_state.compiled_header_scratch)
+        births_applied: u32,
+        free_slot_base: u32,
+    ) -> Result<()> {
+        let status =
+            unsafe { dev_compile_slots(self.get_dev_state(), population_kind, births_applied, free_slot_base) };
+        check_cuda_status(status, "moonai_gpu_evolution_compile_slots")
     }
 
     pub(super) fn read_selected_agent_network(
@@ -231,7 +226,12 @@ impl Simulation {
 
 unsafe extern "C" {
     fn dev_compile_population(state: *mut DeviceState, population_kind: PopulationKind) -> i32;
-    fn dev_compile_slot(state: *mut DeviceState, population_kind: PopulationKind, slot: u32) -> i32;
+    fn dev_compile_slots(
+        state: *mut DeviceState,
+        population_kind: PopulationKind,
+        births_applied: u32,
+        free_slot_base: u32,
+    ) -> i32;
     fn dev_write_compiled_header(state: *mut DeviceState, population_kind: PopulationKind, slot: u32) -> i32;
     fn dev_write_selected_agent_network(state: *mut DeviceState, population_kind: PopulationKind, slot: u32) -> i32;
     fn dev_classify_species_summaries(state: *mut DeviceState, population_kind: PopulationKind) -> i32;

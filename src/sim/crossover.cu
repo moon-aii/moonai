@@ -33,14 +33,9 @@ __device__ void write_connection_gene(const DevicePopulationBuffers &population,
   population.genome.connection_enabled[entry] = enabled;
 }
 
-__global__ void crossover_kernel(DevicePopulationBuffers population, const std::uint32_t *next_entity_id,
-                                 PopulationKind population_kind, std::uint32_t parent_a_slot,
-                                 std::uint32_t parent_b_slot, std::uint32_t offspring_slot,
-                                 float initial_energy) {
-  if (blockIdx.x != 0U || threadIdx.x != 0U) {
-    return;
-  }
-
+__device__ void crossover_device(DevicePopulationBuffers population, const std::uint32_t *next_entity_id,
+                                 std::uint32_t parent_a_slot, std::uint32_t parent_b_slot,
+                                 std::uint32_t offspring_slot, float initial_energy) {
   const auto parent_a_node_count = population.genome.num_nodes[parent_a_slot];
   const auto parent_b_node_count = population.genome.num_nodes[parent_b_slot];
   const auto parent_a_connection_count = population.genome.num_connections[parent_a_slot];
@@ -177,11 +172,34 @@ __global__ void crossover_kernel(DevicePopulationBuffers population, const std::
         moonai_gpu::hash_mix(genome_hash, static_cast<std::uint64_t>(__float_as_uint(population.genome.connection_weight[entry])));
   }
 
-  static_cast<void>(population_kind);
   static_cast<void>(matching_genes);
   static_cast<void>(disjoint_genes);
   static_cast<void>(excess_genes);
   static_cast<void>(genome_hash);
+}
+
+__global__ void crossover_kernel(DevicePopulationBuffers population, const std::uint32_t *next_entity_id,
+                                 std::uint32_t parent_a_slot, std::uint32_t parent_b_slot,
+                                 std::uint32_t offspring_slot, float initial_energy) {
+  if (blockIdx.x != 0U || threadIdx.x != 0U) {
+    return;
+  }
+
+  crossover_device(population, next_entity_id, parent_a_slot, parent_b_slot, offspring_slot, initial_energy);
+}
+
+__global__ void crossover_batch_kernel(DevicePopulationBuffers population, const std::uint32_t *next_entity_id,
+                                       const moonai_gpu::ReproductionPairReadback *pairs,
+                                       const std::uint32_t *free_list, std::uint32_t free_slot_base,
+                                       std::uint32_t births_applied, float initial_energy) {
+  const auto idx = (blockIdx.x * blockDim.x) + threadIdx.x;
+  if (idx >= births_applied) {
+    return;
+  }
+
+  const auto pair = pairs[idx];
+  const auto offspring_slot = free_list[free_slot_base + idx];
+  crossover_device(population, next_entity_id, pair.parent_a_slot, pair.parent_b_slot, offspring_slot, initial_energy);
 }
 
 } // namespace
@@ -189,6 +207,24 @@ __global__ void crossover_kernel(DevicePopulationBuffers population, const std::
 extern "C" std::int32_t dev_crossover(DeviceState *state, PopulationKind population_kind, std::uint32_t parent_a_slot, std::uint32_t parent_b_slot, std::uint32_t offspring_slot) {
   auto &population = moonai_gpu::population_for_kind(*state, population_kind);
   const auto offspring_energy = state->simulation.offspring_initial_energy > 0.0F ? state->simulation.offspring_initial_energy : state->simulation.initial_energy;
-  crossover_kernel<<<1U, 1U>>>(population, state->next_entity_id, population_kind, parent_a_slot, parent_b_slot, offspring_slot, offspring_energy);
+  crossover_kernel<<<1U, 1U>>>(population, state->next_entity_id, parent_a_slot, parent_b_slot, offspring_slot, offspring_energy);
+  return moonai_gpu::synchronize_kernels();
+}
+
+extern "C" std::int32_t dev_crossover_batch(DeviceState *state, PopulationKind population_kind,
+                                             std::uint32_t births_applied, std::uint32_t free_slot_base) {
+  if (births_applied == 0U) {
+    return 0;
+  }
+
+  auto &population = moonai_gpu::population_for_kind(*state, population_kind);
+  auto *pairs =
+      population_kind == PopulationKind::Predator ? state->predator_reproduction_pairs : state->prey_reproduction_pairs;
+  auto *free_list = population_kind == PopulationKind::Predator ? state->predator_free_list : state->prey_free_list;
+  const auto offspring_energy = state->simulation.offspring_initial_energy > 0.0F ? state->simulation.offspring_initial_energy
+                                                                                    : state->simulation.initial_energy;
+  const auto blocks = (births_applied + 255U) / 256U;
+  crossover_batch_kernel<<<blocks == 0U ? 1U : blocks, 256U>>>(population, state->next_entity_id, pairs, free_list,
+                                                                free_slot_base, births_applied, offspring_energy);
   return moonai_gpu::synchronize_kernels();
 }
