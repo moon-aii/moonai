@@ -426,17 +426,6 @@ impl RunSession {
                         ui.colored_label(egui::Color32::LIGHT_RED, error);
                     }
 
-                    ui.separator();
-                    ui.heading("Profiler");
-                    let profiler_rows = self.profiler.formatted_rows("frame", overlay.ui_stats.tick);
-                    if profiler_rows.is_empty() {
-                        ui.label("Warming up...");
-                    } else {
-                        for row in profiler_rows {
-                            ui.monospace(row);
-                        }
-                    }
-
                     if let Some(selected) = &self.selected_data {
                         ui.separator();
                         ui.heading("Selected Agent");
@@ -479,6 +468,17 @@ impl RunSession {
                         let height = self.ui_config.nn_panel_min_height.max(ui.available_height() - 8.0);
                         let (rect, _) = ui.allocate_exact_size(egui::vec2(width, height), Sense::hover());
                         render::paint_network(ui, rect, &self.ui_config, selected);
+                    }
+
+                    ui.separator();
+                    ui.heading("Profiler");
+                    let profiler_rows = self.profiler.formatted_rows("frame", overlay.ui_stats.tick);
+                    if profiler_rows.is_empty() {
+                        ui.label("Warming up...");
+                    } else {
+                        for row in profiler_rows {
+                            ui.monospace(row);
+                        }
                     }
                 });
             });
