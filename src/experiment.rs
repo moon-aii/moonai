@@ -91,7 +91,7 @@ impl Default for SimulationConfig {
             c2_disjoint: 1.0,
             c3_weight: 0.4,
             seed: 67,
-            report_interval_ticks: 10000,
+            report_interval_ticks: 1000000,
         }
     }
 }

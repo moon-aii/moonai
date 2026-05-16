@@ -5,7 +5,7 @@
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
   };
 
-  outputs = { self, nixpkgs }: 
+  outputs = { self, nixpkgs }:
   let
     name = "moonai-flake";
 
@@ -22,6 +22,7 @@
       bun
       uv
       rustup
+      just
       pkg-config
     ];
 

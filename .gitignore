@@ -26,7 +26,7 @@ __pycache__/
 node_modules/
 
 # Build directories
-site/
+.site/
 target/
 
 # Simulation output data
