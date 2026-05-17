@@ -1,14 +1,8 @@
-# Usage
+# Specification
 
 ## Installation
 
-### Pre-compiled binaries
-
-Pre-compiled binaries are not currently published. Build from source for now.
-
-### Build from source
-
-#### Prerequisites
+### Prerequisites
 
 | Tool           | Version / Requirement                   | Required              |
 | -------------- | --------------------------------------- | --------------------- |
@@ -20,7 +14,7 @@ Pre-compiled binaries are not currently published. Build from source for now.
 | uv             | 0.11+                                   | For analysis and docs |
 | Python         | 3.14+                                   | For analysis and docs |
 
-##### Just
+#### Just
 
 [Just](https://github.com/casey/just) is a handy way to save and run project specific commands. Commands, called recipes, are stored in a file called `justfile` with syntax inspired by `make`. Recipes can be run with `just RECIPE`, and listed with `just --list`.
 
@@ -36,16 +30,16 @@ clean:
   cargo clean
 ```
 
-#### Clone the project
+### Clone the project
 
 ```bash
 git clone https://github.com/moon-aii/moonai.git
 cd moonai
 ```
 
-#### Simulation
+### Simulation
 
-##### 1. Build
+#### 1. Build
 
 ```bash
 just build-debug
@@ -71,9 +65,9 @@ cp -r runtime/* target/release
 | `just build`       | Release build with runtime assets |
 
 The project uses `build.rs` to generate the shared Rust/CUDA ABI header and compile the CUDA
-sources under `src/sim/`. There is no CMake or vcpkg step in the current implementation.
+sources under `src/sim/`.
 
-##### 2. Run
+#### 2. Run
 
 ```bash
 just run
@@ -84,7 +78,7 @@ target/release/moonai
 
 Both `experiments.lua` and `settings.json` ship with the binary and are resolved from the binary directory.
 
-#### Analysis
+### Analysis
 
 Install the Python environment:
 
@@ -96,12 +90,6 @@ Generate the self-contained analysis report from `output/`:
 
 ```bash
 just analyse
-```
-
-## Run
-
-```bash
-just run
 ```
 
 ## Typical Workflow

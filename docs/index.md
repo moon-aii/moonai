@@ -6,7 +6,8 @@ hide:
 ---
 
 <p align="center"> <img src="_assets/logo.svg" alt="MoonAI Logo" width="120em" /> </p>
-<h1 align="center" style="font-size: 3em;">MoonAI</h1>
+
+# MoonAI {: align="center" style="font-size: 3em;"}
 
 <div class="grid cards" markdown>
 
@@ -90,28 +91,6 @@ MoonAI's main deliverable is the simulation environment itself. The runtime, que
 exports, and analysis tooling are designed to help study evolutionary machine learning behavior,
 not to present one fixed model checkpoint as the final outcome.
 
-## Features
-
-### Configuration
-
-Simulation parameters are defined in the Lua-based `experiments.lua` experiment file, covering population sizes, mutation rates, NEAT parameters, and energy system settings. Presets are selected, edited, queued, and run through the application UI.
-
-### High Performance
-
-To achieve high-performance execution, MoonAI uses a CUDA for all of the simulation, evolution, and neural network calculations. The host orchestrates lifecycle and data flow, while NVIDIA CUDA executes neural inference and simulation kernels for large agent populations.
-
-### Telemetry
-
-The system concurrently logs extensive telemetry (CSV/JSON output), including population metrics and genome histories, exporting structured data for rigorous offline analysis using Python-based tools.
-
-### Cross-Platform
-
-Runs on Linux and Windows with matched features and stable runtime behavior
-
-### Reproducible Experiments
-
-Seeded runs provide comparable experiment setup and initial conditions.
-
 ## Concepts
 
 ### Simulation Environment
@@ -130,3 +109,12 @@ many parameter settings.
 
 NEAT (NeuroEvolution of Augmenting Topologies) is a genetic algorithm for evolving artificial neural networks. It was chosen because it simultaneously evolves both the topology and weights of networks, allowing complex structures to emerge from simple beginnings without requiring manual architecture design. MoonAI implements the NeuroEvolution of Augmenting Topologies (NEAT) algorithm to optimize agent behaviors. By evolving both neural network weights and topological structures, the system enables emergence of complex behavioral strategies through mutation, crossover, and speciation across successive generations.
 
+## Features
+
+**Configuration**
+:   Simulation parameters are defined in the Lua-based `experiments.lua` experiment file, covering population sizes, mutation rates, NEAT parameters, and energy system settings. Presets are selected, edited, queued, and run through the application UI.
+
+- **High Performance**: To achieve high-performance execution, MoonAI uses a CUDA for all of the simulation, evolution, and neural network calculations. The host orchestrates lifecycle and data flow, while NVIDIA CUDA executes neural inference and simulation kernels for large agent populations.
+- **Telemetry**: The system concurrently logs extensive telemetry (CSV/JSON output), including population metrics and genome histories, exporting structured data for rigorous offline analysis using Python-based tools.
+- **Cross-Platform**: Runs on Linux and Windows with matched features and stable runtime behavior
+- **Reproducible**: Experiments Seeded runs provide comparable experiment setup and initial conditions.
