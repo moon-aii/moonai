@@ -93,20 +93,9 @@ clean-outputs:
 [group('docs')]
 docs:
   rm -rf site/
-  uv run --group docs zensical serve
+  uv run --only-group docs zensical serve
 
 # Build web page with clean cache
 [group('docs')]
 docs-build:
-  uv run --group docs zensical build --clean
-
-
-# Check version updates
-[group('vers')]
-upgrade-check:
-  cargo upgrade -i --dry-run
-
-# Update versions
-[group('vers')]
-upgrade:
-  cargo upgrade -i
+  uv run --only-group docs zensical build --clean
