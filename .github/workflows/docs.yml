@@ -33,6 +33,8 @@ jobs:
 
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
+        with:
+          flakehub: false
 
       - name: Setup Nix Cache
         uses: DeterminateSystems/magic-nix-cache-action@v13
