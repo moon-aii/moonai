@@ -36,6 +36,8 @@ jobs:
 
       - name: Setup Nix Cache
         uses: DeterminateSystems/magic-nix-cache-action@v13
+        with:
+          use-flakehub: false
 
       - name: Build Docs
         run: nix develop .#ci-docs --command just docs-build

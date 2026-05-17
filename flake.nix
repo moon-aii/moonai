@@ -34,7 +34,7 @@
     ];
 
     pkgs-shell-default = pkgs-common ++ pkgs-dev ++ pkgs-docs;
-    pkgs-shell-docs = pkgs-common ++ pkgs-dev;
+    pkgs-shell-docs = pkgs-common ++ pkgs-docs;
 
     env = {
       CUDA_PATH = "${pkgs.cudatoolkit}";
