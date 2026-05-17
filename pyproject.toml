@@ -27,7 +27,7 @@ dev = [
     "ty>=0.0.34",
     "pytest",
 ]
-docs = ["zensical>=0.0.37"]
+docs = ["zensical>=0.0.41"]
 
 [tool.ruff]
 line-length = 120
