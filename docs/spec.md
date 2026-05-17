@@ -37,35 +37,28 @@ git clone https://github.com/moon-aii/moonai.git
 cd moonai
 ```
 
-### Simulation
+### Build Simulation
 
 #### 1. Build
 
-```bash
-just build-debug
+=== "Just"
+    ```bash
+    # Debug build
+    just build-debug
 
-# manual equivalent
-cargo build
-cp -r runtime/* target/debug
-```
+    # Release build
+    just build
+    ```
+=== "Manual"
+    ```bash
+    # Debug build
+    cargo build
+    cp -r runtime/* target/debug
 
-Release build:
-
-```bash
-just build
-
-# manual equivalent
-cargo build --release
-cp -r runtime/* target/release
-```
-
-| Command            | Description                       |
-| ------------------ | --------------------------------- |
-| `just build-debug` | Debug build with runtime assets   |
-| `just build`       | Release build with runtime assets |
-
-The project uses `build.rs` to generate the shared Rust/CUDA ABI header and compile the CUDA
-sources under `src/sim/`.
+    # Release build
+    cargo build --release
+    cp -r runtime/* target/release
+    ```
 
 #### 2. Run
 

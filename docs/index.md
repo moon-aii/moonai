@@ -111,9 +111,7 @@ NEAT (NeuroEvolution of Augmenting Topologies) is a genetic algorithm for evolvi
 
 ## Features
 
-**Configuration**
-:   Simulation parameters are defined in the Lua-based `experiments.lua` experiment file, covering population sizes, mutation rates, NEAT parameters, and energy system settings. Presets are selected, edited, queued, and run through the application UI.
-
+- **Configuration**: Simulation parameters are defined in the Lua-based `experiments.lua` experiment file, covering population sizes, mutation rates, NEAT parameters, and energy system settings. Presets are selected, edited, queued, and run through the application UI.
 - **High Performance**: To achieve high-performance execution, MoonAI uses a CUDA for all of the simulation, evolution, and neural network calculations. The host orchestrates lifecycle and data flow, while NVIDIA CUDA executes neural inference and simulation kernels for large agent populations.
 - **Telemetry**: The system concurrently logs extensive telemetry (CSV/JSON output), including population metrics and genome histories, exporting structured data for rigorous offline analysis using Python-based tools.
 - **Cross-Platform**: Runs on Linux and Windows with matched features and stable runtime behavior

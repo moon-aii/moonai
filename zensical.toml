@@ -5,7 +5,6 @@ site_author = "Emir Irkılata, Caner Aras, Oğuzhan Özkaya"
 site_url = "https://moon-aii.github.io/moonai/"
 repo_url = "https://github.com/moon-aii/moonai"
 repo_name = "moon-aii/moonai"
-
 copyright = "CMPE 491/492 Senior Design Project - TED University"
 
 docs_dir = "docs"
@@ -49,6 +48,7 @@ features = [
     "search.highlight",
     "toc.follow",
     "toc.integrate",
+    "navigation.sections",
 ]
 
 [project.extra]
@@ -96,7 +96,7 @@ accent = "custom"
 
 [project.markdown_extensions.toc]
 permalink = false
-toc_depth = 6
+toc_depth = 3
 
 [project.markdown_extensions.pymdownx.arithmatex]
 generic = true
@@ -134,6 +134,6 @@ alternate_style = true
 combine_header_slug = true
 
 [project.markdown_extensions.pymdownx.tasklist]
-custom_checkbox = false
+custom_checkbox = true
 
 [project.markdown_extensions.pymdownx.tilde]

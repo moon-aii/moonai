@@ -4,11 +4,11 @@ description: Tasks, priorities, known bugs, and the project roadmap.
 
 # Roadmap
 
+## Status Overview
+
 The final MoonAI project reached a complete prototype stage. The main runtime, UI, exper iment catalog, metrics exports, and analysis pipeline are all implemented in the repository. The project is therefore finished as a senior design deliverable, while still leaving room for future research and productization work.
 
-Final Status Overview The final status of the project is best understood as a delivered platform with a few clearly identified extension points, rather than as a partially assembled prototype. The following work packages are complete in the final repository snapshot.
-
-## Status Overview
+## Delivered Capabilities
 
 - [x] **GPU-first simulation runtime**: Core tick execution, readback, evolution, and export refresh logic are implemented.
 - [x] **Interactive desktop application**: Experiment selection, queueing, run re- placement, settings control, and selected-agent inspection are implemented.
@@ -18,33 +18,9 @@ Final Status Overview The final status of the project is best understood as a de
 - [x] **Documentation website**: The GitHub Pages site and linked project reports are available.
 - [ ] **Broad end-to-end automation**: Automated unit coverage exists, but wider system smoke automation can still be improved.
 
-An important status point is that the final project is centered on the simulation environment. The success criterion is therefore not only whether one evolved agent looks good in one run. The success criterion is whether the platform supports repeatable experimentation, observa- tion, artifact generation, and analysis. On that criterion, the project is complete.
-
-## Delivered Capabilities
-
-The final delivered capabilities can be summarized as follows:
-
-- configurable experiment definitions with large prebuilt condition sets,
-- live simulation viewing with interactive controls,
-- queue-based run management inside the application,
-- structured export of run data for later comparison,
-- post-run HTML analysis generation,
-- public source and documentation availability.
-
 These capabilities are important because they show that the final product is more than a code demo. It is a usable experimentation workflow with a documented runtime and a reproducible output format.
 
-## Submission and Distribution Materials
-The final project package now consists of more than the executable source code. The practical
-submission value comes from the combination of:
-
-- the Rust and CUDA codebase,
-- runtime assets such as experiments.lua and settings.json,
-- documentation under docs/,
-- the Python analysis package,
-- the course report set under papers/.
-
-This package is useful because it preserves not only the final program, but also the context
-required to understand, run, and extend it.
+An important status point is that the final project is centered on the simulation environment. The success criterion is therefore not only whether one evolved agent looks good in one run. The success criterion is whether the platform supports repeatable experimentation, observa- tion, artifact generation, and analysis. On that criterion, the project is complete.
 
 ## Current Limitations
 
@@ -62,12 +38,11 @@ These limitations are important to state clearly because they define the maturit
 The most valuable future extensions are listed below, with each item corresponding to an
 actual engineering direction rather than a generic wish list.
 
-1. Stronger GPU-side verification. Add end-to-end invariant checks and determinism-
-oriented regression tests for compact readbacks.
-2. Artifact comparison and regression tooling. Extend analysis support so whole experiment batches can be compared and regression-checked more automatically.
-3. Long-running suite automation. Improve the workflow around repeated seeded runs, especially when many conditions must be executed and summarized together.
-4. Richer interactive inspection. Expand the UI and analysis features for selected agents, species history, and population trend exploration.
-5. Extended environment variants. Investigate additional evolutionary strategies, agent roles, or environmental rules on top of the current runtime.
+- **Stronger GPU-side verification**: Add end-to-end invariant checks and determinism-oriented regression tests for compact readbacks.
+- **Artifact comparison and regression tooling**: Extend analysis support so whole experiment batches can be compared and regression-checked more automatically.
+- **Long-running suite automation**: Improve the workflow around repeated seeded runs, especially when many conditions must be executed and summarized together.
+- **Richer interactive inspection**: Expand the UI and analysis features for selected agents, species history, and population trend exploration.
+- **Extended environment variants**: Investigate additional evolutionary strategies, agent roles, or environmental rules on top of the current runtime.
 
 Each of these directions builds on the existing platform rather than replacing it. That is a good sign for the final architecture: the current implementation is stable enough to serve as a base for later work.
 

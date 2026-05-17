@@ -61,3 +61,33 @@
 .md-search__button::after {
   display: none;
 }
+
+.task-list-control .task-list-indicator::before {
+  background-color: var(--col-f2) !important;
+
+  content: "";
+  display: inline-block;
+  width: 0.96em;
+  height: 0.96em;
+  top: 0.36em;
+}
+
+.task-list-control [type="checkbox"]:checked + .task-list-indicator::before {
+  background-color: var(--col-h3) !important;
+
+  opacity: 1;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z'/%3E%3C/svg%3E");
+  -webkit-mask-size: 100%;
+  mask-size: 100%;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+}
+
+.tabbed-labels {
+  background-color: var(--col-b2) !important;
+  border-top-left-radius: 8.8px;
+  border-top-right-radius: 8.8px
+}
