@@ -9,7 +9,11 @@
   let
     name = "moonai-flake";
 
-    packages = with pkgs; [
+    pkgs-common = with pkgs; [
+      just
+    ];
+
+    pkgs-dev = with pkgs; [
       clang-tools
       wayland
       libxkbcommon
@@ -22,9 +26,15 @@
       bun
       uv
       rustup
-      just
       pkg-config
     ];
+
+    pkgs-docs = with pkgs; [
+      uv
+    ];
+
+    pkgs-shell-default = pkgs-common ++ pkgs-dev ++ pkgs-docs;
+    pkgs-shell-docs = pkgs-common ++ pkgs-dev;
 
     env = {
       CUDA_PATH = "${pkgs.cudatoolkit}";
@@ -43,12 +53,18 @@
       };
     };
   in {
-    devShells.${system}.default = pkgs.mkShell {
-      inherit name;
-      inherit packages;
-      inherit env;
-      inherit shellHook;
-      LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath packages;
+    devShells.${system} = {
+      default = pkgs.mkShell {
+        inherit name;
+        inherit env;
+        inherit shellHook;
+        packages = pkgs-shell-default;
+        LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath pkgs-shell-default;
+      };
+
+      ci-docs = pkgs.mkShell {
+        packages = pkgs-shell-docs;
+      };
     };
   };
 }
