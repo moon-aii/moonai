@@ -57,3 +57,7 @@
   --md-mermaid-node-fg-color: var(--col-b3) !important;
   --md-mermaid-node-bg-color: var(--col-b2) !important;
 }
+
+.md-search__button::after {
+  display: none;
+}
