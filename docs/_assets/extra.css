@@ -1,6 +1,6 @@
-/* .md-grid { */
-/*   max-width: 1440px;  */
-/* } */
+.md-grid {
+  max-width: 1200px;
+}
 
 :root > * {
   --col-h6: #ab41eb;
