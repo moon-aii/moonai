@@ -16,9 +16,9 @@ extra_javascript = ["_assets/extra.js"]
 nav = [
   "index.md",
   "spec.md",
+  "development.md",
   "structure.md",
   "architecture.md",
-  "development.md",
   "roadmap.md"
 ]
 

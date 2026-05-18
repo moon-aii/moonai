@@ -6,8 +6,6 @@ description: System Architecture.
 
 ## Design Principles
 
-MoonAI follows a **GPU-first execution model**.
-
 - **GPU owns all simulation state** — positions, velocities, energy, age, alive flags, genomes, compiled networks, innovation counters, and species metadata live in GPU memory.
 - **CPU is orchestrator only** — it loads experiments and settings, allocates buffers, launches kernels, and writes files from compact readbacks. It does not maintain or execute a population-wide simulation, evolution, or verification path.
 - **Tick-based cadence** — GPU runs initialization, simulation, evolution, report-window reduction, and on-demand inspection kernels. CPU only sequences those launches.
@@ -82,8 +80,6 @@ Current automated coverage is strongest in the following areas:
 Manual and system-level validation remains important for the full GPU tick path, experiment
 workflow, and analysis output. Additional GPU invariant and determinism coverage is a natural
 future extension, but it is not yet as broad as the host-side checks.
-
-There is no separate CPU algorithmic path used to confirm simulation correctness.
 
 ## Readback Rules
 
@@ -219,73 +215,6 @@ flowchart TD
     LOOP -->|run finished| NEXT
     NEXT -->|yes| SEED
     NEXT -->|no| END
-```
-
-## GPU Kernel Reference
-
-### `crossover.cu` — High-Level Algorithm
-
-```
-gpu_crossover_kernel(parent_a_ptr, parent_b_ptr, offspring_ptr, rng_state_ptr):
-    tid = blockIdx.x * blockDim.x + threadIdx.x
-    if tid >= num_offspring: return
-
-    // 1. Read parent connection arrays into shared memory (32 threads cooperatively)
-    // 2. Warp-level bitonic sort by innovation number
-    // 3. Merge phase:
-    //    for each innovation in union:
-    //      if in both parents:
-    //        inherit = (rand() < 0.50) ? parent_a : parent_b
-    //      elif in one parent:
-    //        inherit = (rand() < 0.50) ? parent_with_gene : DISABLED
-    // 4. Disable mismatched with 75% probability
-    // 5. Write child genome to offspring_ptr
-```
-
-### `mutation.cu` — High-Level Algorithm
-
-```
-gpu_mutate_kernel(genome_ptr, innovation_counter, rng_state_ptr, config):
-    tid = blockIdx.x * blockDim.x + threadIdx.x
-    if tid >= num_agents: return
-
-    // Per-agent mutations (independent):
-
-    // Weight perturbation
-    if rand() < config.weight_mutation_rate:
-        for each connection:
-            if rand() < config.prob_mutate_weight:
-                weight += Gaussian(rand(), config.weight_perturb_strength)
-
-    // Add connection
-    if rand() < config.add_connection_rate:
-        for attempt in 0..max_attempts:
-            from, to = random_node_pair()
-            if not has_connection(genome, from, to):
-                new_innov = atomic_inc(innovation_counter)
-                add_connection(genome, from, to, new_innov)
-                break
-
-    // Add node
-    if rand() < config.add_node_rate:
-        conn = random_enabled_connection(genome)
-        if conn exists:
-            new_node = atomic_inc(next_node_id)
-            disable_connection(genome, conn)
-            i1 = atomic_inc(innovation_counter)
-            i2 = atomic_inc(innovation_counter)
-            add_connection(genome, conn.from, new_node, i1)
-            add_connection(genome, new_node, conn.to, i2)
-```
-
-### `network_compilation.cu` — High-Level Algorithm
-
-```
-gpu_compile_network_kernel(slot_id, genome_ptr, inference_ptr):
-    // 1. Topological sort nodes → eval_order[]
-    // 2. Build conn_ptr[] — offset into conn_from[] for each node
-    // 3. Copy weights, enabled flags into inference arrays
-    // 4. Mark output node indices
 ```
 
 ## GPU-Side Innovation Tracking

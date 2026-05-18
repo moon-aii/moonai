@@ -7,7 +7,7 @@ hide:
 
 <p align="center"> <img src="_assets/logo.svg" alt="MoonAI Logo" width="120em" /> </p>
 
-# MoonAI {: align="center" style="font-size: 3em;"}
+# MoonAI</br>NeuroEvolution Predator-Prey Simulation {: align="center" }
 
 <div class="grid cards" markdown>
 

@@ -42,18 +42,17 @@ cd moonai
 #### 1. Build
 
 === "Just"
-    ```bash
-    # Debug build
-    just build-debug
+```bash # Debug build
+just build-debug
 
     # Release build
     just build
     ```
+
 === "Manual"
-    ```bash
-    # Debug build
-    cargo build
-    cp -r runtime/* target/debug
+```bash # Debug build
+cargo build
+cp -r runtime/\* target/debug
 
     # Release build
     cargo build --release
