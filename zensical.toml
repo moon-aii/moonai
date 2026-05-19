@@ -58,7 +58,7 @@ generator = false
 repo = "fontawesome/brands/github"
 
 [project.theme.font]
-text = "Figtree"
+text = "Source Sans 3"
 code = "Source Code Pro"
 
 [[project.theme.palette]]

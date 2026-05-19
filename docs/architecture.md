@@ -168,7 +168,7 @@ flowchart TD
 ## Ownership Boundaries
 
 ```mermaid
-flowchart LR
+flowchart TD
     SHELL[UI shell + queue]
     HOST[Host orchestrator]
     GPUSTATE[GPU state buffers]
