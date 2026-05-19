@@ -13,7 +13,7 @@ hide:
 
 -   ## Project
 
-    Simulation platform for studying evolutionary algorithms and neural network evolution through predator-prey dynamics using the NEAT algorithm.
+    Simulation platform for studying neural network evolution through predator-prey dynamics using the NEAT algorithm.
 
     **Team**:
 
@@ -57,7 +57,7 @@ hide:
 
 -   ### Objective
 
-    Develop a robust simulation environment to research and optimize evolutionary algorithms. By decoupling training from real-world data dependencies, we investigate how genetic representations influence learning efficiency and adaptability in dynamic, complex environments.
+    Develop a robust simulation environment to research and optimize evolutionary algorithms. By decoupling training from real-world data dependencies, we investigate how genetic representations influence learning efficiency and adaptability in dynamic environments.
 
 -   ### Approach
 
