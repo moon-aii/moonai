@@ -58,8 +58,8 @@ generator = false
 repo = "fontawesome/brands/github"
 
 [project.theme.font]
-text = "Source Sans 3"
-code = "Source Code Pro"
+text = "Schibsted Grotesk"
+code = "Manrope"
 
 [[project.theme.palette]]
 media = "(prefers-color-scheme)"
