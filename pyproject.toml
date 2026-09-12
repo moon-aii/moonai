@@ -24,7 +24,7 @@ analysis = "analysis.__main__:main"
 [dependency-groups]
 dev = [
     "ruff>=0.16.5",
-    "ty>=0.0.35",
+    "ty>=0.0.78",
     "pytest",
 ]
 docs = ["zensical>=0.0.43"]
