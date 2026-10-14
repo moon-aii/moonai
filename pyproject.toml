@@ -23,7 +23,7 @@ analysis = "analysis.__main__:main"
 
 [dependency-groups]
 dev = [
-    "ruff>=0.16.6",
+    "ruff>=0.16.10",
     "ty>=0.0.84",
     "pytest",
 ]
